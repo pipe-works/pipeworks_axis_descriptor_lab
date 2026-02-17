@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<!--
+  app/templates/index.html
+  ─────────────────────────────────────────────────────────────────────────────
+  Single-page shell for the Axis Descriptor Lab.
+
+  Jinja2 variables injected by main.py:
+    {{ default_model }}     – value of DEFAULT_MODEL env var
+    {{ available_models }}  – Python list of locally-pulled Ollama model names
+
+  All interactive behaviour lives in static/app.js.
+  All visual styles live in static/styles.css.
+
+  Layout (three-column + footer)
+  ───────────────────────────────
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │ header                                                                   │
+  ├────────────────┬──────────────────────────┬─────────────────────────────┤
+  │ LEFT PANEL     │ CENTRE PANEL             │ RIGHT PANEL                 │
+  │ JSON editor    │ Axis sliders             │ Output + Diff               │
+  │ Example loader │ + metadata controls      │                             │
+  │ System prompt  │                          │                             │
+  ├────────────────┴──────────────────────────┴─────────────────────────────┤
+  │ status bar                                                               │
+  └──────────────────────────────────────────────────────────────────────────┘
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Axis Descriptor Lab – Pipe-Works</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     HEADER
+════════════════════════════════════════════════════════════════════════════ -->
+<header class="app-header">
+  <span class="app-header__title">⚙ Axis Descriptor Lab</span>
+  <span class="app-header__subtitle">Pipe-Works · LLM Drift Instrument · v0.1</span>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     MAIN GRID
+════════════════════════════════════════════════════════════════════════════ -->
+<main class="app-grid">
+
+  <!-- ── LEFT PANEL: JSON editor + example selector + system prompt ───────── -->
+  <section class="panel panel--left" aria-label="JSON Editor">
+    <h2 class="panel__heading">Payload</h2>
+
+    <!-- Example selector -->
+    <div class="control-row">
+      <label for="example-select" class="control-label">Example</label>
+      <select id="example-select" class="select">
+        <option value="">— choose —</option>
+      </select>
+      <button id="btn-load-example" class="btn btn--secondary" type="button">
+        Load
+      </button>
+    </div>
+
+    <!-- Raw JSON textarea (source of truth) -->
+    <label for="json-textarea" class="control-label" style="margin-top:0.75rem;">
+      Axis JSON <span class="badge" id="json-status-badge">OK</span>
+    </label>
+    <textarea
+      id="json-textarea"
+      class="code-editor"
+      rows="22"
+      spellcheck="false"
+      autocomplete="off"
+      aria-label="Axis payload JSON"
+      placeholder='{"axes": { ... }, "policy_hash": "...", "seed": 0, "world_id": "pipeworks_web"}'
+    ></textarea>
+
+    <!-- System prompt override -->
+    <details class="collapsible" id="system-prompt-details">
+      <summary class="collapsible__summary">System Prompt <span class="badge badge--muted">override</span></summary>
+      <label for="system-prompt-textarea" class="control-label" style="margin-top:0.5rem;">
+        Leave blank to use the server default (system_prompt_v01.txt)
+      </label>
+      <textarea
+        id="system-prompt-textarea"
+        class="code-editor code-editor--sm"
+        rows="10"
+        spellcheck="false"
+        placeholder="(server default)"
+      ></textarea>
+    </details>
+  </section>
+
+  <!-- ── CENTRE PANEL: Sliders + run controls ─────────────────────────────── -->
+  <section class="panel panel--centre" aria-label="Axis Controls">
+    <h2 class="panel__heading">Axes</h2>
+
+    <!-- Dynamic slider area – populated by app.js buildSlidersFromJson() -->
+    <div id="slider-panel" class="slider-panel">
+      <p class="placeholder-text">Load an example or paste JSON to see sliders.</p>
+    </div>
+
+    <!-- Divider -->
+    <hr class="divider" />
+
+    <!-- Label mode toggle -->
+    <div class="control-row" style="margin-top:0.5rem;">
+      <label class="control-label">Label mode</label>
+      <label class="toggle-label">
+        <input type="checkbox" id="auto-label-toggle" role="switch" />
+        <span class="toggle-text">Auto (policy)</span>
+      </label>
+      <button id="btn-relabel" class="btn btn--secondary" type="button" title="Recompute labels from server policy">
+        Recompute
+      </button>
+    </div>
+
+    <!-- Model + generation settings -->
+    <div class="settings-grid">
+      <label for="model-select" class="control-label">Model</label>
+      <div class="model-row">
+        <select id="model-select" class="select">
+          {% if available_models %}
+            {% for m in available_models %}
+              <option value="{{ m }}" {% if m == default_model %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          {% else %}
+            <option value="{{ default_model }}">{{ default_model }}</option>
+          {% endif %}
+        </select>
+        <!-- Manual model name input (shown when no models are found) -->
+        <input
+          id="model-input"
+          class="input {% if available_models %}hidden{% endif %}"
+          type="text"
+          value="{{ default_model }}"
+          placeholder="e.g. gemma2:2b"
+          aria-label="Model name"
+        />
+      </div>
+
+      <label for="temp-input" class="control-label">Temperature</label>
+      <div class="range-row">
+        <input type="range" id="temp-range" min="0" max="2" step="0.05" value="0.2" class="range-input" />
+        <input type="number" id="temp-input" min="0" max="2" step="0.05" value="0.2" class="input input--sm" />
+      </div>
+
+      <label for="tokens-input" class="control-label">Max tokens</label>
+      <input type="number" id="tokens-input" min="10" max="2048" value="120" class="input input--sm" />
+    </div>
+
+    <!-- Generate button -->
+    <button id="btn-generate" class="btn btn--primary btn--full" type="button">
+      ▶ Generate
+    </button>
+  </section>
+
+  <!-- ── RIGHT PANEL: Output + Diff ──────────────────────────────────────── -->
+  <section class="panel panel--right" aria-label="Output">
+    <div class="output-header">
+      <h2 class="panel__heading">Output</h2>
+      <div class="output-actions">
+        <button id="btn-set-baseline" class="btn btn--secondary btn--sm" type="button"
+                title="Store this output as Baseline A for diffing">
+          Set as A
+        </button>
+        <button id="btn-clear-output" class="btn btn--ghost btn--sm" type="button">
+          Clear
+        </button>
+      </div>
+    </div>
+
+    <!-- Generated text -->
+    <div id="output-box" class="output-box" aria-live="polite" aria-label="Generated description">
+      <span class="placeholder-text">Click Generate to produce a description.</span>
+    </div>
+
+    <!-- Token / meta info -->
+    <div id="output-meta" class="output-meta hidden"></div>
+
+    <!-- Diff section -->
+    <details class="collapsible" id="diff-details">
+      <summary class="collapsible__summary">Diff (A vs B)</summary>
+
+      <div class="diff-grid">
+        <!-- Baseline A -->
+        <div>
+          <div class="diff-label">A · Baseline</div>
+          <div id="diff-a" class="diff-box diff-box--a">
+            <span class="placeholder-text">No baseline set.</span>
+          </div>
+        </div>
+        <!-- Current B -->
+        <div>
+          <div class="diff-label">B · Current</div>
+          <div id="diff-b" class="diff-box diff-box--b">
+            <span class="placeholder-text">Generate to populate B.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Word-level diff view -->
+      <div class="diff-label" style="margin-top:0.75rem;">Δ Changes (word-level)</div>
+      <div id="diff-delta" class="diff-delta">
+        <span class="placeholder-text">—</span>
+      </div>
+    </details>
+  </section>
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     STATUS BAR
+════════════════════════════════════════════════════════════════════════════ -->
+<footer class="status-bar">
+  <span id="status-text" class="status-bar__text">Ready.</span>
+  <span id="spinner" class="spinner hidden" aria-label="Loading" role="status"></span>
+</footer>
+
+<!-- app.js loaded last so the DOM is fully available -->
+<script src="/static/app.js"></script>
+</body>
+</html>
