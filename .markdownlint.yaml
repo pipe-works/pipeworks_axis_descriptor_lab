@@ -3,3 +3,5 @@
 MD013: false
 # Allow badges before first heading
 MD041: false
+# Allow inline HTML (centered images, badges)
+MD033: false

@@ -4,6 +4,10 @@
 
 Tiny web tool for testing how small LLMs (via Ollama) produce _non-authoritative_ descriptive text from a deterministic axis payload. Part of the Pipe-Works project.
 
+<p align="center">
+  <img src="docs/images/lab_ui.png" alt="Axis Descriptor Lab UI" width="720">
+</p>
+
 ## Quick start
 
 ```bash
