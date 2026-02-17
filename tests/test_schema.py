@@ -71,6 +71,26 @@ class TestAxisPayload:
         )
         assert len(p.axes) == 2
 
+    def test_seed_zero(self) -> None:
+        """Seed of 0 is a valid deterministic seed."""
+        p = AxisPayload(
+            axes={"a": AxisValue(label="x", score=0.5)},
+            policy_hash="h",
+            seed=0,
+            world_id="w",
+        )
+        assert p.seed == 0
+
+    def test_seed_large_value(self) -> None:
+        """Frontend resolveSeed() can produce values up to 2^32-1."""
+        p = AxisPayload(
+            axes={"a": AxisValue(label="x", score=0.5)},
+            policy_hash="h",
+            seed=4294967295,
+            world_id="w",
+        )
+        assert p.seed == 4294967295
+
 
 # ── GenerateRequest ──────────────────────────────────────────────────────────
 

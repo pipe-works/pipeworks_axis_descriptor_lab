@@ -67,6 +67,7 @@ const modelInput          = $("model-input");
 const tempRange           = $("temp-range");
 const tempInput           = $("temp-input");
 const tokensInput         = $("tokens-input");
+const seedInput           = $("seed-input");
 const btnGenerate         = $("btn-generate");
 const outputBox           = $("output-box");
 const outputMeta          = $("output-meta");
@@ -81,6 +82,31 @@ const spinner             = $("spinner");
 /* ═══════════════════════════════════════════════════════════════════════════
    UTILITIES
 ════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Resolve the seed value from the seed input field.
+ *
+ * If the input is -1 (or any negative value), generate a random 32-bit
+ * unsigned integer using Math.random().  This does NOT pollute any global
+ * RNG state — Math.random() is stateless from the caller's perspective and
+ * the generated seed is used solely to populate the payload's `seed` field
+ * for this single request.
+ *
+ * Positive values are passed through as-is, providing deterministic
+ * reproducibility when the same seed is reused.
+ *
+ * @returns {number} A non-negative integer seed.
+ */
+function resolveSeed() {
+  const raw = parseInt(seedInput.value, 10);
+  if (isNaN(raw) || raw < 0) {
+    // Generate a random 32-bit unsigned integer (0 to 4294967295).
+    // Math.random() is not a CSPRNG but is perfectly adequate for
+    // non-security seed generation in a local lab tool.
+    return Math.floor(Math.random() * 0x100000000);
+  }
+  return raw;
+}
 
 /**
  * Debounce: delay invoking `fn` until `ms` milliseconds have passed since
@@ -373,11 +399,19 @@ async function generate() {
   const model       = getModelName();
   const temperature = parseFloat(tempInput.value);
   const max_tokens  = parseInt(tokensInput.value, 10);
+  const rawSeed     = parseInt(seedInput.value, 10);
+  const wasRandom   = isNaN(rawSeed) || rawSeed < 0;
+  const seed        = resolveSeed();
 
   if (!model) {
     setStatus("No model specified.");
     return;
   }
+
+  // Apply the resolved seed to the payload so the request carries the
+  // actual seed used (important for logging and reproducibility).
+  state.payload.seed = seed;
+  syncJsonTextarea();
 
   const systemPromptVal = systemPromptTextarea.value.trim();
 
@@ -417,7 +451,8 @@ async function generate() {
     state.current = data.text;
 
     // ── Show meta info ────────────────────────────────────────────────── //
-    let metaStr = `model: ${data.model}  ·  temp: ${data.temperature}`;
+    const seedLabel = wasRandom ? `seed: ${seed} (random)` : `seed: ${seed}`;
+    let metaStr = `model: ${data.model}  ·  temp: ${data.temperature}  ·  ${seedLabel}`;
     if (data.usage) {
       const p = data.usage.prompt_eval_count;
       const e = data.usage.eval_count;
@@ -754,6 +789,7 @@ function wireEvents() {
     }
     state.baseline = state.current;
     diffA.textContent = state.baseline;
+    btnSetBaseline.classList.add("is-active");
     setStatus("Baseline A set.");
   });
 
@@ -763,8 +799,11 @@ function wireEvents() {
     outputMeta.textContent = "";
     outputMeta.classList.add("hidden");
     state.current        = null;
+    state.baseline       = null;
+    diffA.innerHTML      = '<span class="placeholder-text">No baseline set.</span>';
     diffB.innerHTML      = '<span class="placeholder-text">Generate to populate B.</span>';
     diffDelta.innerHTML  = '<span class="placeholder-text">—</span>';
+    btnSetBaseline.classList.remove("is-active");
     setStatus("Output cleared.");
   });
 }
