@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop, release-please--*]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:  # Allow manual triggering
+  workflow_call:  # Allow being called by other workflows
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  ci:
+    uses: pipe-works/.github/.github/workflows/reusable-python-ci.yml@main
+    with:
+      python-version: '3.12'
+      python-versions: '["3.12", "3.13"]'
+      coverage-threshold: 50
+      run-security: true
+      run-docs: false
+      requires-models: false
+    secrets: inherit

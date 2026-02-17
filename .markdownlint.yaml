@@ -1,0 +1,5 @@
+# Markdownlint configuration
+# Disable line-length rule — tables and URLs routinely exceed 80 chars
+MD013: false
+# Allow badges before first heading
+MD041: false

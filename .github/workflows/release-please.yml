@@ -1,0 +1,23 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+    - main
+  workflow_dispatch:  # Allow manual triggering for testing
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+  statuses: write
+
+jobs:
+  release:
+    uses: pipe-works/.github/.github/workflows/reusable-release-please.yml@main
+    with:
+      release-type: python
+      package-name: axis-descriptor-lab
+      bump-minor-pre-major: true
+      bump-patch-for-minor-pre-major: true
+    secrets: inherit

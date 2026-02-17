@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axis-descriptor-lab"
+version = "0.1.0"
+description = "Tiny web tool for testing how small LLMs produce non-authoritative descriptive text from a deterministic axis payload (Pipe-Works project)."
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework – async-capable, auto-generates OpenAPI docs
+    "fastapi>=0.111.0",
+    # ASGI server to run FastAPI
+    "uvicorn[standard]>=0.30.0",
+    # Jinja2 for HTML template rendering
+    "jinja2>=3.1.4",
+    # HTTP client used by ollama_client to talk to the local Ollama API
+    "httpx>=0.27.0",
+    # Environment variable loading from .env files
+    "python-dotenv>=1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4.0",       # linter + formatter
+    "black>=26.1.0",     # code formatter
+    "mypy>=1.19.0",      # type checker
+    "bandit[toml]>=1.7.10",  # security linter
+    "pre-commit>=4.0.0", # git hook framework
+]
+
+# Tell setuptools where the package lives
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+# Ruff: fast linter – keep lines at 100 chars, target Python 3.12
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+# Black: code formatter – match ruff line length
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+# Mypy: type checker
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+check_untyped_defs = true
+
+# Bandit: security linter
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = []

@@ -1,0 +1,30 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 50%
+        threshold: 2%
+        informational: false
+    patch:
+      default:
+        target: 70%
+        threshold: 2%
+        informational: false
+
+  precision: 2
+  round: down
+  range: 50...100
+
+comment:
+  layout: reach, diff, flags, files
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+ignore:
+- tests/
+- app/static/
+- app/templates/
+- '**/__pycache__'
+- '**/*.egg-info'
