@@ -315,6 +315,13 @@ html, body {
   color: var(--col-accent);
 }
 
+/* Active state: secondary button with baseline set */
+.btn--secondary.is-active {
+  border-color: var(--col-accent);
+  color: var(--col-accent);
+  background: var(--col-accent-glow);
+}
+
 /* Ghost: no border */
 .btn--ghost {
   background: transparent;

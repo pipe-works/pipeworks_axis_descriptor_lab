@@ -218,6 +218,34 @@ class TestGenerateEndpoint:
 
         assert resp.status_code == 500
 
+    def test_generate_with_large_seed(self, client: TestClient) -> None:
+        """Frontend resolveSeed() can produce seeds up to 2^32-1."""
+        payload = {
+            "axes": {"health": {"label": "weary", "score": 0.5}},
+            "policy_hash": "h",
+            "seed": 4294967295,
+            "world_id": "w",
+        }
+        with patch("app.main.ollama_generate") as mock_gen:
+            mock_gen.return_value = ("text", {})
+            resp = client.post("/api/generate", json=self._req_body(payload))
+
+        assert resp.status_code == 200
+
+    def test_generate_with_zero_seed(self, client: TestClient) -> None:
+        """Seed 0 is a valid deterministic seed (not random)."""
+        payload = {
+            "axes": {"health": {"label": "weary", "score": 0.5}},
+            "policy_hash": "h",
+            "seed": 0,
+            "world_id": "w",
+        }
+        with patch("app.main.ollama_generate") as mock_gen:
+            mock_gen.return_value = ("text", {})
+            resp = client.post("/api/generate", json=self._req_body(payload))
+
+        assert resp.status_code == 200
+
 
 class TestLogEndpoint:
     def test_creates_log_entry(self, client: TestClient, sample_payload_dict: dict) -> None:
