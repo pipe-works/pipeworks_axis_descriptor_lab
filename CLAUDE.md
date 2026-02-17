@@ -13,16 +13,22 @@ The **Axis Descriptor Lab** is a single-user web tool for testing how small LLMs
 ```bash
 # Install (editable)
 pip install -e .
-pip install -e ".[dev]"   # includes ruff
+pip install -e ".[dev]"    # includes pytest, ruff, black, mypy, bandit, pre-commit
+pip install -e ".[docs]"   # includes sphinx, sphinx-rtd-theme, myst-parser
 
 # Run server (requires Ollama running locally)
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8242
 
+# Tests
+pytest                             # run all tests
+pytest -v --cov --cov-report=term  # with coverage
+
 # Lint
 ruff check app/
-```
 
-No tests exist yet. When added, they should use pytest.
+# Docs
+make -C docs html                  # build HTML docs to docs/_build/html/
+```
 
 ## Architecture
 
@@ -67,7 +73,7 @@ Configured via `.env` (copy from `.env.example`):
 
 - **CI**: GitHub Actions via org reusable workflows (`pipe-works/.github`). Runs on push to `main`/`develop`/`release-please--*` and PRs.
 - **Release-please**: Automated versioning and changelog from conventional commits. Pushes to `main` trigger a release PR.
-- **Branch protection**: `main` requires PR review and passing `ci / All Checks Passed` status check.
+- **Branch protection**: `main` requires passing `ci / All Checks Passed` status check.
 - **Codecov**: Coverage targets 50% project, 70% patch.
 
 ## Conventional Commits
