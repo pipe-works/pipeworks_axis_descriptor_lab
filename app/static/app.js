@@ -780,7 +780,31 @@ function wireEvents() {
  * 2. Fetches the example list from the server.
  * 3. Auto-loads the first example so the UI is not empty on first visit.
  */
+/**
+ * Initialise the theme toggle button and restore any saved preference.
+ */
+function wireThemeToggle() {
+  const btn = document.getElementById("theme-toggle");
+  if (!btn) return;
+
+  const applyTheme = (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    btn.textContent = theme === "light" ? "\u263E Dark" : "\u2600 Light";
+    localStorage.setItem("padl-theme", theme);
+  };
+
+  // Restore saved preference, default to dark
+  const saved = localStorage.getItem("padl-theme") || "dark";
+  applyTheme(saved);
+
+  btn.addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-theme") || "dark";
+    applyTheme(current === "dark" ? "light" : "dark");
+  });
+}
+
 async function init() {
+  wireThemeToggle();
   wireEvents();
   await loadExampleList();
 

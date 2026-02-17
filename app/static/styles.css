@@ -693,3 +693,105 @@ html, body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--col-border-hi); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--col-accent-dim); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME TOGGLE
+════════════════════════════════════════════════════════════════════════════ */
+
+.theme-toggle {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--col-border-hi);
+  border-radius: 4px;
+  color: var(--col-text-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 2px var(--sp-2);
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.theme-toggle:hover {
+  color: var(--col-accent);
+  border-color: var(--col-accent);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT THEME OVERRIDES
+   ─────────────────────────────────────────────────────────────────────────
+   Activated by setting data-theme="light" on <html>.
+   Same structure, inverted palette – warm paper tones, dark text,
+   amber accent preserved for continuity.
+════════════════════════════════════════════════════════════════════════════ */
+
+[data-theme="light"] {
+  /* Palette */
+  --col-bg:          #f4f1ec;   /* warm paper background */
+  --col-surface:     #faf8f5;   /* panel background */
+  --col-surface-2:   #efece6;   /* slightly darker surface (inputs, etc.) */
+  --col-border:      #d6d0c6;   /* subtle dividers */
+  --col-border-hi:   #b8b0a4;   /* focused / highlighted borders */
+
+  --col-text:        #2c2a26;   /* primary text */
+  --col-text-muted:  #7a7568;   /* secondary / label text */
+  --col-text-dim:    #c4bfb5;   /* very dim (placeholders) */
+
+  --col-accent:      #c27b0a;   /* deeper amber – keeps contrast on light bg */
+  --col-accent-dim:  #a06508;   /* darker amber for pressed states */
+  --col-accent-glow: rgba(194, 123, 10, 0.12);
+
+  --col-ok:          #16a34a;   /* green – valid JSON / success */
+  --col-err:         #dc2626;   /* red – error */
+  --col-warn:        #ea580c;   /* orange – warning */
+  --col-info:        #2563eb;   /* blue – informational */
+
+  --col-diff-add:    rgba(22, 163, 74, 0.14);
+  --col-diff-del:    rgba(220, 38, 38, 0.14);
+  --col-diff-add-text: #166534;
+  --col-diff-del-text: #991b1b;
+}
+
+/* Light-mode overrides for elements that use hard-coded colours */
+[data-theme="light"] .code-editor {
+  background: #fff;
+  color: #2c2a26;
+  border-color: var(--col-border);
+}
+
+[data-theme="light"] .output-box {
+  background: #fff;
+}
+
+[data-theme="light"] .diff-box,
+[data-theme="light"] .diff-delta {
+  background: #fff;
+}
+
+[data-theme="light"] .diff-box--a,
+[data-theme="light"] .diff-box--b {
+  border-color: var(--col-border);
+}
+
+[data-theme="light"] .btn--primary {
+  color: #fff;
+}
+
+[data-theme="light"] .badge {
+  color: #fff;
+}
+
+[data-theme="light"] .badge--warn {
+  color: #fff;
+}
+
+[data-theme="light"] .range-input::-webkit-slider-thumb {
+  border-color: var(--col-surface);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: var(--col-border);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--col-border-hi);
+}
