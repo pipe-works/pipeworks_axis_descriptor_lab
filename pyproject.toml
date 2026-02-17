@@ -52,6 +52,20 @@ python_version = "3.12"
 ignore_missing_imports = true
 check_untyped_defs = true
 
+# Pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+
+# Coverage
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/static/*", "app/templates/*"]
+
+[tool.coverage.report]
+show_missing = true
+
 # Bandit: security linter
 [tool.bandit]
 exclude_dirs = ["tests"]
