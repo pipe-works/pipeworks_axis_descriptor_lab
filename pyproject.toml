@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "axis-descriptor-lab"
-version = "0.1.2"
+version = "0.1.3"
 description = "Tiny web tool for testing how small LLMs produce non-authoritative descriptive text from a deterministic axis payload (Pipe-Works project)."
 requires-python = ">=3.12"
 dependencies = [
