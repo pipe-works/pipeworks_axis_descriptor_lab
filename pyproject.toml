@@ -30,6 +30,12 @@ dev = [
     "bandit[toml]>=1.7.10",  # security linter
     "pre-commit>=4.0.0", # git hook framework
 ]
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=2.0.0",
+    "sphinx-autodoc-typehints>=1.25.0",
+    "myst-parser>=2.0.0",
+]
 
 # Tell setuptools where the package lives
 [tool.setuptools.packages.find]
