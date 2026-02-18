@@ -46,6 +46,15 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 master_doc = "index"
 
+# -- MyST-Parser configuration -----------------------------------------------
+
+myst_enable_extensions = [
+    "colon_fence",  # ::: admonition syntax
+    "deflist",  # definition lists
+    "fieldlist",  # field lists
+]
+myst_heading_anchors = 3
+
 # -- HTML output options -----------------------------------------------------
 
 html_theme = "sphinx_rtd_theme"
