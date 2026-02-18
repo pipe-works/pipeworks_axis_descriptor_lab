@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -335,6 +336,9 @@ class TestGenerateEndpoint:
             resp = client.post("/api/generate", json=self._req_body(payload))
 
         assert resp.status_code == 200
+        # Verify the large seed is forwarded to Ollama for deterministic sampling.
+        call_kwargs = mock_gen.call_args.kwargs
+        assert call_kwargs["seed"] == 4294967295
 
     def test_generate_with_zero_seed(self, client: TestClient) -> None:
         """Seed 0 is a valid deterministic seed (not random)."""
@@ -349,6 +353,27 @@ class TestGenerateEndpoint:
             resp = client.post("/api/generate", json=self._req_body(payload))
 
         assert resp.status_code == 200
+        # Verify seed 0 is explicitly forwarded (not treated as "no seed").
+        call_kwargs = mock_gen.call_args.kwargs
+        assert call_kwargs["seed"] == 0
+
+    def test_seed_forwarded_to_ollama(self, client: TestClient, sample_payload_dict: dict) -> None:
+        """The payload's seed must be passed to ollama_generate() as options.seed.
+
+        This is the critical integration test for the seed fix: the seed was
+        previously only used in the IPC hash but never forwarded to Ollama for
+        deterministic token sampling.  Without this, identical IPC inputs
+        could still produce different outputs.
+        """
+        with patch("app.main.ollama_generate") as mock_gen:
+            mock_gen.return_value = ("deterministic text", {})
+            resp = client.post("/api/generate", json=self._req_body(sample_payload_dict))
+
+        assert resp.status_code == 200
+        # The seed from the payload must appear in the ollama_generate kwargs.
+        call_kwargs = mock_gen.call_args.kwargs
+        assert "seed" in call_kwargs, "seed not forwarded to ollama_generate()"
+        assert call_kwargs["seed"] == sample_payload_dict["seed"]
 
 
 class TestLogEndpoint:
@@ -868,13 +893,14 @@ class TestSaveEndpoint:
         files = resp.json()["files"]
         assert files == sorted(files)
 
-    def test_all_five_files_when_both_output_and_baseline(
+    def test_all_six_files_when_both_output_and_baseline(
         self,
         client: TestClient,
         save_request_body: dict,
         tmp_path: Path,
     ) -> None:
-        """When both output and baseline are set, all 5 files must exist."""
+        """When both output and baseline are set, all 6 files must exist
+        including delta.json from the signal isolation pipeline."""
         body = {**save_request_body, "baseline": "Baseline text."}
         with patch("app.main._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
@@ -882,6 +908,7 @@ class TestSaveEndpoint:
         data = resp.json()
         assert data["files"] == [
             "baseline.md",
+            "delta.json",
             "metadata.json",
             "output.md",
             "payload.json",
@@ -977,3 +1004,202 @@ class TestSaveEndpoint:
         # Without output, the chain is incomplete
         assert data["output_hash"] is None
         assert data["ipc_id"] is None
+
+    def test_delta_json_written_when_both_output_and_baseline(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """delta.json must be created when both output and baseline are present."""
+        body = {
+            **save_request_body,
+            "output": "A dark figure lurks beyond the crumbling gate.",
+            "baseline": "The weathered figure stands near the threshold.",
+        }
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+
+        # File must exist and be listed in the response
+        assert (save_dir / "delta.json").exists()
+        assert "delta.json" in data["files"]
+
+        # Parse and verify structure
+        delta = json.loads((save_dir / "delta.json").read_text(encoding="utf-8"))
+        assert isinstance(delta["removed"], list)
+        assert isinstance(delta["added"], list)
+        assert delta["removed_count"] == len(delta["removed"])
+        assert delta["added_count"] == len(delta["added"])
+
+        # The two texts differ, so there should be content in the delta
+        assert delta["removed_count"] > 0 or delta["added_count"] > 0
+
+    def test_delta_json_lists_are_sorted(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """removed and added lists in delta.json must be alphabetically sorted."""
+        body = {
+            **save_request_body,
+            "output": "The zebra and antelope walk slowly near the river.",
+            "baseline": "The monkey and tiger swim quickly across the bridge.",
+        }
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        save_dir = tmp_path / resp.json()["folder_name"]
+        delta = json.loads((save_dir / "delta.json").read_text(encoding="utf-8"))
+        assert delta["removed"] == sorted(delta["removed"])
+        assert delta["added"] == sorted(delta["added"])
+
+    def test_delta_json_omitted_when_no_baseline(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """delta.json must not be created when baseline is None."""
+        body = {**save_request_body, "baseline": None}
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+        assert not (save_dir / "delta.json").exists()
+        assert "delta.json" not in data["files"]
+
+    def test_delta_json_omitted_when_no_output(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """delta.json must not be created when output is None."""
+        body = {**save_request_body, "output": None, "baseline": "Some baseline."}
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+        assert not (save_dir / "delta.json").exists()
+        assert "delta.json" not in data["files"]
+
+    def test_delta_json_does_not_affect_ipc_hashes(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """IPC hashes must be identical whether or not a baseline is present,
+        since delta.json is a derived analysis that does not participate in
+        the provenance chain."""
+        # Save without baseline (no delta.json)
+        body_no_baseline = {**save_request_body, "baseline": None}
+        with patch("app.main._DATA_DIR", tmp_path):
+            r1 = client.post("/api/save", json=body_no_baseline)
+
+        # Save with baseline (delta.json written)
+        body_with_baseline = {**save_request_body, "baseline": "Baseline text."}
+        with patch("app.main._DATA_DIR", tmp_path):
+            r2 = client.post("/api/save", json=body_with_baseline)
+
+        d1 = r1.json()
+        d2 = r2.json()
+
+        # All IPC hashes must be identical — the baseline does not affect them
+        assert d1["input_hash"] == d2["input_hash"]
+        assert d1["system_prompt_hash"] == d2["system_prompt_hash"]
+        assert d1["output_hash"] == d2["output_hash"]
+        assert d1["ipc_id"] == d2["ipc_id"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/analyze-delta
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestAnalyzeDeltaEndpoint:
+    """Tests for the POST /api/analyze-delta endpoint (Signal Isolation Layer)."""
+
+    def test_successful_delta(self, client: TestClient) -> None:
+        """Happy path: two different texts produce non-empty removed/added lists."""
+        resp = client.post(
+            "/api/analyze-delta",
+            json={
+                "baseline_text": "The dark figure stands near the threshold.",
+                "current_text": "A bright goblin lurks beyond the crumbling gate.",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "removed" in data
+        assert "added" in data
+        assert isinstance(data["removed"], list)
+        assert isinstance(data["added"], list)
+        # Both should have content since the texts are different
+        assert len(data["removed"]) > 0
+        assert len(data["added"]) > 0
+
+    def test_identical_texts_empty_delta(self, client: TestClient) -> None:
+        """Identical texts must produce empty removed and added lists."""
+        text = "A weathered figure stands near the threshold."
+        resp = client.post(
+            "/api/analyze-delta",
+            json={"baseline_text": text, "current_text": text},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["removed"] == []
+        assert data["added"] == []
+
+    def test_results_alphabetically_sorted(self, client: TestClient) -> None:
+        """Both removed and added lists must be alphabetically sorted."""
+        resp = client.post(
+            "/api/analyze-delta",
+            json={
+                "baseline_text": "The zebra and antelope walk slowly near the river.",
+                "current_text": "The monkey and tiger swim quickly across the bridge.",
+            },
+        )
+        data = resp.json()
+        assert data["removed"] == sorted(data["removed"])
+        assert data["added"] == sorted(data["added"])
+
+    def test_empty_baseline_returns_422(self, client: TestClient) -> None:
+        """Empty baseline_text must be rejected by validation."""
+        resp = client.post(
+            "/api/analyze-delta",
+            json={"baseline_text": "", "current_text": "Some text."},
+        )
+        assert resp.status_code == 422
+
+    def test_empty_current_returns_422(self, client: TestClient) -> None:
+        """Empty current_text must be rejected by validation."""
+        resp = client.post(
+            "/api/analyze-delta",
+            json={"baseline_text": "Some text.", "current_text": ""},
+        )
+        assert resp.status_code == 422
+
+    def test_missing_fields_returns_422(self, client: TestClient) -> None:
+        """Missing required fields must return 422."""
+        resp = client.post(
+            "/api/analyze-delta",
+            json={"baseline_text": "Only baseline."},
+        )
+        assert resp.status_code == 422
+
+    def test_deterministic_across_calls(self, client: TestClient) -> None:
+        """Two identical requests must produce identical responses."""
+        body = {
+            "baseline_text": "The dark figure stands near the threshold.",
+            "current_text": "A bright goblin lurks beyond the gate.",
+        }
+        r1 = client.post("/api/analyze-delta", json=body).json()
+        r2 = client.post("/api/analyze-delta", json=body).json()
+        assert r1 == r2

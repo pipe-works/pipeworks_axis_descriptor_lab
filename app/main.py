@@ -17,6 +17,7 @@ GET  /api/models            → returns locally available Ollama models
 POST /api/generate          → send axis payload to Ollama, return description
 POST /api/log               → persist a run log entry to logs/run_log.jsonl
 POST /api/relabel           → (optional) recompute labels from policy rules
+POST /api/analyze-delta     → content-word delta between two texts
 GET  /api/system-prompt     → return the default system prompt as plain text
 POST /api/save              → save session state to a timestamped data/ subfolder
 
@@ -55,12 +56,15 @@ from app.hashing import (
 from app.ollama_client import list_local_models, ollama_generate
 from app.schema import (
     AxisPayload,
+    DeltaRequest,
+    DeltaResponse,
     GenerateRequest,
     GenerateResponse,
     LogEntry,
     SaveRequest,
     SaveResponse,
 )
+from app.signal_isolation import compute_delta
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Bootstrap
@@ -343,12 +347,16 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     user_json_str = json.dumps(req.payload.model_dump(), ensure_ascii=False, indent=2)
 
     try:
+        # Forward the payload's seed to Ollama's options.seed so the model
+        # pins its RNG during token sampling.  This makes generation
+        # deterministic: identical IPC inputs → identical output text.
         text, usage = ollama_generate(
             model=req.model,
             system_prompt=system_prompt,
             user_json_str=user_json_str,
             temperature=req.temperature,
             max_tokens=req.max_tokens,
+            seed=req.payload.seed,
         )
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
@@ -585,6 +593,45 @@ def relabel(payload: AxisPayload) -> AxisPayload:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# POST /api/analyze-delta
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@app.post(
+    "/api/analyze-delta",
+    response_model=DeltaResponse,
+    summary="Compute content-word delta between baseline and current text",
+)
+def analyze_delta(req: DeltaRequest) -> DeltaResponse:
+    """
+    Signal Isolation Layer endpoint.
+
+    Takes two text strings (baseline A and current B), runs both through
+    the NLP pipeline (tokenise, lemmatise, filter stopwords), and returns
+    the set difference as alphabetically sorted word lists.
+
+    This endpoint surfaces meaningful lexical pivots by filtering
+    structural noise.  It is deterministic: same inputs always produce
+    the same outputs.
+
+    The LLM is not involved — this is pure programmatic text analysis.
+
+    Parameters
+    ──────────
+    req : DeltaRequest
+        Contains ``baseline_text`` and ``current_text``.
+
+    Returns
+    ───────
+    DeltaResponse
+        Alphabetically sorted ``removed`` and ``added`` content-lemma
+        lists.
+    """
+    removed, added = compute_delta(req.baseline_text, req.current_text)
+    return DeltaResponse(removed=removed, added=added)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Save helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -764,6 +811,11 @@ def save_run(req: SaveRequest) -> SaveResponse:
     system_prompt.md  – The system prompt used for the generation.
     output.md         – The generated text (only if ``output`` is not None).
     baseline.md       – The baseline text (only if ``baseline`` is not None).
+    delta.json        – Content-word delta between baseline and output (only
+                        if both ``output`` and ``baseline`` are not None).
+                        Contains added/removed content lemmas from the signal
+                        isolation pipeline.  This is a derived analysis — it
+                        does not affect IPC hashes.
 
     Parameters
     ──────────
@@ -869,6 +921,29 @@ def save_run(req: SaveRequest) -> SaveResponse:
             baseline_md = _build_baseline_md(req.baseline, folder_name)
             (save_dir / "baseline.md").write_text(baseline_md, encoding="utf-8")
             files_written.append("baseline.md")
+
+        # ── delta.json (conditional) ──────────────────────────────────── #
+        # Only written when both output and baseline exist, since the
+        # content-word delta requires two texts to compare.
+        #
+        # This is a *derived analysis* — the delta is a deterministic
+        # function of the baseline and output texts, both of which are
+        # already saved above.  It does NOT affect IPC hashes or any
+        # provenance computation; it simply persists the signal isolation
+        # results for convenient reference without re-running the pipeline.
+        if req.output is not None and req.baseline is not None:
+            removed, added = compute_delta(req.baseline, req.output)
+            delta_data = {
+                "removed": removed,
+                "added": added,
+                "removed_count": len(removed),
+                "added_count": len(added),
+            }
+            (save_dir / "delta.json").write_text(
+                json.dumps(delta_data, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            files_written.append("delta.json")
 
     except OSError as exc:
         raise HTTPException(

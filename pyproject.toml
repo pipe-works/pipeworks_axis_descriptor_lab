@@ -18,6 +18,8 @@ dependencies = [
     "httpx>=0.27.0",
     # Environment variable loading from .env files
     "python-dotenv>=1.0.1",
+    # Tokenisation, lemmatisation, and stopword filtering for the signal isolation layer
+    "nltk>=3.9.0",
 ]
 
 [project.optional-dependencies]

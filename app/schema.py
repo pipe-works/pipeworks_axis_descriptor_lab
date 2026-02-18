@@ -409,3 +409,67 @@ class SaveResponse(BaseModel):
             "None when no output was generated (incomplete chain)."
         ),
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/analyze-delta  request / response
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class DeltaRequest(BaseModel):
+    """
+    Request body for ``POST /api/analyze-delta``.
+
+    Accepts two plain-text strings (baseline and current) for signal
+    isolation analysis.  The backend runs both through the NLP pipeline
+    (tokenise → lemmatise → filter stopwords) and returns the set
+    difference as sorted word lists.
+    """
+
+    baseline_text: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "The reference text (A) — typically the stored baseline output.  " "Must not be empty."
+        ),
+        examples=["The weathered figure stands near the threshold."],
+    )
+    current_text: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "The comparison text (B) — typically the latest generated output.  "
+            "Must not be empty."
+        ),
+        examples=["A dark goblin lurks beyond the crumbling gate."],
+    )
+
+
+class DeltaResponse(BaseModel):
+    """
+    Response body for ``POST /api/analyze-delta``.
+
+    Contains two alphabetically sorted lists of content lemmas that
+    represent meaningful lexical differences between the baseline and
+    current texts, after stopword removal and lemmatisation.
+
+    The lists are **set differences**, not positional diffs:
+
+    - ``removed`` = content lemmas in A but absent from B.
+    - ``added``   = content lemmas in B but absent from A.
+    """
+
+    removed: list[str] = Field(
+        ...,
+        description=(
+            "Content lemmas present in the baseline (A) but absent from the "
+            "current text (B).  Alphabetically sorted."
+        ),
+    )
+    added: list[str] = Field(
+        ...,
+        description=(
+            "Content lemmas present in the current text (B) but absent from "
+            "the baseline (A).  Alphabetically sorted."
+        ),
+    )

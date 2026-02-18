@@ -1,4 +1,11 @@
-"""Tests for app/ollama_client.py – Ollama HTTP wrapper (mocked)."""
+"""
+Tests for app/ollama_client.py – Ollama HTTP wrapper (mocked).
+
+Every test that calls ``ollama_generate`` must supply the ``seed`` keyword
+argument, which is forwarded to Ollama's ``options.seed`` for deterministic
+token sampling.  Tests verify both the return value behaviour and the
+structure of the outgoing HTTP request body.
+"""
 
 from __future__ import annotations
 
@@ -22,6 +29,7 @@ class TestOllamaGenerate:
         )
 
     def test_successful_generation(self) -> None:
+        """Happy path: valid Ollama response returns stripped text and usage."""
         mock_resp = self._mock_response(
             {
                 "response": "  A weathered figure stands.  ",
@@ -41,6 +49,7 @@ class TestOllamaGenerate:
                 user_json_str='{"axes": {}}',
                 temperature=0.2,
                 max_tokens=120,
+                seed=42,
             )
 
         assert text == "A weathered figure stands."
@@ -48,6 +57,7 @@ class TestOllamaGenerate:
         assert usage["eval_count"] == 25
 
     def test_missing_response_key_raises(self) -> None:
+        """Ollama response without a 'response' key raises ValueError."""
         mock_resp = self._mock_response({"model": "test", "done": True})
 
         with patch("app.ollama_client.httpx.Client") as mock_client_cls:
@@ -62,9 +72,11 @@ class TestOllamaGenerate:
                     user_json_str="{}",
                     temperature=0.1,
                     max_tokens=50,
+                    seed=42,
                 )
 
     def test_missing_usage_fields_returns_none(self) -> None:
+        """Ollama response without usage fields returns None for those keys."""
         mock_resp = self._mock_response({"response": "text"})
 
         with patch("app.ollama_client.httpx.Client") as mock_client_cls:
@@ -78,12 +90,14 @@ class TestOllamaGenerate:
                 user_json_str="{}",
                 temperature=0.1,
                 max_tokens=50,
+                seed=42,
             )
 
         assert usage["prompt_eval_count"] is None
         assert usage["eval_count"] is None
 
     def test_http_error_propagates(self) -> None:
+        """Non-2xx Ollama response raises HTTPStatusError."""
         mock_resp = httpx.Response(
             status_code=404,
             text="model not found",
@@ -102,7 +116,71 @@ class TestOllamaGenerate:
                     user_json_str="{}",
                     temperature=0.1,
                     max_tokens=50,
+                    seed=42,
                 )
+
+    def test_seed_included_in_request_body(self) -> None:
+        """Verify the seed is forwarded in the Ollama options.seed field.
+
+        This is the critical test for the seed fix: without ``options.seed``
+        in the HTTP body, Ollama uses a random seed each call, making output
+        non-deterministic even when all other IPC inputs are identical.
+        """
+        mock_resp = self._mock_response({"response": "deterministic output"})
+
+        with patch("app.ollama_client.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value.__enter__ = lambda s: s
+            mock_client_cls.return_value.__exit__ = lambda s, *a: None
+            mock_client_cls.return_value.post.return_value = mock_resp
+
+            ollama_generate(
+                model="gemma2:2b",
+                system_prompt="test prompt",
+                user_json_str='{"axes": {}}',
+                temperature=0.7,
+                max_tokens=100,
+                seed=12345,
+            )
+
+            # Inspect the JSON body that was POSTed to Ollama.
+            call_args = mock_client_cls.return_value.post.call_args
+            posted_body = call_args.kwargs.get("json") or call_args[1].get("json")
+
+            assert "options" in posted_body
+            assert posted_body["options"]["seed"] == 12345
+            assert posted_body["options"]["temperature"] == 0.7
+            assert posted_body["options"]["num_predict"] == 100
+
+    def test_different_seeds_produce_different_request_bodies(self) -> None:
+        """Two calls with different seeds must send different options.seed values.
+
+        This doesn't test Ollama behaviour (that's Ollama's responsibility),
+        but it confirms our wrapper correctly propagates distinct seeds.
+        """
+        mock_resp = self._mock_response({"response": "text"})
+        posted_seeds: list[int] = []
+
+        with patch("app.ollama_client.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value.__enter__ = lambda s: s
+            mock_client_cls.return_value.__exit__ = lambda s, *a: None
+            mock_client_cls.return_value.post.return_value = mock_resp
+
+            for seed_val in [100, 200]:
+                ollama_generate(
+                    model="m",
+                    system_prompt="sp",
+                    user_json_str="{}",
+                    temperature=0.1,
+                    max_tokens=50,
+                    seed=seed_val,
+                )
+
+            # Collect the seed from each POST call.
+            for call in mock_client_cls.return_value.post.call_args_list:
+                body = call.kwargs.get("json") or call[1].get("json")
+                posted_seeds.append(body["options"]["seed"])
+
+        assert posted_seeds == [100, 200]
 
 
 # ── list_local_models ────────────────────────────────────────────────────────

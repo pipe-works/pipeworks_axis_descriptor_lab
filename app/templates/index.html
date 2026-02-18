@@ -293,6 +293,20 @@
         <span class="placeholder-text">Set a baseline (A) and generate to compare.</span>
       </div>
     </details>
+
+    <!-- Signal Isolation – content-word delta after stopword removal and
+         lemmatisation.  Shows meaningful vocabulary pivots between A and B,
+         filtering out structural noise (articles, pronouns, inflections).
+         Requires both a baseline (A) and a current output (B). -->
+    <details class="collapsible" id="signal-details">
+      <summary class="collapsible__summary"
+               data-tooltip="Content-word delta analysis. Runs both texts through NLP processing (tokenisation, lemmatisation, stopword removal) and shows which meaningful words were added or removed between Baseline A and Current B. Filters structural noise to surface genuine vocabulary pivots."
+               >&#10022; Signal Isolation (content words)</summary>
+
+      <div id="signal-panel" class="signal-panel" style="margin-top:var(--sp-2);">
+        <span class="placeholder-text">Set a baseline (A) and generate to analyze content-word changes.</span>
+      </div>
+    </details>
   </section>
 
 </main>
