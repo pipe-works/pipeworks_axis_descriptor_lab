@@ -156,6 +156,22 @@ function clamp(val, min, max) {
 }
 
 /**
+ * Create a styled placeholder <span> element.
+ *
+ * Used instead of innerHTML to avoid any XSS surface when rendering
+ * placeholder text inside output/diff panels.
+ *
+ * @param {string} text - The placeholder message to display.
+ * @returns {HTMLSpanElement}
+ */
+function makePlaceholder(text) {
+  const span = document.createElement("span");
+  span.className = "placeholder-text";
+  span.textContent = text;
+  return span;
+}
+
+/**
  * Return the effective model name: prefers the <select> if it has a
  * non-empty value, otherwise falls back to the manual text <input>.
  *
@@ -247,7 +263,11 @@ function buildSlidersFromJson() {
 
   // Guard: nothing to render
   if (!payload || typeof payload.axes !== "object" || payload.axes === null) {
-    sliderPanel.innerHTML = '<p class="placeholder-text">No axes found in payload.</p>';
+    sliderPanel.textContent = "";
+    const noAxesP = document.createElement("p");
+    noAxesP.className = "placeholder-text";
+    noAxesP.textContent = "No axes found in payload.";
+    sliderPanel.appendChild(noAxesP);
     return;
   }
 
@@ -255,7 +275,11 @@ function buildSlidersFromJson() {
   const keys = Object.keys(axes);
 
   if (keys.length === 0) {
-    sliderPanel.innerHTML = '<p class="placeholder-text">axes object is empty.</p>';
+    sliderPanel.textContent = "";
+    const emptyP = document.createElement("p");
+    emptyP.className = "placeholder-text";
+    emptyP.textContent = "axes object is empty.";
+    sliderPanel.appendChild(emptyP);
     return;
   }
 
@@ -347,7 +371,7 @@ function buildSlidersFromJson() {
     fragment.appendChild(row);
   }
 
-  sliderPanel.innerHTML = "";
+  sliderPanel.textContent = "";
   sliderPanel.appendChild(fragment);
 }
 
@@ -363,13 +387,9 @@ async function loadExampleList() {
   try {
     const res  = await fetch("/api/examples");
     const list = await res.json();
-    exampleSelect.innerHTML = '<option value="">— choose —</option>';
-    for (const name of list) {
-      const opt   = document.createElement("option");
-      opt.value   = name;
-      opt.textContent = name;
-      exampleSelect.appendChild(opt);
-    }
+    const defaultOpt = new Option("\u2014 choose \u2014", "");
+    const opts = list.map((name) => new Option(name, name));
+    exampleSelect.replaceChildren(defaultOpt, ...opts);
   } catch (err) {
     setStatus(`Failed to load examples: ${err.message}`);
   }
@@ -426,13 +446,9 @@ async function loadPromptList() {
     const list = await res.json();
 
     // Replace the placeholder option with the full list from the server
-    promptSelect.innerHTML = '<option value="">— choose —</option>';
-    for (const name of list) {
-      const opt       = document.createElement("option");
-      opt.value       = name;
-      opt.textContent = name;
-      promptSelect.appendChild(opt);
-    }
+    const defaultOpt = new Option("\u2014 choose \u2014", "");
+    const opts = list.map((name) => new Option(name, name));
+    promptSelect.replaceChildren(defaultOpt, ...opts);
   } catch (err) {
     setStatus(`Failed to load prompt list: ${err.message}`);
   }
@@ -570,7 +586,11 @@ async function generate() {
 
     setStatus(`Done (${data.model}).`);
   } catch (err) {
-    outputBox.innerHTML = `<span style="color:var(--col-err);">Error: ${escapeHtml(err.message)}</span>`;
+    const errSpan = document.createElement("span");
+    errSpan.style.color = "var(--col-err)";
+    errSpan.textContent = `Error: ${err.message}`;
+    outputBox.textContent = "";
+    outputBox.appendChild(errSpan);
     setStatus(`Error: ${err.message}`);
   } finally {
     state.busy           = false;
@@ -604,7 +624,8 @@ function updateDiff() {
   diffB.textContent = textB || "(no output)";
 
   if (!textA || !textB) {
-    diffDelta.innerHTML = '<span class="placeholder-text">Set a baseline and generate to compare.</span>';
+    diffDelta.textContent = "";
+    diffDelta.appendChild(makePlaceholder("Set a baseline and generate to compare."));
     return;
   }
 
@@ -635,7 +656,7 @@ function updateDiff() {
     }
   }
 
-  diffDelta.innerHTML = "";
+  diffDelta.textContent = "";
   diffDelta.appendChild(fragment);
 
   // Open the diff <details> automatically if it isn't already
@@ -886,26 +907,6 @@ async function saveRun() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   HTML ESCAPING (safety utility)
-════════════════════════════════════════════════════════════════════════════ */
-
-/**
- * Escape a string for safe insertion into HTML.
- * Prevents XSS when displaying error messages that may contain server text.
- *
- * @param {string} str
- * @returns {string}
- */
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g,  "&amp;")
-    .replace(/</g,  "&lt;")
-    .replace(/>/g,  "&gt;")
-    .replace(/"/g,  "&quot;")
-    .replace(/'/g,  "&#39;");
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
    TEMPERATURE SYNC (range ↔ number)
 ════════════════════════════════════════════════════════════════════════════ */
 
@@ -1025,14 +1026,18 @@ function wireEvents() {
 
   // ── Clear output ─────────────────────────────────────────────────────── //
   btnClearOutput.addEventListener("click", () => {
-    outputBox.innerHTML  = '<span class="placeholder-text">Click Generate to produce a description.</span>';
+    outputBox.textContent = "";
+    outputBox.appendChild(makePlaceholder("Click Generate to produce a description."));
     outputMeta.textContent = "";
     outputMeta.classList.add("hidden");
     state.current        = null;
     state.baseline       = null;
-    diffA.innerHTML      = '<span class="placeholder-text">No baseline set.</span>';
-    diffB.innerHTML      = '<span class="placeholder-text">Generate to populate B.</span>';
-    diffDelta.innerHTML  = '<span class="placeholder-text">—</span>';
+    diffA.textContent = "";
+    diffA.appendChild(makePlaceholder("No baseline set."));
+    diffB.textContent = "";
+    diffB.appendChild(makePlaceholder("Generate to populate B."));
+    diffDelta.textContent = "";
+    diffDelta.appendChild(makePlaceholder("\u2014"));
     btnSetBaseline.classList.remove("is-active");
     setStatus("Output cleared.");
   });
