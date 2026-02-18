@@ -569,6 +569,7 @@ async function generate() {
     state.current = data.text;
 
     // ── Show meta info ────────────────────────────────────────────────── //
+    // Line 1: model, temperature, seed, and token usage
     const seedLabel = wasRandom ? `seed: ${seed} (random)` : `seed: ${seed}`;
     let metaStr = `model: ${data.model}  ·  temp: ${data.temperature}  ·  ${seedLabel}`;
     if (data.usage) {
@@ -577,6 +578,23 @@ async function generate() {
       if (p !== null && p !== undefined) metaStr += `  ·  prompt tokens: ${p}`;
       if (e !== null && e !== undefined) metaStr += `  ·  gen tokens: ${e}`;
     }
+
+    // Line 2: IPC provenance hashes (truncated to 16 chars for display)
+    if (data.input_hash) {
+      metaStr += `\ninput: ${data.input_hash.slice(0, 16)}\u2026`;
+    }
+    if (data.system_prompt_hash) {
+      metaStr += `  \u00b7  prompt: ${data.system_prompt_hash.slice(0, 16)}\u2026`;
+    }
+    if (data.output_hash) {
+      metaStr += `  \u00b7  output: ${data.output_hash.slice(0, 16)}\u2026`;
+    }
+
+    // Line 3: composite IPC identifier
+    if (data.ipc_id) {
+      metaStr += `\nipc: ${data.ipc_id.slice(0, 16)}\u2026`;
+    }
+
     outputMeta.textContent = metaStr;
     outputMeta.classList.remove("hidden");
 

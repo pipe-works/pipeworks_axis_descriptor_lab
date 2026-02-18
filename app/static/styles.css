@@ -536,6 +536,7 @@ html, body {
   color: var(--col-text-muted);
   border-top: 1px solid var(--col-border);
   padding-top: var(--sp-1);
+  white-space: pre-wrap;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

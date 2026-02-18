@@ -33,7 +33,6 @@ Architecture notes
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -47,6 +46,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from app.hashing import (
+    compute_ipc_id,
+    compute_output_hash,
+    compute_payload_hash,
+    compute_system_prompt_hash,
+)
 from app.ollama_client import list_local_models, ollama_generate
 from app.schema import (
     AxisPayload,
@@ -130,8 +135,8 @@ def _payload_hash(payload: AxisPayload) -> str:
     """
     Produce a stable SHA-256 hex digest for an AxisPayload.
 
-    The payload is serialised with sorted keys so the hash is deterministic
-    regardless of insertion order.
+    Convenience wrapper that accepts a typed Pydantic model and delegates
+    to :func:`app.hashing.compute_payload_hash` for the actual hashing.
 
     Parameters
     ──────────
@@ -141,10 +146,7 @@ def _payload_hash(payload: AxisPayload) -> str:
     ───────
     str : 64-character lowercase hex digest.
     """
-    # model_dump() returns a plain dict; json.dumps with sort_keys ensures
-    # the serialisation is canonical.
-    canonical = json.dumps(payload.model_dump(), sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return compute_payload_hash(payload.model_dump())
 
 
 def _load_example(name: str) -> dict:
@@ -365,11 +367,30 @@ def generate(req: GenerateRequest) -> GenerateResponse:
             status_code=500, detail=f"Unexpected error calling Ollama: {exc}"
         ) from exc
 
+    # ── Compute Interpretive Provenance Chain (IPC) hashes ──────────────
+    # These four hashes fingerprint the complete generation context so that
+    # identical runs can be detected and prompt drift can be audited.
+    input_hash = _payload_hash(req.payload)
+    sp_hash = compute_system_prompt_hash(system_prompt)
+    out_hash = compute_output_hash(text)
+    ipc = compute_ipc_id(
+        input_hash=input_hash,
+        system_prompt_hash=sp_hash,
+        model=req.model,
+        temperature=req.temperature,
+        max_tokens=req.max_tokens,
+        seed=req.payload.seed,
+    )
+
     return GenerateResponse(
         text=text,
         model=req.model,
         temperature=req.temperature,
         usage=usage,
+        input_hash=input_hash,
+        system_prompt_hash=sp_hash,
+        output_hash=out_hash,
+        ipc_id=ipc,
     )
 
 
@@ -380,6 +401,7 @@ def log_run(
     model: str,
     temperature: float,
     max_tokens: int,
+    system_prompt: str | None = None,
 ) -> LogEntry:
     """
     Append a structured log entry to logs/run_log.jsonl.
@@ -388,26 +410,57 @@ def log_run(
     JSON.  The file can be opened in any JSONL-aware tool (jq, pandas, etc.)
     for drift analysis.
 
+    When ``system_prompt`` is provided, the entry includes IPC hashes
+    (``system_prompt_hash``, ``output_hash``, ``ipc_id``).  When omitted,
+    ``output_hash`` is still computed but the prompt-dependent fields are
+    set to None for backward compatibility with older frontend versions.
+
     Parameters
     ──────────
-    payload     : The AxisPayload used in the run.
-    output      : The LLM-generated text.
-    model       : Ollama model identifier.
-    temperature : Sampling temperature used.
-    max_tokens  : Token budget used.
+    payload       : The AxisPayload used in the run.
+    output        : The LLM-generated text.
+    model         : Ollama model identifier.
+    temperature   : Sampling temperature used.
+    max_tokens    : Token budget used.
+    system_prompt : The system prompt used (optional).  When provided,
+                    enables full IPC chain in the log entry.
 
     Returns
     ───────
     The complete LogEntry that was persisted.
     """
+    input_hash = _payload_hash(payload)
+
+    # Always compute the output hash — the output text is always available.
+    out_hash = compute_output_hash(output)
+
+    # Compute prompt-dependent hashes only when the system prompt is provided.
+    # This preserves backward compatibility: older frontends that don't send
+    # the prompt will still produce valid log entries with null IPC fields.
+    sp_hash: str | None = None
+    ipc: str | None = None
+    if system_prompt is not None:
+        sp_hash = compute_system_prompt_hash(system_prompt)
+        ipc = compute_ipc_id(
+            input_hash=input_hash,
+            system_prompt_hash=sp_hash,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            seed=payload.seed,
+        )
+
     entry = LogEntry(
-        input_hash=_payload_hash(payload),
+        input_hash=input_hash,
         payload=payload,
         output=output,
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
         timestamp=datetime.now(timezone.utc).isoformat(),
+        system_prompt_hash=sp_hash,
+        output_hash=out_hash,
+        ipc_id=ipc,
     )
 
     # Append as a single compact JSON line.
@@ -560,19 +613,31 @@ def _save_folder_name(timestamp: datetime, input_hash: str) -> str:
     return f"{date_part}_{hash_part}"
 
 
-def _build_output_md(text: str, req: SaveRequest, now: datetime, input_hash: str) -> str:
+def _build_output_md(
+    text: str,
+    req: SaveRequest,
+    now: datetime,
+    input_hash: str,
+    *,
+    system_prompt_hash: str | None = None,
+    ipc_id: str | None = None,
+) -> str:
     """
     Format the generated LLM output as a Markdown document.
 
     Includes an HTML-comment provenance header (model, temperature, seed,
-    hash) so the file is self-documenting when opened in any Markdown viewer.
+    hashes) so the file is self-documenting when opened in any Markdown
+    viewer.  The IPC hashes are included when available so saved files
+    carry a complete reproducibility record.
 
     Parameters
     ──────────
-    text       : The raw LLM-generated text.
-    req        : The full SaveRequest (for metadata fields).
-    now        : UTC datetime of the save (for the provenance header).
-    input_hash : SHA-256 of the payload.
+    text               : The raw LLM-generated text.
+    req                : The full SaveRequest (for metadata fields).
+    now                : UTC datetime of the save (for the provenance header).
+    input_hash         : SHA-256 of the payload.
+    system_prompt_hash : SHA-256 of the normalised system prompt (optional).
+    ipc_id             : Interpretive Provenance Chain identifier (optional).
 
     Returns
     ───────
@@ -583,12 +648,18 @@ def _build_output_md(text: str, req: SaveRequest, now: datetime, input_hash: str
         "",
         "<!-- Axis Descriptor Lab – generated output -->",
         f"<!-- saved: {now.isoformat()} -->",
-        f"<!-- model: {req.model} | temp: {req.temperature} " f"| max_tokens: {req.max_tokens} -->",
+        f"<!-- model: {req.model} | temp: {req.temperature} | max_tokens: {req.max_tokens} -->",
         f"<!-- seed: {req.payload.seed} | input_hash: {input_hash[:16]}... -->",
-        "",
-        text,
-        "",
     ]
+
+    # Append IPC provenance hashes when available so the saved file carries
+    # a complete reproducibility record without needing metadata.json.
+    if system_prompt_hash:
+        lines.append(f"<!-- system_prompt_hash: {system_prompt_hash[:16]}... -->")
+    if ipc_id:
+        lines.append(f"<!-- ipc_id: {ipc_id[:16]}... -->")
+
+    lines += ["", text, ""]
     return "\n".join(lines)
 
 
@@ -711,6 +782,23 @@ def save_run(req: SaveRequest) -> SaveResponse:
     folder_name = _save_folder_name(now, input_hash)
     save_dir = _DATA_DIR / folder_name
 
+    # ── Compute IPC hashes ────────────────────────────────────────────────
+    # The system prompt hash is always available (system_prompt is required
+    # on SaveRequest).  The output hash and IPC ID are only meaningful when
+    # output text exists — without output the provenance chain is incomplete.
+    sp_hash = compute_system_prompt_hash(req.system_prompt)
+    out_hash = compute_output_hash(req.output) if req.output is not None else None
+    ipc: str | None = None
+    if req.output is not None:
+        ipc = compute_ipc_id(
+            input_hash=input_hash,
+            system_prompt_hash=sp_hash,
+            model=req.model,
+            temperature=req.temperature,
+            max_tokens=req.max_tokens,
+            seed=req.payload.seed,
+        )
+
     # Create the subfolder.  exist_ok=True in case rapid saves produce the
     # same folder name (same second + same payload hash).
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -720,11 +808,16 @@ def save_run(req: SaveRequest) -> SaveResponse:
     try:
         # ── metadata.json ─────────────────────────────────────────────── #
         # A flat dict of provenance fields for quick indexing across many
-        # saves without parsing the full payload.
+        # saves without parsing the full payload.  Includes IPC hashes
+        # so that metadata.json alone is sufficient for reproducibility
+        # audits without parsing the other saved files.
         metadata = {
             "folder_name": folder_name,
             "timestamp": now.isoformat(),
             "input_hash": input_hash,
+            "system_prompt_hash": sp_hash,
+            "output_hash": out_hash,
+            "ipc_id": ipc,
             "model": req.model,
             "temperature": req.temperature,
             "max_tokens": req.max_tokens,
@@ -759,7 +852,14 @@ def save_run(req: SaveRequest) -> SaveResponse:
         # file (rather than writing an empty one) makes the save folder
         # self-documenting: if output.md is absent, no generation occurred.
         if req.output is not None:
-            output_md = _build_output_md(req.output, req, now, input_hash)
+            output_md = _build_output_md(
+                req.output,
+                req,
+                now,
+                input_hash,
+                system_prompt_hash=sp_hash,
+                ipc_id=ipc,
+            )
             (save_dir / "output.md").write_text(output_md, encoding="utf-8")
             files_written.append("output.md")
 
@@ -781,4 +881,7 @@ def save_run(req: SaveRequest) -> SaveResponse:
         files=sorted(files_written),
         input_hash=input_hash,
         timestamp=now.isoformat(),
+        system_prompt_hash=sp_hash,
+        output_hash=out_hash,
+        ipc_id=ipc,
     )
