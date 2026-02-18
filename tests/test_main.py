@@ -718,3 +718,19 @@ class TestSaveEndpoint:
         save_dir = tmp_path / data["folder_name"]
         content = (save_dir / "output.md").read_text(encoding="utf-8")
         assert "A weathered figure stands near the threshold." in content
+
+    def test_oserror_returns_500(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """An OSError during file I/O must surface as HTTP 500."""
+        with (
+            patch("app.main._DATA_DIR", tmp_path),
+            patch("pathlib.Path.write_text", side_effect=OSError("disk full")),
+        ):
+            resp = client.post("/api/save", json=save_request_body)
+
+        assert resp.status_code == 500
+        assert "disk full" in resp.json()["detail"]
