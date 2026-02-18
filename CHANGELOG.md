@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.8](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.7...axis-descriptor-lab-v0.1.8) (2026-02-18)
+
+
+### Features
+
+* add randomise button, Furo docs theme, axis modified highlights, and policy guide ([a52fe19](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/a52fe197ec839d4e9b587f9065a3e3d768a1c06f))
+* add signal isolation layer and fix seed passthrough ([b6d2705](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/b6d2705d1a255796af65d3d69f4774a40895c5d5))
+* add signal isolation layer and fix seed passthrough to Ollama ([ce6e8bd](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/ce6e8bd294b2afd18144e4b09488f711c8779c54))
+* randomise button, Furo docs theme, modified highlights, and policy guide ([0e2b664](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/0e2b664c0647db195bbfc55ce55efbf4efdfa718))
+* **ui:** add Ollama URL input, meta hash highlights, and UX improvements ([9c3edfc](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/9c3edfc96b21657739a310c2dd0a1fabaef18134))
+* **ui:** Ollama URL input, meta hash highlights, and UX improvements ([d58eee1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/d58eee1aebebf97d11410865b319d0981aa8c91a))
+* **ui:** redesign signal panel as two-column pivot and meta as table ([128ca7e](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/128ca7ecb6f09dcc10dd772ba871ffc323b76b15))
+* **ui:** two-column signal pivot and metadata table ([b3d0c8e](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/b3d0c8ed8c9e4ad043ca02271c55fc8507f2d5fe))
+
 ## [0.1.7](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.6...axis-descriptor-lab-v0.1.7) (2026-02-18)
 
 
