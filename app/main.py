@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import os
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -53,7 +54,7 @@ from app.hashing import (
     compute_payload_hash,
     compute_system_prompt_hash,
 )
-from app.ollama_client import list_local_models, ollama_generate
+from app.ollama_client import OLLAMA_HOST, list_local_models, ollama_generate
 from app.schema import (
     AxisPayload,
     DeltaRequest,
@@ -91,6 +92,11 @@ _LOG_FILE = _LOGS_DIR / "run_log.jsonl"
 
 _DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "gemma2:2b")
 
+# Read version from pyproject.toml (single source of truth).
+_PYPROJECT = _HERE.parent / "pyproject.toml"
+with open(_PYPROJECT, "rb") as _f:
+    _APP_VERSION: str = tomllib.load(_f)["project"]["version"]
+
 # -----------------------------------------------------------------------------
 # FastAPI app + middleware
 # -----------------------------------------------------------------------------
@@ -101,7 +107,7 @@ app = FastAPI(
         "Tiny web tool for testing how small LLMs (via Ollama) produce "
         "non-authoritative descriptive text from a deterministic axis payload."
     ),
-    version="0.1.0",
+    version=_APP_VERSION,
 )
 
 # Serve everything under /static/ directly from the filesystem.
@@ -229,6 +235,8 @@ def index(request: Request) -> HTMLResponse:
             "request": request,
             "default_model": _DEFAULT_MODEL,
             "available_models": available_models,
+            "ollama_host": OLLAMA_HOST,
+            "app_version": _APP_VERSION,
         },
     )
 
@@ -301,14 +309,19 @@ def get_prompt(name: str) -> str:
 
 
 @app.get("/api/models", summary="List locally available Ollama models")
-def get_models() -> list[str]:
+def get_models(host: str | None = None) -> list[str]:
     """
-    Query the local Ollama instance and return all model names it has pulled.
+    Query an Ollama instance and return all model names it has pulled.
+
+    Parameters
+    ----------
+    host : Optional Ollama server URL (query param).  When omitted the
+           server-side default (``OLLAMA_HOST`` env var) is used.
 
     Returns an empty list if Ollama is unreachable, allowing the frontend to
     fall back to a manual text input.
     """
-    return list_local_models()
+    return list_local_models(host=host)
 
 
 @app.post(
@@ -350,6 +363,8 @@ def generate(req: GenerateRequest) -> GenerateResponse:
         # Forward the payload's seed to Ollama's options.seed so the model
         # pins its RNG during token sampling.  This makes generation
         # deterministic: identical IPC inputs → identical output text.
+        # The optional ollama_host allows the frontend to target a different
+        # Ollama instance without changing the server's environment variable.
         text, usage = ollama_generate(
             model=req.model,
             system_prompt=system_prompt,
@@ -357,6 +372,7 @@ def generate(req: GenerateRequest) -> GenerateResponse:
             temperature=req.temperature,
             max_tokens=req.max_tokens,
             seed=req.payload.seed,
+            host=req.ollama_host,
         )
     except httpx.HTTPStatusError as exc:
         raise HTTPException(

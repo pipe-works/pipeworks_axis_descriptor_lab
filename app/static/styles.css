@@ -233,7 +233,7 @@ html, body {
 }
 
 .input--sm {
-  width: 72px;
+  width: 120px;
 }
 
 .select {
@@ -509,6 +509,13 @@ html, body {
   flex: 1;
 }
 
+/* Ollama URL input: wider than the model select to accommodate full URLs. */
+.model-row .input--url {
+  flex: 1.8;
+  min-width: 0;
+  font-size: var(--fs-sm);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    OUTPUT PANEL
 ════════════════════════════════════════════════════════════════════════════ */
@@ -524,6 +531,10 @@ html, body {
   gap: var(--sp-1);
 }
 
+/* Output box — scrollable when the model overshoots the token budget.
+   Small models sometimes ignore max_tokens, producing text that would
+   overflow the container.  max-height + overflow-y keeps the layout
+   stable while letting the user scroll to read the full output. */
 .output-box {
   background: #0d0f12;
   border: 1px solid var(--col-border);
@@ -533,6 +544,8 @@ html, body {
   font-size: var(--text-base);
   line-height: 1.7;
   min-height: 120px;
+  max-height: 40vh;
+  overflow-y: auto;
   padding: var(--sp-3) var(--sp-4);
   white-space: pre-wrap;
   word-break: break-word;
@@ -577,6 +590,35 @@ html, body {
   white-space: pre-wrap;
 }
 
+/* Tiny inline copy button for the seed row when the seed was random. */
+.meta-copy-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  margin-left: var(--sp-1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  opacity: 0.5;
+  vertical-align: middle;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.meta-copy-btn:hover {
+  opacity: 1;
+  border-color: var(--col-accent);
+  color: var(--col-accent);
+}
+
+/* Highlight meta rows that differ from the baseline (A) snapshot.
+   Uses the amber accent so it feels integrated with the rest of the UI
+   rather than alarming (this is informational, not an error). */
+.meta-table tr.meta-changed .meta-key,
+.meta-table tr.meta-changed .meta-val {
+  color: var(--col-accent);
+  opacity: 1;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    DIFF VIEW
 ════════════════════════════════════════════════════════════════════════════ */
@@ -601,12 +643,16 @@ html, body {
   margin-bottom: var(--sp-1);
 }
 
+/* Diff boxes — same overflow treatment as the output box to handle
+   long model outputs that exceed the token budget. */
 .diff-box {
   background: #0d0f12;
   border: 1px solid var(--col-border);
   border-radius: 4px;
   font-size: var(--text-xs);
   line-height: 1.6;
+  max-height: 40vh;
+  overflow-y: auto;
   min-height: 80px;
   padding: var(--sp-2) var(--sp-3);
   white-space: pre-wrap;
@@ -625,6 +671,8 @@ html, body {
   font-size: var(--text-xs);
   line-height: 1.8;
   min-height: 60px;
+  max-height: 40vh;
+  overflow-y: auto;
   padding: var(--sp-2) var(--sp-3);
   white-space: pre-wrap;
   word-break: break-word;
@@ -918,6 +966,10 @@ html, body {
 
 [data-theme="light"] .meta-table tr + tr td {
   border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .meta-copy-btn {
+  border-color: rgba(0, 0, 0, 0.2);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

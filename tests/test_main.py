@@ -220,6 +220,19 @@ class TestGetModels:
             resp = client.get("/api/models")
         assert resp.json() == []
 
+    def test_custom_host_forwarded(self, client: TestClient) -> None:
+        """The host query param is forwarded to list_local_models."""
+        with patch("app.main.list_local_models", return_value=["gemma2:2b"]) as mock_list:
+            resp = client.get("/api/models?host=http://remote:11434")
+        assert resp.status_code == 200
+        mock_list.assert_called_once_with(host="http://remote:11434")
+
+    def test_no_host_param_passes_none(self, client: TestClient) -> None:
+        """When host query param is omitted, None is passed to list_local_models."""
+        with patch("app.main.list_local_models", return_value=[]) as mock_list:
+            client.get("/api/models")
+        mock_list.assert_called_once_with(host=None)
+
 
 class TestGenerateEndpoint:
     def _req_body(self, payload_dict: dict) -> dict:
@@ -374,6 +387,33 @@ class TestGenerateEndpoint:
         call_kwargs = mock_gen.call_args.kwargs
         assert "seed" in call_kwargs, "seed not forwarded to ollama_generate()"
         assert call_kwargs["seed"] == sample_payload_dict["seed"]
+
+    def test_ollama_host_forwarded_to_ollama(
+        self, client: TestClient, sample_payload_dict: dict
+    ) -> None:
+        """When ollama_host is provided, it is forwarded to ollama_generate()."""
+        body = self._req_body(sample_payload_dict)
+        body["ollama_host"] = "http://remote:11434"
+
+        with patch("app.main.ollama_generate") as mock_gen:
+            mock_gen.return_value = ("text", {})
+            resp = client.post("/api/generate", json=body)
+
+        assert resp.status_code == 200
+        call_kwargs = mock_gen.call_args.kwargs
+        assert call_kwargs["host"] == "http://remote:11434"
+
+    def test_ollama_host_defaults_to_none(
+        self, client: TestClient, sample_payload_dict: dict
+    ) -> None:
+        """When ollama_host is omitted, host=None is passed to ollama_generate()."""
+        with patch("app.main.ollama_generate") as mock_gen:
+            mock_gen.return_value = ("text", {})
+            resp = client.post("/api/generate", json=self._req_body(sample_payload_dict))
+
+        assert resp.status_code == 200
+        call_kwargs = mock_gen.call_args.kwargs
+        assert call_kwargs["host"] is None
 
 
 class TestLogEndpoint:

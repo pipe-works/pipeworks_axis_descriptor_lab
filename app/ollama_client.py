@@ -70,7 +70,9 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 
 # Strip any trailing slash so we can safely append paths.
+# Exported as OLLAMA_HOST so main.py can pass the default to the template.
 _OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+OLLAMA_HOST: str = _OLLAMA_HOST
 
 # How long (seconds) to wait for Ollama to start streaming back a response.
 # Small local models should start within a few seconds; larger ones may take
@@ -95,6 +97,7 @@ def ollama_generate(
     temperature: float,
     max_tokens: int,
     seed: int,
+    host: str | None = None,
 ) -> tuple[str, dict]:
     """
     Call the Ollama /api/generate endpoint and return the generated text.
@@ -119,6 +122,10 @@ def ollama_generate(
     seed          : RNG seed from the AxisPayload.  Forwarded to Ollama's
                     ``options.seed`` to make token sampling deterministic.
                     This is the same seed used in the IPC hash.
+    host          : Optional Ollama server base URL.  When None (default),
+                    the module-level ``_OLLAMA_HOST`` (from OLLAMA_HOST env
+                    var or ``http://localhost:11434``) is used.  Allows the
+                    frontend to target a different Ollama instance per request.
 
     Returns
     -------
@@ -136,7 +143,8 @@ def ollama_generate(
     ValueError             : If the Ollama response is missing the "response"
                              key (malformed response guard).
     """
-    url = f"{_OLLAMA_HOST}/api/generate"
+    base = host.rstrip("/") if host else _OLLAMA_HOST
+    url = f"{base}/api/generate"
 
     # Build the request body.  We always disable streaming so we get a single
     # JSON object back rather than a newline-delimited stream.
@@ -185,19 +193,25 @@ def ollama_generate(
     return generated_text, usage
 
 
-def list_local_models() -> list[str]:
+def list_local_models(host: str | None = None) -> list[str]:
     """
     Return a sorted list of model names that are currently available in the
     local Ollama instance.
 
-    Calls GET {OLLAMA_HOST}/api/tags.  If Ollama is not reachable an empty
-    list is returned so the frontend can degrade gracefully.
+    Calls GET {host}/api/tags.  If Ollama is not reachable an empty list is
+    returned so the frontend can degrade gracefully.
+
+    Parameters
+    ----------
+    host : Optional Ollama server base URL.  When None (default), the
+           module-level ``_OLLAMA_HOST`` is used.
 
     Returns
     -------
     list[str] : Sorted model name strings (e.g. ["gemma2:2b", "llama3.2:1b"]).
     """
-    url = f"{_OLLAMA_HOST}/api/tags"
+    base = host.rstrip("/") if host else _OLLAMA_HOST
+    url = f"{base}/api/tags"
     timeout = httpx.Timeout(connect=3.0, read=5.0, write=3.0, pool=3.0)
 
     try:
