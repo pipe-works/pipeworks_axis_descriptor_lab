@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import httpx
@@ -159,3 +160,50 @@ class TestListLocalModels:
             mock_client_cls.return_value.get.return_value = mock_resp
 
             assert list_local_models() == ["valid:1b"]
+
+    def test_connection_error_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        with patch("app.ollama_client.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value.__enter__ = lambda s: s
+            mock_client_cls.return_value.__exit__ = lambda s, *a: None
+            mock_client_cls.return_value.get.side_effect = httpx.ConnectError("connection refused")
+
+            with caplog.at_level(logging.WARNING, logger="app.ollama_client"):
+                result = list_local_models()
+
+        assert result == []
+        assert len(caplog.records) == 1
+        assert "ConnectError" in caplog.records[0].message
+        assert "connection refused" in caplog.records[0].message
+
+    def test_timeout_error_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        with patch("app.ollama_client.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value.__enter__ = lambda s: s
+            mock_client_cls.return_value.__exit__ = lambda s, *a: None
+            mock_client_cls.return_value.get.side_effect = httpx.TimeoutException("read timed out")
+
+            with caplog.at_level(logging.WARNING, logger="app.ollama_client"):
+                result = list_local_models()
+
+        assert result == []
+        assert len(caplog.records) == 1
+        assert "TimeoutException" in caplog.records[0].message
+        assert "read timed out" in caplog.records[0].message
+
+    def test_http_error_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        mock_resp = httpx.Response(
+            status_code=500,
+            text="internal server error",
+            request=httpx.Request("GET", "http://test/api/tags"),
+        )
+
+        with patch("app.ollama_client.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value.__enter__ = lambda s: s
+            mock_client_cls.return_value.__exit__ = lambda s, *a: None
+            mock_client_cls.return_value.get.return_value = mock_resp
+
+            with caplog.at_level(logging.WARNING, logger="app.ollama_client"):
+                result = list_local_models()
+
+        assert result == []
+        assert len(caplog.records) == 1
+        assert "HTTPStatusError" in caplog.records[0].message

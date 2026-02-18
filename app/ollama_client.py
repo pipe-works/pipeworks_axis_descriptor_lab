@@ -35,10 +35,18 @@ Environment variables
 OLLAMA_HOST – Base URL of the Ollama server (default: http://localhost:11434).
               Read once at import time so the value is consistent for the
               lifetime of the process.
+
+Logging
+───────
+Errors in non-critical paths (e.g. model listing) are logged as warnings via
+the standard ``logging`` module rather than silently swallowed.  This ensures
+that network issues, timeouts, and malformed responses are visible in server
+logs without crashing the application.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 
 import httpx
@@ -46,6 +54,8 @@ from dotenv import load_dotenv
 
 # Load .env if present (no-op if the file doesn't exist)
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration
@@ -172,7 +182,11 @@ def list_local_models() -> list[str]:
         # Ollama returns {"models": [{"name": "...", ...}, ...]}
         names = [m["name"] for m in data.get("models", []) if "name" in m]
         return sorted(names)
-    except Exception:
-        # Return an empty list on any network / parse error.
-        # The caller (main.py) will surface this gracefully.
+    except Exception as exc:
+        # Graceful degradation: return an empty list so the frontend can
+        # still render (with no model dropdown options) even when Ollama is
+        # unreachable, timing out, or returning unexpected responses.
+        # Log the error so operators can diagnose connectivity issues from
+        # server logs without having to reproduce the failure interactively.
+        logger.warning("Failed to list Ollama models: %s: %s", type(exc).__name__, exc)
         return []
