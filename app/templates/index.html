@@ -38,7 +38,7 @@
 ════════════════════════════════════════════════════════════════════════════ -->
 <header class="app-header">
   <span class="app-header__title">⚙ Axis Descriptor Lab</span>
-  <span class="app-header__subtitle">Pipe-Works · LLM Drift Instrument · v0.1</span>
+  <span class="app-header__subtitle">Pipe-Works · LLM Drift Instrument · v{{ app_version }}</span>
   <!-- Tooltip toggle: enables/disables hover help tooltips across the UI.
        Uses the same is-active visual pattern as the "Set as A" button
        (amber border + glow) to clearly show when tooltips are enabled.
@@ -180,10 +180,20 @@
          These controls configure the LLM request parameters sent to Ollama.
          data-tooltip attributes explain each setting's purpose and range. -->
     <div class="settings-grid">
-      <label for="model-select" class="control-label">Model</label>
+      <label for="ollama-host-input" class="control-label">Ollama</label>
       <div class="model-row"
-           data-tooltip="Select the Ollama model to use for text generation. The dropdown lists all locally-pulled models. Smaller models (e.g. gemma2:2b) are faster but less nuanced; larger models produce richer descriptions."
+           data-tooltip="Configure the Ollama server URL and model. The URL field targets a specific Ollama instance (local or remote). The dropdown lists all locally-pulled models; changing the URL refreshes the model list."
            >
+        <!-- Ollama server URL input — defaults to the server-configured host.
+             Changing this refreshes the model dropdown from the new instance. -->
+        <input
+          id="ollama-host-input"
+          class="input input--url"
+          type="url"
+          value="{{ ollama_host }}"
+          placeholder="http://localhost:11434"
+          aria-label="Ollama server URL"
+        />
         <select id="model-select" class="select">
           {% if available_models %}
             {% for m in available_models %}

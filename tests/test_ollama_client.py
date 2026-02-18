@@ -182,6 +182,77 @@ class TestOllamaGenerate:
 
         assert posted_seeds == [100, 200]
 
+    def test_custom_host_used_in_url(self) -> None:
+        """When ``host`` is provided, the POST URL uses that host instead of the default."""
+        mock_resp = self._mock_response({"response": "custom host"})
+
+        with patch("app.ollama_client.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value.__enter__ = lambda s: s
+            mock_client_cls.return_value.__exit__ = lambda s, *a: None
+            mock_client_cls.return_value.post.return_value = mock_resp
+
+            ollama_generate(
+                model="gemma2:2b",
+                system_prompt="sp",
+                user_json_str="{}",
+                temperature=0.2,
+                max_tokens=50,
+                seed=42,
+                host="http://192.168.1.50:11434",
+            )
+
+            # Inspect the URL that was POSTed to.
+            call_args = mock_client_cls.return_value.post.call_args
+            posted_url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url")
+            assert posted_url == "http://192.168.1.50:11434/api/generate"
+
+    def test_custom_host_trailing_slash_stripped(self) -> None:
+        """A trailing slash on the host URL is stripped before building the endpoint URL."""
+        mock_resp = self._mock_response({"response": "ok"})
+
+        with patch("app.ollama_client.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value.__enter__ = lambda s: s
+            mock_client_cls.return_value.__exit__ = lambda s, *a: None
+            mock_client_cls.return_value.post.return_value = mock_resp
+
+            ollama_generate(
+                model="m",
+                system_prompt="sp",
+                user_json_str="{}",
+                temperature=0.1,
+                max_tokens=50,
+                seed=42,
+                host="http://myhost:11434/",
+            )
+
+            call_args = mock_client_cls.return_value.post.call_args
+            posted_url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url")
+            assert posted_url == "http://myhost:11434/api/generate"
+
+    def test_none_host_uses_default(self) -> None:
+        """When ``host`` is None (default), the module-level ``_OLLAMA_HOST`` is used."""
+        mock_resp = self._mock_response({"response": "default"})
+
+        with patch("app.ollama_client.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value.__enter__ = lambda s: s
+            mock_client_cls.return_value.__exit__ = lambda s, *a: None
+            mock_client_cls.return_value.post.return_value = mock_resp
+
+            ollama_generate(
+                model="m",
+                system_prompt="sp",
+                user_json_str="{}",
+                temperature=0.1,
+                max_tokens=50,
+                seed=42,
+                host=None,
+            )
+
+            call_args = mock_client_cls.return_value.post.call_args
+            posted_url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url")
+            # Should use the default host (from env or localhost:11434).
+            assert "/api/generate" in posted_url
+
 
 # ── list_local_models ────────────────────────────────────────────────────────
 
@@ -285,3 +356,42 @@ class TestListLocalModels:
         assert result == []
         assert len(caplog.records) == 1
         assert "HTTPStatusError" in caplog.records[0].message
+
+    def test_custom_host_used_in_url(self) -> None:
+        """When ``host`` is provided, the GET URL uses that host."""
+        mock_resp = httpx.Response(
+            status_code=200,
+            json={"models": [{"name": "gemma2:2b"}]},
+            request=httpx.Request("GET", "http://custom:11434/api/tags"),
+        )
+
+        with patch("app.ollama_client.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value.__enter__ = lambda s: s
+            mock_client_cls.return_value.__exit__ = lambda s, *a: None
+            mock_client_cls.return_value.get.return_value = mock_resp
+
+            result = list_local_models(host="http://custom:11434")
+
+            call_args = mock_client_cls.return_value.get.call_args
+            get_url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url")
+            assert get_url == "http://custom:11434/api/tags"
+            assert result == ["gemma2:2b"]
+
+    def test_custom_host_trailing_slash_stripped(self) -> None:
+        """Trailing slash on custom host is normalised."""
+        mock_resp = httpx.Response(
+            status_code=200,
+            json={"models": [{"name": "llama3:8b"}]},
+            request=httpx.Request("GET", "http://myhost:11434/api/tags"),
+        )
+
+        with patch("app.ollama_client.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value.__enter__ = lambda s: s
+            mock_client_cls.return_value.__exit__ = lambda s, *a: None
+            mock_client_cls.return_value.get.return_value = mock_resp
+
+            list_local_models(host="http://myhost:11434/")
+
+            call_args = mock_client_cls.return_value.get.call_args
+            get_url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url")
+            assert get_url == "http://myhost:11434/api/tags"

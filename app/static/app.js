@@ -50,6 +50,17 @@ const state = {
   // Used to detect which scores/labels the user has modified since loading.
   // Null until an example is loaded; reset on each loadExample() call.
   originalAxes: null,
+
+  // Metadata from the most recent generation.  Stored as a plain object
+  // mapping meta row keys to their display values (e.g. { "input": "a88b…",
+  // "ipc": "2ee9…" }).  Snapshotted into baselineMeta when "Set as A" is
+  // clicked.  Null before the first generation.
+  lastMeta: null,
+
+  // Snapshot of lastMeta from the generation that was set as baseline (A).
+  // Used to highlight which meta rows have changed in subsequent generations.
+  // Null until "Set as A" is clicked.
+  baselineMeta: null,
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -71,6 +82,7 @@ const sliderPanel         = $("slider-panel");
 const autoLabelToggle     = $("auto-label-toggle");
 const btnRelabel          = $("btn-relabel");
 const btnRandomise        = $("btn-randomise");
+const ollamaHostInput     = $("ollama-host-input");
 const modelSelect         = $("model-select");
 const modelInput          = $("model-input");
 const tempRange           = $("temp-range");
@@ -187,6 +199,65 @@ function makePlaceholder(text) {
 function getModelName() {
   const sel = modelSelect.value.trim();
   return sel || modelInput.value.trim();
+}
+
+/**
+ * Return the current Ollama server URL from the host input field.
+ *
+ * Strips trailing whitespace; the value is sent as-is to the backend,
+ * which handles trailing-slash normalisation.
+ *
+ * @returns {string} The Ollama base URL (e.g. "http://localhost:11434").
+ */
+function getOllamaHost() {
+  return ollamaHostInput.value.trim();
+}
+
+/**
+ * Fetch the model list from the Ollama instance at the given (or current)
+ * host URL and repopulate the model <select> dropdown.
+ *
+ * On success the dropdown is shown and the manual text input is hidden.
+ * On failure (unreachable host, empty list) the dropdown is hidden and
+ * the manual input is shown so the user can type a model name directly.
+ *
+ * @param {string} [host] - Ollama host URL.  Defaults to the input field value.
+ */
+async function refreshModels(host) {
+  const h = host || getOllamaHost();
+  const url = h ? `/api/models?host=${encodeURIComponent(h)}` : "/api/models";
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const models = await res.json();
+
+    if (models.length > 0) {
+      // Remember the currently selected model so we can re-select it if
+      // it exists in the new list.
+      const prev = getModelName();
+      modelSelect.innerHTML = "";
+
+      for (const m of models) {
+        const opt = document.createElement("option");
+        opt.value = m;
+        opt.textContent = m;
+        if (m === prev) opt.selected = true;
+        modelSelect.appendChild(opt);
+      }
+
+      modelSelect.classList.remove("hidden");
+      modelInput.classList.add("hidden");
+    } else {
+      // No models found — show manual input.
+      modelSelect.classList.add("hidden");
+      modelInput.classList.remove("hidden");
+    }
+  } catch {
+    // Ollama unreachable at this host — show manual input.
+    modelSelect.classList.add("hidden");
+    modelInput.classList.remove("hidden");
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -527,6 +598,10 @@ async function loadPrompt(name) {
     // Update the override badge to reflect that custom content is now active
     updateSystemPromptBadge();
 
+    // Clear the "pending load" highlight on the Load button now that the
+    // selected prompt has actually been loaded into the textarea.
+    btnLoadPrompt.classList.remove("is-active");
+
     // Ensure the System Prompt <details> is open so the user can see it
     const details = document.getElementById("system-prompt-details");
     if (details && !details.open) details.open = true;
@@ -574,12 +649,18 @@ async function generate() {
 
   const systemPromptVal = systemPromptTextarea.value.trim();
 
+  // Include the Ollama host URL so the backend can target the correct
+  // Ollama instance.  Sent as null when the field matches the server
+  // default (omitting it lets the backend use its configured default).
+  const ollamaHost = getOllamaHost() || null;
+
   const reqBody = {
     payload:       state.payload,
     model,
     temperature,
     max_tokens,
     system_prompt: systemPromptVal || null,
+    ollama_host:   ollamaHost,
   };
 
   state.busy = true;
@@ -636,7 +717,17 @@ async function generate() {
     if (data.output_hash)        metaRows.push(["output", data.output_hash.slice(0, 16) + "\u2026"]);
     if (data.ipc_id)             metaRows.push(["ipc",    data.ipc_id.slice(0, 16) + "\u2026"]);
 
-    // Build the <table> element
+    // Store the current metadata keyed by row label so we can snapshot it
+    // when the user clicks "Set as A" and compare on subsequent generations.
+    state.lastMeta = {};
+    for (const [key, val] of metaRows) {
+      state.lastMeta[key] = String(val);
+    }
+
+    // Build the <table> element.
+    // When a baseline snapshot exists (state.baselineMeta), any row whose
+    // value differs from the baseline is marked with the "meta-changed" CSS
+    // class to draw the user's eye to what shifted between A and B.
     const table = document.createElement("table");
     table.className = "meta-table";
 
@@ -651,7 +742,34 @@ async function generate() {
       const tdVal = document.createElement("td");
       tdVal.className = "meta-val";
       tdVal.textContent = val;
+
+      // When the seed was randomly generated, append a small copy button
+      // so the user can grab the numeric value and paste it into the seed
+      // input for deterministic replay.
+      if (key === "seed" && wasRandom) {
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "meta-copy-btn";
+        copyBtn.type = "button";
+        copyBtn.textContent = "copy";
+        copyBtn.title = "Copy seed to clipboard";
+        copyBtn.addEventListener("click", () => {
+          navigator.clipboard.writeText(String(seed)).then(() => {
+            copyBtn.textContent = "copied";
+            setTimeout(() => { copyBtn.textContent = "copy"; }, 1200);
+          });
+        });
+        tdVal.appendChild(document.createTextNode(" "));
+        tdVal.appendChild(copyBtn);
+      }
+
       tr.appendChild(tdVal);
+
+      // Highlight rows that differ from the baseline snapshot.
+      if (state.baselineMeta && state.baselineMeta[key] !== undefined) {
+        if (String(val) !== state.baselineMeta[key]) {
+          tr.classList.add("meta-changed");
+        }
+      }
 
       table.appendChild(tr);
     }
@@ -1252,6 +1370,17 @@ function wireEvents() {
     if (name) loadPrompt(name);
   });
 
+  // When the user selects a different prompt from the dropdown, highlight the
+  // Load button in amber to signal "you've picked something but not loaded it
+  // yet".  The highlight is cleared after the prompt is actually loaded.
+  promptSelect.addEventListener("change", () => {
+    if (promptSelect.value) {
+      btnLoadPrompt.classList.add("is-active");
+    } else {
+      btnLoadPrompt.classList.remove("is-active");
+    }
+  });
+
   // ── System prompt textarea → update override badge ──────────────────── //
   // When the user types in the system prompt textarea (or clears it), the
   // badge switches between muted (server default) and active (custom override).
@@ -1298,6 +1427,17 @@ function wireEvents() {
     randomiseAxes();
   });
 
+  // ── Ollama host URL ──────────────────────────────────────────────────── //
+  // When the user changes the Ollama server URL, refresh the model list
+  // from the new host.  Debounced to 600ms so we don't fire on every
+  // keystroke while the user is typing a full URL.
+  ollamaHostInput.addEventListener(
+    "input",
+    debounce(() => {
+      refreshModels();
+    }, 600)
+  );
+
   // ── Temperature sync ──────────────────────────────────────────────────── //
   wireTempSync();
 
@@ -1313,6 +1453,9 @@ function wireEvents() {
       return;
     }
     state.baseline = state.current;
+    // Snapshot the current generation's metadata so subsequent generations
+    // can highlight which IPC hashes and settings have changed.
+    state.baselineMeta = state.lastMeta ? { ...state.lastMeta } : null;
     diffA.textContent = state.baseline;
     btnSetBaseline.classList.add("is-active");
     setStatus("Baseline A set.");
@@ -1331,6 +1474,8 @@ function wireEvents() {
     outputMeta.classList.add("hidden");
     state.current        = null;
     state.baseline       = null;
+    state.lastMeta       = null;
+    state.baselineMeta   = null;
     diffA.textContent = "";
     diffA.appendChild(makePlaceholder("No baseline set."));
     diffB.textContent = "";

@@ -152,6 +152,14 @@ class GenerateRequest(BaseModel):
             "loads app/prompts/system_prompt_v01.txt."
         ),
     )
+    ollama_host: str | None = Field(
+        default=None,
+        description=(
+            "Optional Ollama server URL override.  When None the server uses "
+            "the OLLAMA_HOST environment variable (default: http://localhost:11434)."
+        ),
+        examples=["http://localhost:11434", "http://192.168.1.50:11434"],
+    )
 
 
 class GenerateResponse(BaseModel):
