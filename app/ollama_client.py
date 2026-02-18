@@ -1,17 +1,17 @@
 """
 app/ollama_client.py
-─────────────────────────────────────────────────────────────────────────────
+-----------------------------------------------------------------------------
 Thin synchronous wrapper around the Ollama HTTP API.
 
 Why synchronous?
-────────────────
+----------------
 FastAPI can run sync route handlers in a thread-pool executor automatically
 (via `def` rather than `async def`), which avoids blocking the event loop
 while we wait for the LLM to respond.  For a single-user local lab this is
 perfectly adequate and keeps the code simple.
 
 Ollama /api/generate reference
-───────────────────────────────
+-------------------------------
 POST {host}/api/generate
 {
     "model":   "<model-name>",
@@ -39,13 +39,13 @@ Response (non-streaming):
 }
 
 Environment variables
-─────────────────────
+---------------------
 OLLAMA_HOST – Base URL of the Ollama server (default: http://localhost:11434).
               Read once at import time so the value is consistent for the
               lifetime of the process.
 
 Logging
-───────
+-------
 Errors in non-critical paths (e.g. model listing) are logged as warnings via
 the standard ``logging`` module rather than silently swallowed.  This ensures
 that network issues, timeouts, and malformed responses are visible in server
@@ -65,9 +65,9 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Configuration
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 # Strip any trailing slash so we can safely append paths.
 _OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
@@ -82,9 +82,9 @@ _CONNECT_TIMEOUT: float = 10.0
 _READ_TIMEOUT: float = 120.0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Public API
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 def ollama_generate(
@@ -108,7 +108,7 @@ def ollama_generate(
     model actually *uses* it rather than merely recording it for auditing.
 
     Parameters
-    ──────────
+    ----------
     model         : Ollama model identifier, e.g. "gemma2:2b".
     system_prompt : The system-role text that constrains LLM behaviour.
     user_json_str : The axis payload serialised as a pretty-printed JSON string.
@@ -121,7 +121,7 @@ def ollama_generate(
                     This is the same seed used in the IPC hash.
 
     Returns
-    ───────
+    -------
     A tuple of:
       - str  : The raw text returned by the model (stripped of leading /
                trailing whitespace).
@@ -130,7 +130,7 @@ def ollama_generate(
                if the model doesn't report them.
 
     Raises
-    ──────
+    ------
     httpx.HTTPStatusError  : If Ollama returns a non-2xx response.
     httpx.TimeoutException : If the request times out.
     ValueError             : If the Ollama response is missing the "response"
@@ -194,7 +194,7 @@ def list_local_models() -> list[str]:
     list is returned so the frontend can degrade gracefully.
 
     Returns
-    ───────
+    -------
     list[str] : Sorted model name strings (e.g. ["gemma2:2b", "llama3.2:1b"]).
     """
     url = f"{_OLLAMA_HOST}/api/tags"

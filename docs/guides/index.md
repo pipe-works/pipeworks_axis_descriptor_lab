@@ -7,4 +7,5 @@ and technical frameworks behind the Axis Descriptor Lab.
 :maxdepth: 2
 
 ipc-and-hashing
+policy-rules
 ```

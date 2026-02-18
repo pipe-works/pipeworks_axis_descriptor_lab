@@ -1,11 +1,11 @@
 """
 app/schema.py
-─────────────────────────────────────────────────────────────────────────────
+-----------------------------------------------------------------------------
 Pydantic v2 models for every request / response object in the Axis Descriptor
 Lab API.
 
 Design principles
-─────────────────
+-----------------
 • Keep models thin – no business logic here.
 • Every field has a docstring-style `description` so FastAPI's auto-generated
   OpenAPI UI is immediately useful.
@@ -19,9 +19,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Axis primitives
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 class AxisValue(BaseModel):
@@ -65,7 +65,7 @@ class AxisPayload(BaseModel):
     string in the user turn.
 
     Fields
-    ──────
+    ------
     axes        – keyed by axis name (e.g. "demeanor"), value is AxisValue.
     policy_hash – SHA-256 hex digest of the policy rules in force when this
                   payload was produced.  Included for auditability; the LLM is
@@ -104,9 +104,9 @@ class AxisPayload(BaseModel):
         return v
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # /api/generate  request / response
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 class GenerateRequest(BaseModel):
@@ -188,7 +188,7 @@ class GenerateResponse(BaseModel):
         ),
     )
 
-    # ── Interpretive Provenance Chain (IPC) fields ───────────────────────
+    # -- Interpretive Provenance Chain (IPC) fields -----------------------
     # These four hashes uniquely identify the full generation context.
 
     input_hash: str | None = Field(
@@ -219,9 +219,9 @@ class GenerateResponse(BaseModel):
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # /api/log  request
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 class LogEntry(BaseModel):
@@ -232,7 +232,7 @@ class LogEntry(BaseModel):
     repeated calls with the same seed / policy_hash.
 
     Fields
-    ──────
+    ------
     input_hash   – SHA-256 of the canonical JSON-serialised AxisPayload.
                    Use this to group runs that should be identical.
     payload      – Full axis payload (stored for later inspection).
@@ -263,7 +263,7 @@ class LogEntry(BaseModel):
         description="ISO-8601 UTC timestamp of when the log entry was created.",
     )
 
-    # ── Interpretive Provenance Chain (IPC) fields ───────────────────────
+    # -- Interpretive Provenance Chain (IPC) fields -----------------------
     # Optional so that existing JSONL records (written before this feature)
     # can still be deserialised without error.
 
@@ -287,9 +287,9 @@ class LogEntry(BaseModel):
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # /api/save  request / response
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 class SaveRequest(BaseModel):
@@ -301,7 +301,7 @@ class SaveRequest(BaseModel):
     timestamped subfolder under ``data/``.
 
     Fields
-    ──────
+    ------
     payload       – The current AxisPayload (source of truth axes).
     output        – The latest generated text (``state.current``), or None if
                     the user hasn't generated yet.
@@ -362,7 +362,7 @@ class SaveResponse(BaseModel):
     frontend can display a confirmation message in the status bar.
 
     Fields
-    ──────
+    ------
     folder_name        – The name of the subfolder created inside ``data/``.
     files              – Sorted list of filenames written inside the subfolder.
     input_hash         – SHA-256 of the payload (for traceability).
@@ -389,7 +389,7 @@ class SaveResponse(BaseModel):
         description="ISO-8601 UTC timestamp of the save operation.",
     )
 
-    # ── Interpretive Provenance Chain (IPC) fields ───────────────────────
+    # -- Interpretive Provenance Chain (IPC) fields -----------------------
 
     system_prompt_hash: str | None = Field(
         default=None,
@@ -411,9 +411,9 @@ class SaveResponse(BaseModel):
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # POST /api/analyze-delta  request / response
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 class DeltaRequest(BaseModel):

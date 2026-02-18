@@ -1,17 +1,17 @@
 """
 app/hashing.py
-─────────────────────────────────────────────────────────────────────────────
+-----------------------------------------------------------------------------
 Consolidated hashing utilities for the Axis Descriptor Lab.
 
 Why a dedicated module?
-───────────────────────
+-----------------------
 Hashing logic is used across multiple routes (generate, log, save) and must
 produce identical results regardless of call site.  Centralising normalisation
 rules and hash functions in one place eliminates duplication and ensures that
 a single change to normalisation propagates everywhere.
 
 Hash types
-──────────
+----------
 This module provides four public hash functions:
 
 1. ``compute_payload_hash``       – SHA-256 of the canonical AxisPayload JSON.
@@ -24,7 +24,7 @@ This module provides four public hash functions:
 All functions return lowercase 64-character hex digest strings.
 
 Normalisation philosophy
-────────────────────────
+------------------------
 Raw text is normalised before hashing so that semantically identical content
 produces the same digest even when formatting differs.  The rules are
 intentionally conservative:
@@ -46,9 +46,9 @@ import hashlib
 import json
 import re
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Private normalisation helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 def _normalise_system_prompt(text: str) -> str:
@@ -60,7 +60,7 @@ def _normalise_system_prompt(text: str) -> str:
     semantically meaningful content.
 
     Rules (applied in order)
-    ────────────────────────
+    ------------------------
     1. Split the text into individual lines.
     2. Strip leading and trailing whitespace from **each** line.
        This removes editor-introduced indentation and trailing spaces
@@ -73,11 +73,11 @@ def _normalise_system_prompt(text: str) -> str:
        "never" may carry different emphasis for the LLM.
 
     Parameters
-    ──────────
+    ----------
     text : The raw system prompt string (may contain arbitrary whitespace).
 
     Returns
-    ───────
+    -------
     str : Normalised text ready for hashing.  Empty string if the input
           is empty or whitespace-only.
     """
@@ -102,7 +102,7 @@ def _normalise_output(text: str) -> str:
     in spacing produce the same hash.
 
     Rules (applied in order)
-    ────────────────────────
+    ------------------------
     1. Strip leading and trailing whitespace from the entire string.
     2. Collapse runs of two or more consecutive space characters into a
        single space.  Only ASCII space (U+0020) is targeted — newlines,
@@ -113,11 +113,11 @@ def _normalise_output(text: str) -> str:
     5. Preserve sentence and line order exactly as-is.
 
     Parameters
-    ──────────
+    ----------
     text : The raw LLM-generated output string.
 
     Returns
-    ───────
+    -------
     str : Normalised text ready for hashing.  Empty string if the input
           is empty or whitespace-only.
     """
@@ -132,9 +132,9 @@ def _normalise_output(text: str) -> str:
     return collapsed
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Public hash functions
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 def compute_payload_hash(payload_dict: dict) -> str:
@@ -149,12 +149,12 @@ def compute_payload_hash(payload_dict: dict) -> str:
     dependency-free.  Callers typically pass ``payload.model_dump()``.
 
     Parameters
-    ──────────
+    ----------
     payload_dict : A plain dict representation of an AxisPayload
                    (e.g. from ``AxisPayload.model_dump()``).
 
     Returns
-    ───────
+    -------
     str : 64-character lowercase hex SHA-256 digest.
     """
     # Canonical JSON: sorted keys ensure order-independence,
@@ -173,11 +173,11 @@ def compute_system_prompt_hash(prompt_text: str) -> str:
     the same digest.
 
     Parameters
-    ──────────
+    ----------
     prompt_text : The raw system prompt string.
 
     Returns
-    ───────
+    -------
     str : 64-character lowercase hex SHA-256 digest.
     """
     normalised = _normalise_system_prompt(prompt_text)
@@ -193,11 +193,11 @@ def compute_output_hash(output_text: str) -> str:
     in extra spaces produce the same digest.
 
     Parameters
-    ──────────
+    ----------
     output_text : The raw LLM-generated text.
 
     Returns
-    ───────
+    -------
     str : 64-character lowercase hex SHA-256 digest.
     """
     normalised = _normalise_output(output_text)
@@ -223,7 +223,7 @@ def compute_ipc_id(
     outputs.
 
     Formula
-    ───────
+    -------
     ::
 
         SHA-256(
@@ -241,7 +241,7 @@ def compute_ipc_id(
     delimiter).
 
     Parameters
-    ──────────
+    ----------
     input_hash         : SHA-256 hex digest of the canonical AxisPayload.
     system_prompt_hash : SHA-256 hex digest of the normalised system prompt.
     model              : Ollama model identifier (e.g. ``"gemma2:2b"``).
@@ -250,7 +250,7 @@ def compute_ipc_id(
     seed               : RNG seed from the AxisPayload.
 
     Returns
-    ───────
+    -------
     str : 64-character lowercase hex SHA-256 digest (the IPC ID).
     """
     # Build the composite string from all provenance fields.

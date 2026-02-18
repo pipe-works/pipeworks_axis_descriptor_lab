@@ -57,14 +57,33 @@ myst_heading_anchors = 3
 
 # -- HTML output options -----------------------------------------------------
 
-html_theme = "sphinx_rtd_theme"
+# Furo theme with Pipe-Works amber accent and monospace code fonts.
+# Provides native light/dark toggle and clean, readable typography.
+html_theme = "furo"
 html_static_path = ["_static"]
 
+# Furo colour customisation — matches the Axis Descriptor Lab app palette.
+# See: https://pradyunsg.me/furo/customisation/
 html_theme_options = {
-    "navigation_depth": 4,
-    "collapse_navigation": False,
-    "sticky_navigation": True,
-    "titles_only": False,
+    # Light mode: amber accent on warm paper
+    "light_css_variables": {
+        "color-brand-primary": "#c27b0a",  # deeper amber (matches app light theme)
+        "color-brand-content": "#c27b0a",
+        "font-stack": 'system-ui, -apple-system, "Segoe UI", sans-serif',
+        "font-stack--monospace": (
+            '"JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace'
+        ),
+    },
+    # Dark mode: bright amber accent on dark surface
+    "dark_css_variables": {
+        "color-brand-primary": "#f59e0b",  # amber (matches app dark theme)
+        "color-brand-content": "#f59e0b",
+        "font-stack": 'system-ui, -apple-system, "Segoe UI", sans-serif',
+        "font-stack--monospace": (
+            '"JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace'
+        ),
+    },
+    "navigation_with_keys": True,
 }
 
 # -- Autodoc configuration ---------------------------------------------------
@@ -83,7 +102,7 @@ autodoc_typehints_description_target = "documented"
 # -- Napoleon settings (Google-style docstrings) ----------------------------
 
 napoleon_google_docstring = True
-napoleon_numpy_docstring = False
+napoleon_numpy_docstring = True
 napoleon_include_init_with_doc = True
 napoleon_include_private_with_doc = False
 napoleon_include_special_with_doc = True
