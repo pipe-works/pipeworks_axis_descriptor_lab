@@ -569,34 +569,55 @@ async function generate() {
     outputBox.textContent = data.text;
     state.current = data.text;
 
-    // ── Show meta info ────────────────────────────────────────────────── //
-    // Line 1: model, temperature, seed, and token usage
-    const seedLabel = wasRandom ? `seed: ${seed} (random)` : `seed: ${seed}`;
-    let metaStr = `model: ${data.model}  ·  temp: ${data.temperature}  ·  ${seedLabel}`;
+    // ── Show meta info as a clean key-value table ─────────────────────── //
+    // Builds a faint two-column table: labels on the left, values on the
+    // right.  Much more scannable than the previous dot-separated string.
+
+    const seedVal = wasRandom ? `${seed} (random)` : `${seed}`;
+
+    // Collect rows as [key, value] pairs; skip any with missing values.
+    const metaRows = [
+      ["model",         data.model],
+      ["temp",          data.temperature],
+      ["seed",          seedVal],
+    ];
+
+    // Token usage rows (only if reported by Ollama)
     if (data.usage) {
       const p = data.usage.prompt_eval_count;
       const e = data.usage.eval_count;
-      if (p !== null && p !== undefined) metaStr += `  ·  prompt tokens: ${p}`;
-      if (e !== null && e !== undefined) metaStr += `  ·  gen tokens: ${e}`;
+      if (p !== null && p !== undefined) metaRows.push(["prompt tokens", p]);
+      if (e !== null && e !== undefined) metaRows.push(["gen tokens", e]);
     }
 
-    // Line 2: IPC provenance hashes (truncated to 16 chars for display)
-    if (data.input_hash) {
-      metaStr += `\ninput: ${data.input_hash.slice(0, 16)}\u2026`;
-    }
-    if (data.system_prompt_hash) {
-      metaStr += `  \u00b7  prompt: ${data.system_prompt_hash.slice(0, 16)}\u2026`;
-    }
-    if (data.output_hash) {
-      metaStr += `  \u00b7  output: ${data.output_hash.slice(0, 16)}\u2026`;
+    // IPC provenance hashes (truncated to 16 chars for display)
+    if (data.input_hash)         metaRows.push(["input",  data.input_hash.slice(0, 16) + "\u2026"]);
+    if (data.system_prompt_hash) metaRows.push(["prompt", data.system_prompt_hash.slice(0, 16) + "\u2026"]);
+    if (data.output_hash)        metaRows.push(["output", data.output_hash.slice(0, 16) + "\u2026"]);
+    if (data.ipc_id)             metaRows.push(["ipc",    data.ipc_id.slice(0, 16) + "\u2026"]);
+
+    // Build the <table> element
+    const table = document.createElement("table");
+    table.className = "meta-table";
+
+    for (const [key, val] of metaRows) {
+      const tr = document.createElement("tr");
+
+      const tdKey = document.createElement("td");
+      tdKey.className = "meta-key";
+      tdKey.textContent = key;
+      tr.appendChild(tdKey);
+
+      const tdVal = document.createElement("td");
+      tdVal.className = "meta-val";
+      tdVal.textContent = val;
+      tr.appendChild(tdVal);
+
+      table.appendChild(tr);
     }
 
-    // Line 3: composite IPC identifier
-    if (data.ipc_id) {
-      metaStr += `\nipc: ${data.ipc_id.slice(0, 16)}\u2026`;
-    }
-
-    outputMeta.textContent = metaStr;
+    outputMeta.textContent = "";
+    outputMeta.appendChild(table);
     outputMeta.classList.remove("hidden");
 
     // ── Update diff B ─────────────────────────────────────────────────── //
@@ -745,45 +766,57 @@ async function updateSignalIsolation() {
     // Build the display as a document fragment (avoids reflows).
     const fragment = document.createDocumentFragment();
 
-    // ── Removed words (in A but not B) ────────────────────────────────── //
-    if (data.removed.length > 0) {
-      const removedLabel = document.createElement("div");
-      removedLabel.className = "signal-label";
-      removedLabel.textContent = `\u2212 Removed (${data.removed.length})`;
-      fragment.appendChild(removedLabel);
-
-      const removedList = document.createElement("div");
-      removedList.className = "signal-word-list signal-word-list--removed";
-      for (const word of data.removed) {
-        const tag = document.createElement("span");
-        tag.className = "signal-tag signal-tag--removed";
-        tag.textContent = word;
-        removedList.appendChild(tag);
-      }
-      fragment.appendChild(removedList);
-    }
-
-    // ── Added words (in B but not A) ──────────────────────────────────── //
-    if (data.added.length > 0) {
-      const addedLabel = document.createElement("div");
-      addedLabel.className = "signal-label";
-      addedLabel.textContent = `+ Added (${data.added.length})`;
-      fragment.appendChild(addedLabel);
-
-      const addedList = document.createElement("div");
-      addedList.className = "signal-word-list signal-word-list--added";
-      for (const word of data.added) {
-        const tag = document.createElement("span");
-        tag.className = "signal-tag signal-tag--added";
-        tag.textContent = word;
-        addedList.appendChild(tag);
-      }
-      fragment.appendChild(addedList);
-    }
-
     // ── No changes ────────────────────────────────────────────────────── //
     if (data.removed.length === 0 && data.added.length === 0) {
       fragment.appendChild(makePlaceholder("No content-word differences detected."));
+    } else {
+      // ── Two-column "Semantic Pivot" layout ──────────────────────────── //
+      // REMOVED on the left, ADDED on the right.  The side-by-side
+      // arrangement lets the eye scan left→right to grasp the lexical
+      // pivot at a glance.
+
+      const grid = document.createElement("div");
+      grid.className = "signal-columns";
+
+      // ── Left column: REMOVED words ──────────────────────────────────── //
+      const removedCol = document.createElement("div");
+
+      const removedHeader = document.createElement("div");
+      removedHeader.className = "signal-header";
+      removedHeader.textContent = `REMOVED (${data.removed.length})`;
+      removedCol.appendChild(removedHeader);
+
+      const removedList = document.createElement("div");
+      removedList.className = "signal-word-list";
+      for (const word of data.removed) {
+        const el = document.createElement("div");
+        el.className = "signal-word signal-word--removed";
+        el.textContent = word;
+        removedList.appendChild(el);
+      }
+      removedCol.appendChild(removedList);
+
+      // ── Right column: ADDED words ───────────────────────────────────── //
+      const addedCol = document.createElement("div");
+
+      const addedHeader = document.createElement("div");
+      addedHeader.className = "signal-header";
+      addedHeader.textContent = `ADDED (${data.added.length})`;
+      addedCol.appendChild(addedHeader);
+
+      const addedList = document.createElement("div");
+      addedList.className = "signal-word-list";
+      for (const word of data.added) {
+        const el = document.createElement("div");
+        el.className = "signal-word signal-word--added";
+        el.textContent = word;
+        addedList.appendChild(el);
+      }
+      addedCol.appendChild(addedList);
+
+      grid.appendChild(removedCol);
+      grid.appendChild(addedCol);
+      fragment.appendChild(grid);
     }
 
     // Replace panel contents with the rendered fragment.
