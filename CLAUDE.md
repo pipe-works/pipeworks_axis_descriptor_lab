@@ -37,7 +37,9 @@ The app is a FastAPI backend serving a vanilla JS single-page frontend. There ar
 ### Backend (Python)
 
 - **`app/main.py`** — FastAPI app with all routes. Sync handlers (not async); FastAPI runs them in a threadpool. Serves the Jinja2 template at `/` and all `/api/*` endpoints.
-- **`app/schema.py`** — Pydantic v2 models: `AxisValue` (label + score 0.0–1.0), `AxisPayload` (dict of axes + policy_hash + seed + world_id), `GenerateRequest`, `GenerateResponse`, `LogEntry`.
+- **`app/schema.py`** — Pydantic v2 models: `AxisValue` (label + score 0.0–1.0), `AxisPayload` (dict of axes + policy_hash + seed + world_id), `GenerateRequest`, `GenerateResponse`, `LogEntry`, `DeltaRequest`, `DeltaResponse`.
+- **`app/hashing.py`** — IPC normalisation and hash utilities (payload, system prompt, output, composite IPC ID).
+- **`app/signal_isolation.py`** — NLP pipeline for the Signal Isolation Layer: tokenise (NLTK), lemmatise (WordNet), filter stopwords, compute content-word set delta between two texts. Requires NLTK data packages (punkt_tab, stopwords, wordnet) which are auto-downloaded on first run.
 - **`app/ollama_client.py`** — Synchronous HTTP wrapper around Ollama's `/api/generate` and `/api/tags` endpoints using httpx. 10s connect / 120s read timeout.
 
 ### Frontend (Vanilla JS)

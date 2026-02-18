@@ -6,5 +6,6 @@ API Reference
 
    schema
    hashing
+   signal_isolation
    ollama_client
    main

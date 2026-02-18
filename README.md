@@ -90,6 +90,7 @@ For a comprehensive explanation of the IPC framework, normalisation rules, and d
 | POST | `/api/generate` | Generate descriptive text |
 | POST | `/api/log` | Persist a run log entry |
 | POST | `/api/relabel` | Recompute labels from policy |
+| POST | `/api/analyze-delta` | Content-word delta (signal isolation) |
 | POST | `/api/save` | Save session state to data/ |
 
 Interactive API docs: **<http://127.0.0.1:8242/docs>**
@@ -104,6 +105,7 @@ axis_descriptor_lab/
 ├─ app/
 │  ├─ main.py                # FastAPI app + all routes
 │  ├─ hashing.py             # IPC normalisation and hash utilities
+│  ├─ signal_isolation.py    # NLP pipeline for content-word delta
 │  ├─ ollama_client.py       # HTTP wrapper around Ollama /api/generate
 │  ├─ schema.py              # Pydantic v2 models
 │  ├─ prompts/

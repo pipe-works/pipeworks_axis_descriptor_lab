@@ -80,6 +80,7 @@ const btnClearOutput      = $("btn-clear-output");
 const diffA               = $("diff-a");
 const diffB               = $("diff-b");
 const diffDelta           = $("diff-delta");
+const signalPanel         = $("signal-panel");
 const statusText          = $("status-text");
 const spinner             = $("spinner");
 
@@ -682,6 +683,127 @@ function updateDiff() {
   if (detailsEl && !detailsEl.open) {
     detailsEl.open = true;
   }
+
+  // After building the word-level diff, also run signal isolation
+  // to surface meaningful content-word pivots.
+  updateSignalIsolation();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SIGNAL ISOLATION (content-word delta)
+   ─────────────────────────────────────────────────────────────────────────
+   Calls POST /api/analyze-delta after each diff computation to surface
+   meaningful lexical pivots by filtering structural noise.
+
+   The pipeline is server-side:
+   1. Tokenise both texts (NLTK)
+   2. Lemmatise to base forms (WordNet)
+   3. Remove stopwords (English)
+   4. Compute set difference
+
+   The frontend simply renders the returned removed/added word lists
+   as inline tags.
+════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Call POST /api/analyze-delta with the current baseline and output texts,
+ * then render the results into the signal panel.
+ *
+ * Called at the end of updateDiff() when both baseline and current text
+ * exist.  Failures are shown inline in the panel, not thrown.
+ */
+async function updateSignalIsolation() {
+  const textA = state.baseline || "";
+  const textB = state.current  || "";
+
+  // If either text is missing, show a placeholder and bail.
+  if (!textA || !textB) {
+    signalPanel.textContent = "";
+    signalPanel.appendChild(
+      makePlaceholder("Set a baseline (A) and generate to analyze content-word changes.")
+    );
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/analyze-delta", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        baseline_text: textA,
+        current_text:  textB,
+      }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    // Build the display as a document fragment (avoids reflows).
+    const fragment = document.createDocumentFragment();
+
+    // ── Removed words (in A but not B) ────────────────────────────────── //
+    if (data.removed.length > 0) {
+      const removedLabel = document.createElement("div");
+      removedLabel.className = "signal-label";
+      removedLabel.textContent = `\u2212 Removed (${data.removed.length})`;
+      fragment.appendChild(removedLabel);
+
+      const removedList = document.createElement("div");
+      removedList.className = "signal-word-list signal-word-list--removed";
+      for (const word of data.removed) {
+        const tag = document.createElement("span");
+        tag.className = "signal-tag signal-tag--removed";
+        tag.textContent = word;
+        removedList.appendChild(tag);
+      }
+      fragment.appendChild(removedList);
+    }
+
+    // ── Added words (in B but not A) ──────────────────────────────────── //
+    if (data.added.length > 0) {
+      const addedLabel = document.createElement("div");
+      addedLabel.className = "signal-label";
+      addedLabel.textContent = `+ Added (${data.added.length})`;
+      fragment.appendChild(addedLabel);
+
+      const addedList = document.createElement("div");
+      addedList.className = "signal-word-list signal-word-list--added";
+      for (const word of data.added) {
+        const tag = document.createElement("span");
+        tag.className = "signal-tag signal-tag--added";
+        tag.textContent = word;
+        addedList.appendChild(tag);
+      }
+      fragment.appendChild(addedList);
+    }
+
+    // ── No changes ────────────────────────────────────────────────────── //
+    if (data.removed.length === 0 && data.added.length === 0) {
+      fragment.appendChild(makePlaceholder("No content-word differences detected."));
+    }
+
+    // Replace panel contents with the rendered fragment.
+    signalPanel.textContent = "";
+    signalPanel.appendChild(fragment);
+
+    // Open the signal <details> automatically if it isn't already.
+    const signalDetailsEl = document.getElementById("signal-details");
+    if (signalDetailsEl && !signalDetailsEl.open) {
+      signalDetailsEl.open = true;
+    }
+
+  } catch (err) {
+    // Show error inline in the panel rather than throwing.
+    signalPanel.textContent = "";
+    const errSpan = document.createElement("span");
+    errSpan.style.color = "var(--col-err)";
+    errSpan.textContent = `Signal analysis error: ${err.message}`;
+    signalPanel.appendChild(errSpan);
+  }
 }
 
 /**
@@ -1056,6 +1178,10 @@ function wireEvents() {
     diffB.appendChild(makePlaceholder("Generate to populate B."));
     diffDelta.textContent = "";
     diffDelta.appendChild(makePlaceholder("\u2014"));
+    signalPanel.textContent = "";
+    signalPanel.appendChild(
+      makePlaceholder("Set a baseline (A) and generate to analyze content-word changes.")
+    );
     btnSetBaseline.classList.remove("is-active");
     setStatus("Output cleared.");
   });

@@ -17,9 +17,17 @@ POST {host}/api/generate
     "model":   "<model-name>",
     "prompt":  "<user turn – the axis JSON string>",
     "system":  "<system prompt text>",
-    "options": {"temperature": <float>, "num_predict": <int>},
+    "options": {"temperature": <float>, "num_predict": <int>, "seed": <int>},
     "stream":  false
 }
+
+When ``seed`` is provided in the ``options`` object, Ollama pins the random
+number generator used during token sampling.  Combined with a fixed
+temperature and identical prompt, this makes generation **deterministic** (the
+same seed + inputs will produce the same output).  The seed value originates
+from the AxisPayload and is part of the Interpretive Provenance Chain (IPC)
+hash — so it was always *recorded* for auditability, but it must also be
+*forwarded* to the model for it to actually control sampling.
 
 Response (non-streaming):
 {
@@ -86,9 +94,18 @@ def ollama_generate(
     user_json_str: str,
     temperature: float,
     max_tokens: int,
+    seed: int,
 ) -> tuple[str, dict]:
     """
     Call the Ollama /api/generate endpoint and return the generated text.
+
+    The ``seed`` parameter is forwarded to Ollama's ``options.seed`` field,
+    which pins the random number generator used during token sampling.  When
+    combined with a fixed temperature and identical prompt, this makes the
+    generation **deterministic** — the same inputs will produce the same
+    output.  The seed originates from the AxisPayload and is already part of
+    the Interpretive Provenance Chain (IPC) hash; passing it here ensures the
+    model actually *uses* it rather than merely recording it for auditing.
 
     Parameters
     ──────────
@@ -99,6 +116,9 @@ def ollama_generate(
     temperature   : Sampling temperature; lower = more deterministic.
     max_tokens    : Maximum tokens the model may generate (maps to
                     Ollama's ``num_predict`` option).
+    seed          : RNG seed from the AxisPayload.  Forwarded to Ollama's
+                    ``options.seed`` to make token sampling deterministic.
+                    This is the same seed used in the IPC hash.
 
     Returns
     ───────
@@ -120,6 +140,11 @@ def ollama_generate(
 
     # Build the request body.  We always disable streaming so we get a single
     # JSON object back rather than a newline-delimited stream.
+    #
+    # The "seed" in "options" pins Ollama's RNG for token sampling.  Together
+    # with a fixed temperature and identical prompt, this makes the model's
+    # output deterministic.  Without it, repeated calls with the same IPC
+    # inputs would still produce different text due to random sampling.
     body: dict = {
         "model": model,
         "prompt": user_json_str,
@@ -127,6 +152,7 @@ def ollama_generate(
         "options": {
             "temperature": temperature,
             "num_predict": max_tokens,
+            "seed": seed,
         },
         "stream": False,
     }

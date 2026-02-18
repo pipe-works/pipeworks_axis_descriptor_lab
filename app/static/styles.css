@@ -383,7 +383,7 @@ html, body {
 /* Each axis row */
 .axis-row {
   display: grid;
-  grid-template-columns: 110px 1fr 70px;
+  grid-template-columns: 110px 1fr minmax(70px, max-content);
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-1) 0;
@@ -594,6 +594,59 @@ html, body {
 
 .diff-add  { background: var(--col-diff-add);  color: var(--col-diff-add-text); border-radius: 2px; padding: 0 2px; }
 .diff-del  { background: var(--col-diff-del);  color: var(--col-diff-del-text); border-radius: 2px; padding: 0 2px; text-decoration: line-through; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SIGNAL ISOLATION PANEL
+   ─────────────────────────────────────────────────────────────────────────
+   Content-word delta display — shows removed and added content lemmas
+   as inline tags, grouped by type.  Reuses the diff colour variables
+   so it adapts to both dark and light themes automatically.
+════════════════════════════════════════════════════════════════════════════ */
+
+/* Container for the signal isolation results */
+.signal-panel {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.8;
+}
+
+/* Section labels ("− Removed (3)", "+ Added (5)") */
+.signal-label {
+  font-size: var(--text-xs);
+  color: var(--col-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: var(--sp-2);
+  margin-bottom: var(--sp-1);
+}
+
+/* Flex container for word tags */
+.signal-word-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+/* Base style for individual word tags */
+.signal-tag {
+  display: inline-block;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 1px 6px;
+}
+
+/* Removed words — red tint matching diff deletions */
+.signal-tag--removed {
+  background: var(--col-diff-del);
+  color: var(--col-diff-del-text);
+}
+
+/* Added words — green tint matching diff additions */
+.signal-tag--added {
+  background: var(--col-diff-add);
+  color: var(--col-diff-add-text);
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    COLLAPSIBLE (details/summary)
