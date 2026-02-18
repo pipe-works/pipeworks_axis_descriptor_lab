@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.7](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.6...axis-descriptor-lab-v0.1.7) (2026-02-18)
+
+
+### Features
+
+* add system prompt hashing and Interpretive Provenance Chain (IPC) ([66e9c80](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/66e9c80845bfa530b0e2fa9fb06986c57bde9737))
+* add system prompt hashing and IPC ([e9b3803](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/e9b3803bbe03153bf6d56ba6efaece906f5e18a3))
+
+
+### Documentation
+
+* add IPC and hashing Sphinx guide and update README ([a17e1be](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/a17e1be3b0709cb08794137489066d4383918259))
+* add IPC and hashing Sphinx guide and update README ([6f87f3f](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/6f87f3ffa9a930db5810b95d0dcba9248d8d9509))
+
 ## [0.1.6](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.5...axis-descriptor-lab-v0.1.6) (2026-02-18)
 
 
