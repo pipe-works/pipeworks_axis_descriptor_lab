@@ -535,7 +535,37 @@ html, body {
   font-size: var(--text-xs);
   color: var(--col-text-muted);
   border-top: 1px solid var(--col-border);
-  padding-top: var(--sp-1);
+  padding-top: var(--sp-2);
+}
+
+/* Faint key-value table for generation metadata */
+.meta-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--col-text-muted);
+}
+
+/* Faint row separator — just enough to guide the eye */
+.meta-table tr + tr td {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* Label column: right-aligned, muted, fixed width */
+.meta-table .meta-key {
+  text-align: right;
+  padding: 2px var(--sp-2) 2px 0;
+  white-space: nowrap;
+  opacity: 0.55;
+  width: 1%;
+}
+
+/* Value column: left-aligned, slightly brighter */
+.meta-table .meta-val {
+  text-align: left;
+  padding: 2px 0;
+  opacity: 0.8;
   white-space: pre-wrap;
 }
 
@@ -596,11 +626,12 @@ html, body {
 .diff-del  { background: var(--col-diff-del);  color: var(--col-diff-del-text); border-radius: 2px; padding: 0 2px; text-decoration: line-through; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SIGNAL ISOLATION PANEL
+   SIGNAL ISOLATION PANEL — Two-Column "Semantic Pivot" Layout
    ─────────────────────────────────────────────────────────────────────────
-   Content-word delta display — shows removed and added content lemmas
-   as inline tags, grouped by type.  Reuses the diff colour variables
-   so it adapts to both dark and light themes automatically.
+   Side-by-side REMOVED / ADDED columns so the eye can scan left-to-right
+   and immediately grasp the lexical pivot.  Uses subtle text colour and
+   strikethrough instead of tag backgrounds to minimise visual noise,
+   following the spec's "no colour noise" principle.
 ════════════════════════════════════════════════════════════════════════════ */
 
 /* Container for the signal isolation results */
@@ -610,41 +641,46 @@ html, body {
   line-height: 1.8;
 }
 
-/* Section labels ("− Removed (3)", "+ Added (5)") */
-.signal-label {
+/* Two-column grid: REMOVED on the left, ADDED on the right */
+.signal-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 var(--sp-3);
+}
+
+/* Column headers: "REMOVED (19)" / "ADDED (24)" */
+.signal-header {
   font-size: var(--text-xs);
   color: var(--col-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-top: var(--sp-2);
+  padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--col-border);
   margin-bottom: var(--sp-1);
 }
 
-/* Flex container for word tags */
+/* Vertical word list within each column */
 .signal-word-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
+  flex-direction: column;
+  gap: 1px;
 }
 
-/* Base style for individual word tags */
-.signal-tag {
-  display: inline-block;
-  border-radius: 3px;
+/* Individual word entry — plain text, no tag background */
+.signal-word {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  padding: 1px 6px;
+  line-height: 1.7;
+  padding: 0 var(--sp-1);
 }
 
-/* Removed words — red tint matching diff deletions */
-.signal-tag--removed {
-  background: var(--col-diff-del);
+/* Removed words — subtle red text, no strikethrough for legibility */
+.signal-word--removed {
   color: var(--col-diff-del-text);
 }
 
-/* Added words — green tint matching diff additions */
-.signal-tag--added {
-  background: var(--col-diff-add);
+/* Added words — subtle green text, no decoration */
+.signal-word--added {
   color: var(--col-diff-add-text);
 }
 
@@ -870,6 +906,10 @@ html, body {
 
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
   background: var(--col-border-hi);
+}
+
+[data-theme="light"] .meta-table tr + tr td {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
