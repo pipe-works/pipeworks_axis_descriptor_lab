@@ -15,6 +15,8 @@ GET  /api/models            → returns locally available Ollama models
 POST /api/generate          → send axis payload to Ollama, return description
 POST /api/log               → persist a run log entry to logs/run_log.jsonl
 POST /api/relabel           → (optional) recompute labels from policy rules
+GET  /api/system-prompt     → return the default system prompt as plain text
+POST /api/save              → save session state to a timestamped data/ subfolder
 
 Architecture notes
 ──────────────────
@@ -38,13 +40,20 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from app.ollama_client import list_local_models, ollama_generate
-from app.schema import AxisPayload, GenerateRequest, GenerateResponse, LogEntry
+from app.schema import (
+    AxisPayload,
+    GenerateRequest,
+    GenerateResponse,
+    LogEntry,
+    SaveRequest,
+    SaveResponse,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Bootstrap
@@ -60,10 +69,12 @@ _EXAMPLES_DIR = _HERE / "examples"
 _TEMPLATES_DIR = _HERE / "templates"
 _STATIC_DIR = _HERE / "static"
 _LOGS_DIR = _HERE.parent / "logs"
+_DATA_DIR = _HERE.parent / "data"
 
-# Create logs directory if it doesn't exist (production deployments may not
-# have committed the .gitkeep file).
+# Create runtime output directories if they don't exist (production
+# deployments may not have committed .gitkeep files).
 _LOGS_DIR.mkdir(parents=True, exist_ok=True)
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 _LOG_FILE = _LOGS_DIR / "run_log.jsonl"
 
@@ -451,3 +462,256 @@ def relabel(payload: AxisPayload) -> AxisPayload:
 
     # Return a new payload with updated axes; all other fields unchanged.
     return payload.model_copy(update={"axes": updated_axes})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Save helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _save_folder_name(timestamp: datetime, input_hash: str) -> str:
+    """
+    Produce a unique folder name for a save operation.
+
+    Format: ``YYYYMMDD_HHMMSS_<8-char-hash-prefix>``
+
+    Example: ``20260218_143022_d845cdcf``
+
+    Parameters
+    ──────────
+    timestamp  : UTC datetime of the save (passed in so the folder name stays
+                 consistent with the ``metadata.json`` timestamp).
+    input_hash : Full 64-char SHA-256 hex digest of the AxisPayload.
+
+    Returns
+    ───────
+    str : Folder name safe for all major filesystems (no spaces, no special
+          characters beyond underscores).
+    """
+    date_part = timestamp.strftime("%Y%m%d_%H%M%S")
+    hash_part = input_hash[:8]
+    return f"{date_part}_{hash_part}"
+
+
+def _build_output_md(text: str, req: SaveRequest, now: datetime, input_hash: str) -> str:
+    """
+    Format the generated LLM output as a Markdown document.
+
+    Includes an HTML-comment provenance header (model, temperature, seed,
+    hash) so the file is self-documenting when opened in any Markdown viewer.
+
+    Parameters
+    ──────────
+    text       : The raw LLM-generated text.
+    req        : The full SaveRequest (for metadata fields).
+    now        : UTC datetime of the save (for the provenance header).
+    input_hash : SHA-256 of the payload.
+
+    Returns
+    ───────
+    str : Markdown string ready to write to disk.
+    """
+    lines = [
+        "# Output",
+        "",
+        "<!-- Axis Descriptor Lab – generated output -->",
+        f"<!-- saved: {now.isoformat()} -->",
+        f"<!-- model: {req.model} | temp: {req.temperature} " f"| max_tokens: {req.max_tokens} -->",
+        f"<!-- seed: {req.payload.seed} | input_hash: {input_hash[:16]}... -->",
+        "",
+        text,
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _build_baseline_md(text: str, folder_name: str) -> str:
+    """
+    Format the stored baseline text as a Markdown document.
+
+    Parameters
+    ──────────
+    text        : The baseline text (state.baseline from the frontend).
+    folder_name : Save folder name (used in the provenance comment).
+
+    Returns
+    ───────
+    str : Markdown string ready to write to disk.
+    """
+    lines = [
+        "# Baseline (A)",
+        "",
+        f"<!-- Axis Descriptor Lab – baseline text for save {folder_name} -->",
+        "",
+        text,
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _build_system_prompt_md(prompt_text: str, folder_name: str) -> str:
+    """
+    Format the system prompt as a Markdown document with a fenced code block.
+
+    Wrapping in a fenced code block preserves all whitespace and makes the
+    prompt clearly machine-readable when opened in a Markdown viewer.
+
+    Parameters
+    ──────────
+    prompt_text : The system prompt string (may be multi-line).
+    folder_name : Save folder name (for the provenance comment).
+
+    Returns
+    ───────
+    str : Markdown string ready to write to disk.
+    """
+    lines = [
+        "# System Prompt",
+        "",
+        f"<!-- Axis Descriptor Lab – system prompt for save {folder_name} -->",
+        "",
+        "```text",
+        prompt_text,
+        "```",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Save + system-prompt routes
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@app.get(
+    "/api/system-prompt",
+    response_class=PlainTextResponse,
+    summary="Return the default system prompt text",
+)
+def get_system_prompt() -> str:
+    """
+    Return the content of ``system_prompt_v01.txt`` as plain text.
+
+    This allows the frontend to resolve the effective system prompt when no
+    custom override is set, ensuring saved files always contain the complete
+    prompt text rather than a placeholder.
+
+    Returns
+    ───────
+    str : The default system prompt as plain text.
+    """
+    return _load_default_prompt()
+
+
+@app.post(
+    "/api/save",
+    response_model=SaveResponse,
+    summary="Save current session state to a timestamped subfolder under data/",
+)
+def save_run(req: SaveRequest) -> SaveResponse:
+    """
+    Persist all session state to individual files inside a new subfolder of
+    ``data/``.
+
+    The folder is named with a UTC datetime stamp and the first 8 characters
+    of the payload's SHA-256 hash, guaranteeing practical uniqueness even if
+    the user clicks Save multiple times within the same second (different
+    payload → different hash suffix).
+
+    Files written
+    ─────────────
+    metadata.json     – Model name, temperature, max_tokens, seed, timestamp,
+                        input_hash, world_id, policy_hash, and axis count.
+    payload.json      – The full AxisPayload as pretty-printed JSON.
+    system_prompt.md  – The system prompt used for the generation.
+    output.md         – The generated text (only if ``output`` is not None).
+    baseline.md       – The baseline text (only if ``baseline`` is not None).
+
+    Parameters
+    ──────────
+    req : SaveRequest – complete session snapshot from the frontend.
+
+    Returns
+    ───────
+    SaveResponse with the folder name, file list, hash, and timestamp.
+
+    Raises
+    ──────
+    HTTPException(500) if file I/O fails.
+    """
+    now = datetime.now(timezone.utc)
+    input_hash = _payload_hash(req.payload)
+    folder_name = _save_folder_name(now, input_hash)
+    save_dir = _DATA_DIR / folder_name
+
+    # Create the subfolder.  exist_ok=True in case rapid saves produce the
+    # same folder name (same second + same payload hash).
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    files_written: list[str] = []
+
+    try:
+        # ── metadata.json ─────────────────────────────────────────────── #
+        # A flat dict of provenance fields for quick indexing across many
+        # saves without parsing the full payload.
+        metadata = {
+            "folder_name": folder_name,
+            "timestamp": now.isoformat(),
+            "input_hash": input_hash,
+            "model": req.model,
+            "temperature": req.temperature,
+            "max_tokens": req.max_tokens,
+            "seed": req.payload.seed,
+            "world_id": req.payload.world_id,
+            "policy_hash": req.payload.policy_hash,
+            "axis_count": len(req.payload.axes),
+        }
+        (save_dir / "metadata.json").write_text(
+            json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        files_written.append("metadata.json")
+
+        # ── payload.json ──────────────────────────────────────────────── #
+        # The full axis payload as pretty-printed JSON, identical to the
+        # JSON textarea content in the UI.
+        (save_dir / "payload.json").write_text(
+            json.dumps(req.payload.model_dump(), indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        files_written.append("payload.json")
+
+        # ── system_prompt.md ──────────────────────────────────────────── #
+        # Always written — the prompt is required by SaveRequest.
+        system_prompt_md = _build_system_prompt_md(req.system_prompt, folder_name)
+        (save_dir / "system_prompt.md").write_text(system_prompt_md, encoding="utf-8")
+        files_written.append("system_prompt.md")
+
+        # ── output.md (conditional) ───────────────────────────────────── #
+        # Only written when the user has generated text.  Omitting the
+        # file (rather than writing an empty one) makes the save folder
+        # self-documenting: if output.md is absent, no generation occurred.
+        if req.output is not None:
+            output_md = _build_output_md(req.output, req, now, input_hash)
+            (save_dir / "output.md").write_text(output_md, encoding="utf-8")
+            files_written.append("output.md")
+
+        # ── baseline.md (conditional) ─────────────────────────────────── #
+        # Only written when a baseline was stored via "Set as A".
+        if req.baseline is not None:
+            baseline_md = _build_baseline_md(req.baseline, folder_name)
+            (save_dir / "baseline.md").write_text(baseline_md, encoding="utf-8")
+            files_written.append("baseline.md")
+
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to write save files to {save_dir}: {exc}",
+        ) from exc
+
+    return SaveResponse(
+        folder_name=folder_name,
+        files=sorted(files_written),
+        input_hash=input_hash,
+        timestamp=now.isoformat(),
+    )

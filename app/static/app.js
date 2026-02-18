@@ -72,6 +72,7 @@ const btnGenerate         = $("btn-generate");
 const outputBox           = $("output-box");
 const outputMeta          = $("output-meta");
 const btnSetBaseline      = $("btn-set-baseline");
+const btnSave             = $("btn-save");
 const btnClearOutput      = $("btn-clear-output");
 const diffA               = $("diff-a");
 const diffB               = $("diff-b");
@@ -683,6 +684,107 @@ async function logRun(output, model, temperature, max_tokens) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   SAVE
+   ─────────────────────────────────────────────────────────────────────────
+   Persist a complete session snapshot to a timestamped subfolder under
+   data/ via POST /api/save.
+
+   The backend writes individual files:
+     metadata.json     – model, temperature, max_tokens, seed, timestamp, hash
+     payload.json      – the full AxisPayload
+     system_prompt.md  – the system prompt used
+     output.md         – the generated text (if any)
+     baseline.md       – the baseline text (if set)
+
+   The frontend must resolve the effective system prompt before sending:
+   if the user typed a custom prompt, send that; otherwise fetch the server
+   default via GET /api/system-prompt so the saved file is always complete.
+════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Save the current session state to a timestamped folder under data/.
+ *
+ * Collects state.payload, state.current, state.baseline, the active model,
+ * temperature, max_tokens, and the effective system prompt (custom override
+ * if provided, otherwise fetched from the server default endpoint).
+ *
+ * On success, updates the status bar with the folder name and file list.
+ * On failure, surfaces the error in the status bar without throwing.
+ *
+ * The system prompt must always be resolved and sent verbatim so the saved
+ * file reflects exactly what the LLM received, not a null/placeholder.
+ */
+async function saveRun() {
+  // Guard: require a payload to be loaded before saving
+  if (!state.payload) {
+    setStatus("Nothing to save \u2013 load a payload first.");
+    return;
+  }
+
+  // ── Resolve the effective system prompt ────────────────────────────────
+  // If the user has typed anything in the system prompt textarea, use that
+  // verbatim.  Otherwise fetch the server default via GET /api/system-prompt
+  // so the saved file is always complete and accurate.
+  let systemPromptVal = systemPromptTextarea.value.trim();
+  if (!systemPromptVal) {
+    try {
+      const defaultRes = await fetch("/api/system-prompt");
+      if (defaultRes.ok) {
+        systemPromptVal = await defaultRes.text();
+      } else {
+        // Fallback if the endpoint fails: note that it was the default
+        systemPromptVal = "(server default \u2013 see system_prompt_v01.txt)";
+      }
+    } catch {
+      systemPromptVal = "(server default \u2013 see system_prompt_v01.txt)";
+    }
+  }
+
+  // ── Gather all session state into the request body ─────────────────────
+  const model       = getModelName();
+  const temperature = parseFloat(tempInput.value);
+  const max_tokens  = parseInt(tokensInput.value, 10);
+
+  const reqBody = {
+    payload:       state.payload,
+    output:        state.current,     // null if not generated yet
+    baseline:      state.baseline,    // null if no baseline set
+    model,
+    temperature,
+    max_tokens,
+    system_prompt: systemPromptVal,
+  };
+
+  // ── POST to /api/save ──────────────────────────────────────────────────
+  btnSave.disabled = true;
+  setStatus("Saving\u2026", true);
+
+  try {
+    const res = await fetch("/api/save", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(reqBody),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    // Show the folder name and file list so the user knows where to find
+    // the saved files on disk.
+    setStatus(`Saved \u2192 data/${data.folder_name}/ (${data.files.join(", ")})`);
+  } catch (err) {
+    setStatus(`Save error: ${err.message}`);
+  } finally {
+    btnSave.disabled = false;
+    spinner.classList.add("hidden");
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    HTML ESCAPING (safety utility)
 ════════════════════════════════════════════════════════════════════════════ */
 
@@ -793,6 +895,11 @@ function wireEvents() {
     setStatus("Baseline A set.");
   });
 
+  // ── Save session state to data/ folder ──────────────────────────────── //
+  btnSave.addEventListener("click", () => {
+    saveRun();
+  });
+
   // ── Clear output ─────────────────────────────────────────────────────── //
   btnClearOutput.addEventListener("click", () => {
     outputBox.innerHTML  = '<span class="placeholder-text">Click Generate to produce a description.</span>';
@@ -842,8 +949,284 @@ function wireThemeToggle() {
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOOLTIP SYSTEM
+   ─────────────────────────────────────────────────────────────────────────
+   Controls the global visibility and positioning of hover help tooltips.
+
+   Why JS-positioned tooltips?
+   ───────────────────────────
+   The three main panels use `overflow-y: auto` for scrolling, which creates
+   a clipping boundary.  CSS pseudo-element tooltips (::before / ::after)
+   are children of their trigger element in the rendering tree, so they get
+   clipped by the panel's overflow.  By creating real DOM nodes appended to
+   <body>, the tooltip bubble and arrow sit outside all overflow containers
+   and are never clipped.
+
+   Architecture
+   ────────────
+   1. Tooltip text lives in `data-tooltip` attributes on trigger elements.
+   2. On mouseenter, if tooltips are enabled (data-tooltips="on" on <html>),
+      JS creates two elements: `.tooltip-bubble` (text) and `.tooltip-arrow`
+      (triangle), both appended to <body> with `position: fixed`.
+   3. Positioning uses getBoundingClientRect() for viewport-relative coords:
+      - Default: below the element, horizontally centred on it.
+      - If below would overflow the viewport bottom → flip above.
+      - If the bubble extends past the left edge → clamp left to 8px.
+      - If the bubble extends past the right edge → clamp right to 8px.
+      - The arrow always points at the horizontal centre of the trigger.
+   4. On mouseleave the elements are removed from the DOM.
+
+   Toggle state
+   ────────────
+   Gated by `data-tooltips="on"|"off"` on <html>.  Persisted in
+   localStorage under key "padl-tooltips".
+
+   The toggle button uses the same "is-active" amber glow pattern as
+   "Set as A" for visual consistency.
+════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Currently visible tooltip elements, or null if no tooltip is showing.
+ * Stored so mouseleave can clean them up, and so we never create duplicates.
+ *
+ * @type {{ bubble: HTMLDivElement, arrow: HTMLDivElement } | null}
+ */
+let activeTooltip = null;
+
+/**
+ * Show a tooltip for the given trigger element.
+ *
+ * Creates two fixed-position DOM nodes (bubble + arrow) appended to <body>,
+ * then positions them relative to the trigger's bounding rect with
+ * viewport-edge clamping.
+ *
+ * @param {HTMLElement} trigger - The element with a `data-tooltip` attribute.
+ */
+function showTooltip(trigger) {
+  // Remove any existing tooltip first (defensive; shouldn't happen normally)
+  hideTooltip();
+
+  const text = trigger.getAttribute("data-tooltip");
+  if (!text) return;
+
+  // ── Create the bubble (text container) ───────────────────────────────── //
+  const bubble = document.createElement("div");
+  bubble.className = "tooltip-bubble";
+  bubble.textContent = text;
+
+  // ── Create the arrow (triangle pointer) ──────────────────────────────── //
+  const arrow = document.createElement("div");
+  arrow.className = "tooltip-arrow";
+
+  // Append to <body> so they are outside any overflow-clipping ancestor
+  document.body.appendChild(bubble);
+  document.body.appendChild(arrow);
+
+  // Store references for cleanup on mouseleave
+  activeTooltip = { bubble, arrow };
+
+  // ── Measure trigger and bubble for positioning ───────────────────────── //
+  const triggerRect = trigger.getBoundingClientRect();
+  const bubbleRect  = bubble.getBoundingClientRect();
+
+  // Viewport dimensions (used for edge clamping)
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // Gap between trigger edge and arrow tip (pixels)
+  const GAP = 6;
+
+  // Arrow size must match the CSS `border: 6px` on .tooltip-arrow
+  const ARROW_SIZE = 6;
+
+  // Margin from viewport edges (minimum padding)
+  const EDGE_MARGIN = 8;
+
+  // ── Vertical placement: prefer below, flip above if no room ──────────── //
+  //
+  // "Below" means the arrow's tip sits GAP pixels beneath the trigger's
+  // bottom edge, and the bubble sits directly beneath the arrow.
+  //
+  // "Above" means the bubble's bottom edge sits GAP pixels above the
+  // trigger's top edge, and the arrow points downward from the bubble.
+
+  const spaceBelow = vh - triggerRect.bottom;  // px available below trigger
+  const spaceAbove = triggerRect.top;           // px available above trigger
+  const totalNeeded = GAP + ARROW_SIZE + bubbleRect.height;
+
+  // Choose placement: below if there's room, otherwise above
+  const placeAbove = spaceBelow < totalNeeded && spaceAbove > spaceBelow;
+
+  let bubbleTop;
+  let arrowTop;
+
+  if (placeAbove) {
+    // ── Place ABOVE the trigger ──────────────────────────────────────── //
+    // Bubble bottom edge sits GAP + ARROW_SIZE above trigger top
+    bubbleTop = triggerRect.top - GAP - ARROW_SIZE - bubbleRect.height;
+
+    // Arrow points DOWN from bottom of bubble toward the trigger
+    arrowTop = triggerRect.top - GAP - ARROW_SIZE;
+
+    // Arrow triangle: border-top-color creates a downward-pointing triangle
+    arrow.style.borderTopColor = "var(--tooltip-border)";
+  } else {
+    // ── Place BELOW the trigger (default) ────────────────────────────── //
+    // Arrow tip sits GAP below trigger bottom
+    arrowTop = triggerRect.bottom + GAP;
+
+    // Bubble top sits just below the arrow
+    bubbleTop = arrowTop + ARROW_SIZE;
+
+    // Arrow triangle: border-bottom-color creates an upward-pointing triangle
+    arrow.style.borderBottomColor = "var(--tooltip-border)";
+  }
+
+  // ── Horizontal placement: centre on trigger, clamp to viewport ───────── //
+  //
+  // Start by centring the bubble horizontally on the trigger element.
+  // Then clamp so it doesn't extend past either viewport edge.
+
+  const triggerCentreX = triggerRect.left + triggerRect.width / 2;
+  let bubbleLeft = triggerCentreX - bubbleRect.width / 2;
+
+  // Clamp left edge: ensure at least EDGE_MARGIN from viewport left
+  if (bubbleLeft < EDGE_MARGIN) {
+    bubbleLeft = EDGE_MARGIN;
+  }
+
+  // Clamp right edge: ensure at least EDGE_MARGIN from viewport right
+  if (bubbleLeft + bubbleRect.width > vw - EDGE_MARGIN) {
+    bubbleLeft = vw - EDGE_MARGIN - bubbleRect.width;
+  }
+
+  // Arrow horizontal position: always point at the trigger's centre,
+  // offset by half the arrow width so the triangle tip is centred
+  const arrowLeft = triggerCentreX - ARROW_SIZE;
+
+  // ── Apply computed positions ─────────────────────────────────────────── //
+  bubble.style.top  = `${bubbleTop}px`;
+  bubble.style.left = `${bubbleLeft}px`;
+
+  arrow.style.top  = `${arrowTop}px`;
+  arrow.style.left = `${arrowLeft}px`;
+}
+
+/**
+ * Remove the currently visible tooltip from the DOM.
+ * Safe to call even if no tooltip is showing (no-op).
+ */
+function hideTooltip() {
+  if (!activeTooltip) return;
+
+  // Remove both elements from <body>
+  activeTooltip.bubble.remove();
+  activeTooltip.arrow.remove();
+  activeTooltip = null;
+}
+
+/**
+ * Wire up tooltip show/hide listeners on all `[data-tooltip]` elements.
+ *
+ * Uses event delegation on `document.body` via mouseenter/mouseleave
+ * (with `capture: true` for mouseenter since it doesn't bubble).
+ * This approach automatically handles dynamically-added elements
+ * (e.g. sliders rebuilt after a JSON edit) without re-wiring.
+ *
+ * The listeners check `data-tooltips="on"` on <html> before showing,
+ * so no tooltip appears when the toggle is off.
+ */
+function wireTooltipListeners() {
+  /**
+   * mouseenter handler (capture phase).
+   *
+   * Walks up from the event target to find the nearest ancestor (or self)
+   * with a `data-tooltip` attribute.  This handles cases where the mouse
+   * enters a child element inside a tooltip-bearing parent (e.g. the text
+   * inside a <button>).
+   */
+  document.body.addEventListener("mouseenter", (e) => {
+    // Only show tooltips when the global toggle is ON
+    if (document.documentElement.getAttribute("data-tooltips") !== "on") return;
+
+    // Find the nearest tooltip-bearing ancestor (or the target itself)
+    const trigger = e.target.closest("[data-tooltip]");
+    if (!trigger) return;
+
+    showTooltip(trigger);
+  }, true);  // capture: true — mouseenter doesn't bubble, so we capture
+
+  /**
+   * mouseleave handler (capture phase).
+   *
+   * Hides the tooltip when the mouse leaves a tooltip-bearing element.
+   * Uses the same closest() walk as mouseenter for symmetry.
+   */
+  document.body.addEventListener("mouseleave", (e) => {
+    const trigger = e.target.closest("[data-tooltip]");
+    if (!trigger) return;
+
+    hideTooltip();
+  }, true);  // capture: true — mouseleave doesn't bubble
+}
+
+/**
+ * Initialise the tooltip toggle button and restore any saved preference.
+ *
+ * The toggle sets `data-tooltips="on"|"off"` on the <html> element.
+ * JS mouseenter/mouseleave listeners check this attribute before
+ * creating tooltip DOM elements.
+ *
+ * The button's `is-active` class mirrors the pattern used by the
+ * "Set as A" button (.btn--secondary.is-active), providing a consistent
+ * visual language for active/inactive toggle states.
+ */
+function wireTooltipToggle() {
+  const btn = document.getElementById("tooltip-toggle");
+  if (!btn) return;
+
+  /**
+   * Apply the tooltip state to the DOM and persist to localStorage.
+   *
+   * @param {string} tooltipState - Either "on" or "off".
+   */
+  const applyTooltips = (tooltipState) => {
+    // Set the gating attribute checked by tooltip event listeners
+    document.documentElement.setAttribute("data-tooltips", tooltipState);
+
+    // Update the button text to reflect the current state
+    btn.textContent = tooltipState === "on" ? "? Tips \u2713" : "? Tips";
+
+    // Apply the is-active class for the amber glow visual (same as "Set as A")
+    btn.classList.toggle("is-active", tooltipState === "on");
+
+    // Persist the preference so it survives page reloads
+    localStorage.setItem("padl-tooltips", tooltipState);
+
+    // If turning off, immediately hide any visible tooltip
+    if (tooltipState === "off") {
+      hideTooltip();
+    }
+  };
+
+  // Restore saved preference on page load, default to "off"
+  const saved = localStorage.getItem("padl-tooltips") || "off";
+  applyTooltips(saved);
+
+  // Toggle between "on" and "off" on each click
+  btn.addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-tooltips") || "off";
+    applyTooltips(current === "on" ? "off" : "on");
+  });
+
+  // Wire the delegated mouseenter/mouseleave listeners (runs once)
+  wireTooltipListeners();
+}
+
 async function init() {
   wireThemeToggle();
+  wireTooltipToggle();
   wireEvents();
   await loadExampleList();
 

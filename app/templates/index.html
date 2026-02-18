@@ -17,9 +17,9 @@
   │ header                                                                   │
   ├────────────────┬──────────────────────────┬─────────────────────────────┤
   │ LEFT PANEL     │ CENTRE PANEL             │ RIGHT PANEL                 │
-  │ JSON editor    │ Axis sliders             │ Output + Diff               │
-  │ Example loader │ + metadata controls      │                             │
-  │ System prompt  │                          │                             │
+  │ JSON editor    │ Axis sliders             │ Output                      │
+  │ Example loader │ + metadata controls      │ Δ word-level diff           │
+  │ System prompt  │ A/B comparison boxes     │                             │
   ├────────────────┴──────────────────────────┴─────────────────────────────┤
   │ status bar                                                               │
   └──────────────────────────────────────────────────────────────────────────┘
@@ -39,7 +39,14 @@
 <header class="app-header">
   <span class="app-header__title">⚙ Axis Descriptor Lab</span>
   <span class="app-header__subtitle">Pipe-Works · LLM Drift Instrument · v0.1</span>
-  <button id="theme-toggle" class="theme-toggle" title="Toggle light/dark theme">☀ Light</button>
+  <!-- Tooltip toggle: enables/disables hover help tooltips across the UI.
+       Uses the same is-active visual pattern as the "Set as A" button
+       (amber border + glow) to clearly show when tooltips are enabled.
+       tooltip--right prevents the tooltip from overflowing the right edge. -->
+  <button id="tooltip-toggle" class="tooltip-toggle"
+          data-tooltip="Toggle contextual help tooltips on all interactive elements. When active (amber glow), hover any control to see a detailed explanation of its purpose.">? Tips</button>
+  <button id="theme-toggle" class="theme-toggle"
+          data-tooltip="Switch between dark (industrial) and light (warm paper) colour themes. Your preference is saved in the browser.">☀ Light</button>
 </header>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
@@ -51,21 +58,33 @@
   <section class="panel panel--left" aria-label="JSON Editor">
     <h2 class="panel__heading">Payload</h2>
 
-    <!-- Example selector -->
+    <!-- Example selector – lets the user pick from pre-built axis payloads.
+         The dropdown is populated at startup from /api/examples.
+         data-tooltip on the select explains what examples are for;
+         data-tooltip on the button explains what Load does. -->
     <div class="control-row">
       <label for="example-select" class="control-label">Example</label>
-      <select id="example-select" class="select">
+      <select id="example-select" class="select"
+              data-tooltip="Choose a pre-built axis payload example. Examples provide starter JSON with realistic axis configurations for testing different character archetypes.">
         <option value="">— choose —</option>
       </select>
-      <button id="btn-load-example" class="btn btn--secondary" type="button">
+      <button id="btn-load-example" class="btn btn--secondary" type="button"
+              data-tooltip="Load the selected example into the JSON editor. This replaces the current payload, rebuilds all sliders, and resets the editor state.">
         Load
       </button>
     </div>
 
-    <!-- Raw JSON textarea (source of truth) -->
+    <!-- Raw JSON textarea (source of truth).
+         The badge shows OK/ERR to indicate parse status.
+         data-tooltip on the badge explains its meaning. -->
     <label for="json-textarea" class="control-label" style="margin-top:0.75rem;">
-      Axis JSON <span class="badge" id="json-status-badge">OK</span>
+      Axis JSON <span class="badge" id="json-status-badge"
+                      data-tooltip="Indicates whether the JSON below is valid. OK = well-formed JSON that can be sent to the LLM. ERR = syntax error that must be fixed before generating."
+                      >OK</span>
     </label>
+    <!-- The JSON textarea is the canonical source of truth for the payload.
+         Edits here are debounce-parsed and reflected in the sliders.
+         data-tooltip explains the role of this editor. -->
     <textarea
       id="json-textarea"
       class="code-editor"
@@ -74,11 +93,16 @@
       autocomplete="off"
       aria-label="Axis payload JSON"
       placeholder='{"axes": { ... }, "policy_hash": "...", "seed": 0, "world_id": "pipeworks_web"}'
+      data-tooltip="The raw AxisPayload JSON. This is the single source of truth — edits here update the sliders, and slider changes write back here. Must contain an 'axes' object with label + score pairs, plus policy_hash, seed, and world_id."
     ></textarea>
 
-    <!-- System prompt override -->
+    <!-- System prompt override – allows the user to replace the default
+         system prompt (system_prompt_v01.txt) with custom instructions.
+         data-tooltip on the summary explains what this section does. -->
     <details class="collapsible" id="system-prompt-details">
-      <summary class="collapsible__summary">System Prompt <span class="badge badge--muted">override</span></summary>
+      <summary class="collapsible__summary"
+               data-tooltip="Override the default system prompt sent to the LLM before each generation. The system prompt instructs the model how to interpret axis data and produce descriptive text. Leave blank to use the server default (system_prompt_v01.txt)."
+               >System Prompt <span class="badge badge--muted">override</span></summary>
       <label for="system-prompt-textarea" class="control-label" style="margin-top:0.5rem;">
         Leave blank to use the server default (system_prompt_v01.txt)
       </label>
@@ -104,22 +128,33 @@
     <!-- Divider -->
     <hr class="divider" />
 
-    <!-- Label mode toggle -->
+    <!-- Label mode toggle – controls whether axis labels are manually
+         editable or automatically computed by the server's policy table.
+         When Auto is ON, label inputs are disabled and the server maps
+         score ranges to canonical label strings (e.g. age 0.25 → "young"). -->
     <div class="control-row" style="margin-top:0.5rem;">
       <label class="control-label">Label mode</label>
-      <label class="toggle-label">
+      <label class="toggle-label"
+             data-tooltip="When enabled, axis labels are automatically assigned by the server's policy table based on each axis score. Label inputs become read-only. When disabled, you can manually type any label for each axis."
+             >
         <input type="checkbox" id="auto-label-toggle" role="switch" />
         <span class="toggle-text">Auto (policy)</span>
       </label>
-      <button id="btn-relabel" class="btn btn--secondary" type="button" title="Recompute labels from server policy">
+      <button id="btn-relabel" class="btn btn--secondary" type="button"
+              data-tooltip="Send the current payload to the server's /api/relabel endpoint. The server applies its policy table to map each axis score to a canonical label (e.g. physique 0.8 → 'robust'). Useful after adjusting scores to see the policy's interpretation."
+              >
         Recompute
       </button>
     </div>
 
-    <!-- Model + generation settings -->
+    <!-- Model + generation settings grid.
+         These controls configure the LLM request parameters sent to Ollama.
+         data-tooltip attributes explain each setting's purpose and range. -->
     <div class="settings-grid">
       <label for="model-select" class="control-label">Model</label>
-      <div class="model-row">
+      <div class="model-row"
+           data-tooltip="Select the Ollama model to use for text generation. The dropdown lists all locally-pulled models. Smaller models (e.g. gemma2:2b) are faster but less nuanced; larger models produce richer descriptions."
+           >
         <select id="model-select" class="select">
           {% if available_models %}
             {% for m in available_models %}
@@ -141,73 +176,104 @@
       </div>
 
       <label for="temp-input" class="control-label">Temperature</label>
-      <div class="range-row">
+      <div class="range-row"
+           data-tooltip="Controls the randomness of the LLM output. 0.0 = fully deterministic (same input always gives same output). 0.2 = low variation (recommended for testing drift). 1.0+ = highly creative and unpredictable. Range: 0.0 – 2.0."
+           >
         <input type="range" id="temp-range" min="0" max="2" step="0.05" value="0.2" class="range-input" />
         <input type="number" id="temp-input" min="0" max="2" step="0.05" value="0.2" class="input input--sm" />
       </div>
 
       <label for="tokens-input" class="control-label">Max tokens</label>
-      <input type="number" id="tokens-input" min="10" max="2048" value="120" class="input input--sm" />
+      <input type="number" id="tokens-input" min="10" max="2048" value="120" class="input input--sm"
+             data-tooltip="Maximum number of tokens the LLM may generate. Lower values produce shorter, more focused descriptions. Higher values allow more elaborate text. Range: 10 – 2048." />
 
       <label for="seed-input" class="control-label">Seed</label>
       <input type="number" id="seed-input" value="-1" class="input input--sm"
-             title="Seed for the payload. -1 = random (non-deterministic)." />
+             data-tooltip="Seed value written into the payload for reproducibility. Use -1 for a random seed (a new 32-bit integer is generated each time). Use a fixed positive number to get deterministic, reproducible results across runs." />
     </div>
 
-    <!-- Generate button -->
-    <button id="btn-generate" class="btn btn--primary btn--full" type="button">
+    <!-- Generate button – sends the current payload + settings to Ollama
+         via POST /api/generate and displays the response. -->
+    <button id="btn-generate" class="btn btn--primary btn--full" type="button"
+            data-tooltip="Send the current axis payload to the selected Ollama model with the configured temperature and token limit. The LLM produces a non-authoritative description based on the axis values. Results appear in the Output panel to the right."
+            >
       ▶ Generate
     </button>
+
+    <!-- ── A / B comparison boxes ────────────────────────────────────────────
+         Stacked vertically below the Generate button so the centre column
+         serves as the workspace for both axis editing AND diff review.
+         A = stored baseline, B = latest generation.  Both are populated
+         by app.js when the user clicks "Set as A" and generates output. -->
+    <hr class="divider" />
+
+    <div class="diff-stack">
+      <!-- Baseline A -->
+      <div>
+        <div class="diff-label">A · Baseline</div>
+        <div id="diff-a" class="diff-box diff-box--a">
+          <span class="placeholder-text">No baseline set.</span>
+        </div>
+      </div>
+      <!-- Current B -->
+      <div>
+        <div class="diff-label">B · Current</div>
+        <div id="diff-b" class="diff-box diff-box--b">
+          <span class="placeholder-text">Generate to populate B.</span>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- ── RIGHT PANEL: Output + Diff ──────────────────────────────────────── -->
   <section class="panel panel--right" aria-label="Output">
     <div class="output-header">
       <h2 class="panel__heading">Output</h2>
+      <!-- Output action buttons.
+           "Set as A" stores the current output as a baseline for diff comparison.
+           "Clear" resets the output, baseline, and diff panels. -->
       <div class="output-actions">
         <button id="btn-set-baseline" class="btn btn--secondary btn--sm" type="button"
-                title="Store this output as Baseline A for diffing">
+                data-tooltip="Store the current generated text as Baseline A. Once set, subsequent generations become B and are compared word-by-word against A in the Diff panel below. The button glows amber when a baseline is active.">
           Set as A
         </button>
-        <button id="btn-clear-output" class="btn btn--ghost btn--sm" type="button">
+        <!-- Save button: persists the entire session state (payload, output,
+             baseline, system prompt, generation settings) to a timestamped
+             subfolder under data/.  Each save creates individual JSON and
+             Markdown files for both machine and human readability. -->
+        <button id="btn-save" class="btn btn--secondary btn--sm" type="button"
+                data-tooltip="Save the current session state (payload, output, baseline, system prompt, and generation settings) to a timestamped subfolder under data/. Creates metadata.json, payload.json, system_prompt.md, and optionally output.md and baseline.md.">
+          Save
+        </button>
+        <button id="btn-clear-output" class="btn btn--ghost btn--sm" type="button"
+                data-tooltip="Clear the generated output, remove the stored baseline, and reset the diff panels. Returns everything to its initial empty state.">
           Clear
         </button>
       </div>
     </div>
 
-    <!-- Generated text -->
-    <div id="output-box" class="output-box" aria-live="polite" aria-label="Generated description">
+    <!-- Generated text – the LLM's non-authoritative description.
+         aria-live="polite" ensures screen readers announce new content. -->
+    <div id="output-box" class="output-box" aria-live="polite" aria-label="Generated description"
+         data-tooltip="The LLM-generated descriptive text. This is non-authoritative ornamental output — it illustrates how the model interprets the axis payload but is never treated as ground truth. The authoritative data is always the axis JSON itself.">
       <span class="placeholder-text">Click Generate to produce a description.</span>
     </div>
 
-    <!-- Token / meta info -->
-    <div id="output-meta" class="output-meta hidden"></div>
+    <!-- Token / meta info – shows model, temperature, seed, and token counts
+         after each generation. -->
+    <div id="output-meta" class="output-meta hidden"
+         data-tooltip="Generation metadata: the model used, temperature setting, seed value (with 'random' marker if auto-generated), and token counts (prompt tokens sent to the model, generation tokens produced)."></div>
 
-    <!-- Diff section -->
+    <!-- Word-level diff – shows annotated changes between A (baseline in
+         centre panel) and B (latest generation).  Uses LCS-based algorithm;
+         additions green, deletions red with strikethrough. -->
     <details class="collapsible" id="diff-details">
-      <summary class="collapsible__summary">Diff (A vs B)</summary>
+      <summary class="collapsible__summary"
+               data-tooltip="Word-level change highlighting between Baseline A and Current B (shown in the centre panel). Additions in B appear green; words removed from A appear red with strikethrough. Useful for measuring LLM drift across runs."
+               >Δ Changes (word-level)</summary>
 
-      <div class="diff-grid">
-        <!-- Baseline A -->
-        <div>
-          <div class="diff-label">A · Baseline</div>
-          <div id="diff-a" class="diff-box diff-box--a">
-            <span class="placeholder-text">No baseline set.</span>
-          </div>
-        </div>
-        <!-- Current B -->
-        <div>
-          <div class="diff-label">B · Current</div>
-          <div id="diff-b" class="diff-box diff-box--b">
-            <span class="placeholder-text">Generate to populate B.</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Word-level diff view -->
-      <div class="diff-label" style="margin-top:0.75rem;">Δ Changes (word-level)</div>
-      <div id="diff-delta" class="diff-delta">
-        <span class="placeholder-text">—</span>
+      <div id="diff-delta" class="diff-delta" style="margin-top:var(--sp-2);">
+        <span class="placeholder-text">Set a baseline (A) and generate to compare.</span>
       </div>
     </details>
   </section>

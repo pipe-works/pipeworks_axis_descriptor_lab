@@ -226,3 +226,103 @@ class LogEntry(BaseModel):
         ...,
         description="ISO-8601 UTC timestamp of when the log entry was created.",
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /api/save  request / response
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class SaveRequest(BaseModel):
+    """
+    Full request body for POST /api/save.
+
+    The frontend collects all in-memory state at the moment the user clicks
+    Save and sends it here.  The backend writes individual files to a
+    timestamped subfolder under ``data/``.
+
+    Fields
+    ──────
+    payload       – The current AxisPayload (source of truth axes).
+    output        – The latest generated text (``state.current``), or None if
+                    the user hasn't generated yet.
+    baseline      – The stored baseline text (``state.baseline``), or None.
+    model         – The Ollama model name used for the last generation.
+    temperature   – Sampling temperature used.
+    max_tokens    – Token budget used.
+    system_prompt – The system prompt actually sent to the LLM.  The frontend
+                    must resolve which prompt was in use (custom override or
+                    the server default fetched via GET /api/system-prompt) and
+                    send it verbatim.  Must not be empty.
+    """
+
+    payload: AxisPayload = Field(
+        ...,
+        description="The full axis payload at save time.",
+    )
+    output: str | None = Field(
+        default=None,
+        description="Latest generated text (state.current).  None if not generated.",
+    )
+    baseline: str | None = Field(
+        default=None,
+        description="Stored baseline text (state.baseline).  None if not set.",
+    )
+    model: str = Field(
+        ...,
+        description="Ollama model name used (e.g. 'gemma2:2b').",
+    )
+    temperature: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature used.",
+    )
+    max_tokens: int = Field(
+        default=120,
+        ge=10,
+        le=2048,
+        description="Maximum token budget used.",
+    )
+    system_prompt: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "The system prompt actually used in the last generation.  "
+            "The frontend must resolve the active prompt (custom override or "
+            "server default) and send it verbatim.  Must not be empty."
+        ),
+    )
+
+
+class SaveResponse(BaseModel):
+    """
+    Response body for POST /api/save.
+
+    Returns the save folder name and the list of files written so the
+    frontend can display a confirmation message in the status bar.
+
+    Fields
+    ──────
+    folder_name – The name of the subfolder created inside ``data/``.
+    files       – Sorted list of filenames written inside the subfolder.
+    input_hash  – SHA-256 of the payload (for traceability).
+    timestamp   – ISO-8601 UTC timestamp of when the save occurred.
+    """
+
+    folder_name: str = Field(
+        ...,
+        description="Subfolder name under data/ (e.g. '20260218_143022_abc1def2').",
+    )
+    files: list[str] = Field(
+        ...,
+        description="Sorted list of filenames written inside the folder.",
+    )
+    input_hash: str = Field(
+        ...,
+        description="SHA-256 hex digest of the saved AxisPayload.",
+    )
+    timestamp: str = Field(
+        ...,
+        description="ISO-8601 UTC timestamp of the save operation.",
+    )
