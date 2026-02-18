@@ -11,6 +11,8 @@ Endpoints
 GET  /                      → serves index.html
 GET  /api/examples          → list of available example names
 GET  /api/examples/{name}   → returns a single example JSON payload
+GET  /api/prompts           → list of available prompt names
+GET  /api/prompts/{name}    → returns a single prompt's text content
 GET  /api/models            → returns locally available Ollama models
 POST /api/generate          → send axis payload to Ollama, return description
 POST /api/log               → persist a run log entry to logs/run_log.jsonl
@@ -173,6 +175,33 @@ def _load_example(name: str) -> dict:
         ) from exc
 
 
+def _load_prompt(name: str) -> str:
+    """
+    Load a named prompt text file from app/prompts/.
+
+    Unlike ``_load_example()`` which parses structured JSON, this simply reads
+    the file as plain UTF-8 text and returns it stripped of leading/trailing
+    whitespace.  Prompts are natural-language instructions for the LLM, not
+    structured data.
+
+    Parameters
+    ──────────
+    name : Bare filename without extension (e.g. "system_prompt_v01").
+
+    Returns
+    ───────
+    str : The prompt text content, stripped of surrounding whitespace.
+
+    Raises
+    ──────
+    HTTPException(404) if the file doesn't exist.
+    """
+    path = _PROMPTS_DIR / f"{name}.txt"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found.")
+    return path.read_text(encoding="utf-8").strip()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Routes
 # ─────────────────────────────────────────────────────────────────────────────
@@ -225,6 +254,44 @@ def get_example(name: str) -> dict:
     frontend loads it into the textarea).
     """
     return _load_example(name)
+
+
+@app.get("/api/prompts", summary="List available prompt names")
+def list_prompts() -> list[str]:
+    """
+    Return a sorted list of prompt names (without the .txt extension) that
+    are stored in app/prompts/.
+
+    The frontend uses this to populate its prompt library dropdown, allowing
+    users to browse and load different system prompt variants into the
+    system prompt override textarea.
+    """
+    names = sorted(p.stem for p in _PROMPTS_DIR.glob("*.txt"))
+    return names
+
+
+@app.get(
+    "/api/prompts/{name}",
+    response_class=PlainTextResponse,
+    summary="Get a named prompt text",
+)
+def get_prompt(name: str) -> str:
+    """
+    Return the text content of a named prompt file as plain text.
+
+    Uses ``PlainTextResponse`` to match the existing ``/api/system-prompt``
+    endpoint pattern.  The frontend loads this into the system prompt
+    override textarea.
+
+    Parameters
+    ──────────
+    name : Prompt stem, e.g. "system_prompt_v01".
+
+    Returns
+    ───────
+    The raw prompt text (plain text, not JSON).
+    """
+    return _load_prompt(name)
 
 
 @app.get("/api/models", summary="List locally available Ollama models")

@@ -113,6 +113,23 @@
         spellcheck="false"
         placeholder="(server default)"
       ></textarea>
+
+      <!-- Prompt library – lets the user pick from pre-built system prompts.
+           The dropdown is populated at startup from /api/prompts.
+           Mirrors the example-loading UI pattern above.
+           data-tooltip on the select explains what the library contains;
+           data-tooltip on the button explains what Load does. -->
+      <div class="control-row" style="margin-top:0.5rem;">
+        <label for="prompt-select" class="control-label">Prompt</label>
+        <select id="prompt-select" class="select"
+                data-tooltip="Choose a system prompt from the prompt library. Prompts define how the LLM interprets axis data — different variants produce different descriptive styles (terse, environmental, comparative, etc.).">
+          <option value="">— choose —</option>
+        </select>
+        <button id="btn-load-prompt" class="btn btn--secondary" type="button"
+                data-tooltip="Load the selected prompt into the system prompt textarea above. This replaces any existing custom prompt text.">
+          Load
+        </button>
+      </div>
     </details>
   </section>
 
