@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.6](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.5...axis-descriptor-lab-v0.1.6) (2026-02-18)
+
+
+### Bug Fixes
+
+* replace innerHTML with safe DOM methods and add error logging ([d15ad7a](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/d15ad7ae7f635fc4cf4d97a39a5b332fdd014d13))
+* XSS hardening and error logging ([c3ebafe](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/c3ebafe891b5154bfe6bca1b33da1186111c3137))
+
 ## [0.1.5](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.4...axis-descriptor-lab-v0.1.5) (2026-02-18)
 
 
