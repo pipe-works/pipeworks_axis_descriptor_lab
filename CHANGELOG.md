@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.5](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.4...axis-descriptor-lab-v0.1.5) (2026-02-18)
+
+
+### Features
+
+* **ui:** add override badge highlighting and update README ([#13](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/13)) ([93a2511](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/93a251148bad02e460af33e948e583b78103994c))
+* **ui:** add prompt library with load-prompt dropdown ([#11](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/11)) ([56031f0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/56031f0d534b4055798d5548bac4f75ddd2ada66))
+
 ## [0.1.4](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.3...axis-descriptor-lab-v0.1.4) (2026-02-18)
 
 
