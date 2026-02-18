@@ -2,7 +2,9 @@
 
 # Axis Descriptor Lab
 
-Tiny web tool for testing how small LLMs (via Ollama) produce _non-authoritative_ descriptive text from a deterministic axis payload. Part of the Pipe-Works project.
+Tiny web tool for testing how small LLMs (via Ollama) produce _non-authoritative_ descriptive text from a deterministic axis payload. Part of the [Pipe-Works](https://github.com/pipe-works) project.
+
+**Key principle:** The system (axes, scores, seeds) is _authoritative_. The LLM is _ornamental_ -- it produces flavour text only, never makes decisions, and its output is never trusted as ground truth.
 
 <p align="center">
   <img src="docs/images/lab_ui.png" alt="Axis Descriptor Lab UI" width="720">
@@ -37,6 +39,43 @@ Then open **<http://127.0.0.1:8242>** in your browser.
 7. Use the **Prompt** dropdown inside the System Prompt collapsible to load alternative prompt styles (terse, environmental, contrast). The override badge glows amber when a custom prompt is active.
 8. Click **Save** to persist the session state (payload, output, baseline, system prompt, and generation settings) to a timestamped subfolder under `data/`.
 
+## Interpretive Provenance Chain (IPC)
+
+Every generation is fingerprinted by the **Interpretive Provenance Chain** -- a composite SHA-256 hash of all variables that influence the output:
+
+```text
+IPC_ID = SHA-256(
+    input_hash          -- canonical payload JSON
+  + system_prompt_hash  -- normalised system prompt
+  + model               -- Ollama model name
+  + temperature          -- sampling temperature
+  + max_tokens           -- token budget
+  + seed                 -- RNG seed from the payload
+)
+```
+
+Two generations with the same IPC ID used **identical inputs in every respect**. If their outputs differ, the difference is attributable solely to LLM stochasticity.
+
+The IPC enables:
+
+- **Prompt drift detection** -- attribute behavioural changes to specific prompt edits
+- **Model drift detection** -- detect when a model upgrade alters output under identical conditions
+- **Reproducibility audits** -- verify that a saved session can be reproduced
+- **Run grouping** -- group log entries by IPC ID to measure output stability
+
+Four hashes are computed and returned on every `/api/generate` response:
+
+| Hash | What it fingerprints |
+|------|---------------------|
+| `input_hash` | Canonical AxisPayload (axes, scores, seed, policy, world) |
+| `system_prompt_hash` | Normalised system prompt text |
+| `output_hash` | Normalised LLM output text |
+| `ipc_id` | Composite of all provenance fields above |
+
+Hashes are displayed (truncated to 16 chars) in the UI meta area, persisted in `metadata.json` on save, and included in JSONL log entries.
+
+For a comprehensive explanation of the IPC framework, normalisation rules, and design rationale, see the [IPC and Hashing Guide](https://pipeworks-axis-descriptor-lab.readthedocs.io/en/latest/guides/ipc-and-hashing.html) in the project documentation.
+
 ## Endpoints
 
 | Method | Path | Description |
@@ -64,6 +103,7 @@ axis_descriptor_lab/
 ├─ .env.example
 ├─ app/
 │  ├─ main.py                # FastAPI app + all routes
+│  ├─ hashing.py             # IPC normalisation and hash utilities
 │  ├─ ollama_client.py       # HTTP wrapper around Ollama /api/generate
 │  ├─ schema.py              # Pydantic v2 models
 │  ├─ prompts/
@@ -79,7 +119,68 @@ axis_descriptor_lab/
 │  │  └─ app.js
 │  └─ templates/
 │     └─ index.html
+├─ docs/                     # Sphinx documentation (build with: make -C docs html)
+│  ├─ conf.py
+│  ├─ index.rst
+│  ├─ api/                   # autodoc API reference
+│  └─ guides/                # narrative guides (IPC, hashing)
+├─ tests/                    # pytest test suite (133 tests, 100% coverage)
+│  ├─ conftest.py
+│  ├─ test_hashing.py
+│  ├─ test_main.py
+│  ├─ test_ollama_client.py
+│  └─ test_schema.py
 ├─ data/                     # session saves (gitignored)
 └─ logs/
    └─ run_log.jsonl          # created automatically on first log call
 ```
+
+## Documentation
+
+Full Sphinx documentation is available at [pipeworks-axis-descriptor-lab.readthedocs.io](https://pipeworks-axis-descriptor-lab.readthedocs.io/en/latest/).
+
+To build locally:
+
+```bash
+pip install -e ".[docs]"
+make -C docs html
+open docs/_build/html/index.html
+```
+
+Key documentation pages:
+
+- **[IPC and Hashing Guide](https://pipeworks-axis-descriptor-lab.readthedocs.io/en/latest/guides/ipc-and-hashing.html)** -- comprehensive explanation of the Interpretive Provenance Chain framework, normalisation rules, and design rationale
+- **[API Reference](https://pipeworks-axis-descriptor-lab.readthedocs.io/en/latest/api/index.html)** -- auto-generated from docstrings for all Python modules
+
+## Development
+
+```bash
+# Install with dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest                             # all 133 tests
+pytest -v --cov --cov-report=term  # with coverage (100%)
+
+# Lint
+ruff check app/ tests/
+
+# Pre-commit hooks (black, ruff, mypy, bandit, codespell)
+pre-commit install
+pre-commit run --all-files
+```
+
+## Environment variables
+
+Configured via `.env` (copy from `.env.example`):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
+| `DEFAULT_MODEL` | `gemma2:2b` | Default model for generation |
+| `APP_HOST` | `127.0.0.1` | Server bind address |
+| `APP_PORT` | `8242` | Server port |
+
+## License
+
+[GPL-3.0-or-later](LICENSE)

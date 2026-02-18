@@ -7,6 +7,12 @@ Part of the `Pipe-Works <https://github.com/pipe-works>`_ project.
 
 .. toctree::
    :maxdepth: 2
+   :caption: Guides
+
+   guides/index
+
+.. toctree::
+   :maxdepth: 2
    :caption: API Reference
 
    api/index
