@@ -34,6 +34,8 @@ Then open **<http://127.0.0.1:8242>** in your browser.
 4. Choose your Ollama model, temperature, and token budget.
 5. Click **▶ Generate** to produce a descriptive paragraph.
 6. Click **Set as A** to store the output as a baseline, then tweak axes and generate again to see the **Δ Changes** diff.
+7. Use the **Prompt** dropdown inside the System Prompt collapsible to load alternative prompt styles (terse, environmental, contrast). The override badge glows amber when a custom prompt is active.
+8. Click **Save** to persist the session state (payload, output, baseline, system prompt, and generation settings) to a timestamped subfolder under `data/`.
 
 ## Endpoints
 
@@ -42,12 +44,16 @@ Then open **<http://127.0.0.1:8242>** in your browser.
 | GET | `/` | SPA shell |
 | GET | `/api/examples` | List example names |
 | GET | `/api/examples/{name}` | Fetch a named example payload |
+| GET | `/api/prompts` | List available prompt names |
+| GET | `/api/prompts/{name}` | Fetch a named prompt's text |
 | GET | `/api/models` | List locally-pulled Ollama models |
+| GET | `/api/system-prompt` | Return the default system prompt |
 | POST | `/api/generate` | Generate descriptive text |
 | POST | `/api/log` | Persist a run log entry |
 | POST | `/api/relabel` | Recompute labels from policy |
+| POST | `/api/save` | Save session state to data/ |
 
-Interactive API docs: **<http://127.0.0.1:8000/docs>**
+Interactive API docs: **<http://127.0.0.1:8242/docs>**
 
 ## Project layout
 
@@ -61,7 +67,10 @@ axis_descriptor_lab/
 │  ├─ ollama_client.py       # HTTP wrapper around Ollama /api/generate
 │  ├─ schema.py              # Pydantic v2 models
 │  ├─ prompts/
-│  │  └─ system_prompt_v01.txt
+│  │  ├─ system_prompt_v01.txt
+│  │  ├─ system_prompt_v02_terse.txt
+│  │  ├─ system_prompt_v03_environmental.txt
+│  │  └─ system_prompt_v04_contrast.txt
 │  ├─ examples/
 │  │  ├─ example_a.json
 │  │  └─ example_b.json
@@ -70,6 +79,7 @@ axis_descriptor_lab/
 │  │  └─ app.js
 │  └─ templates/
 │     └─ index.html
+├─ data/                     # session saves (gitignored)
 └─ logs/
    └─ run_log.jsonl          # created automatically on first log call
 ```

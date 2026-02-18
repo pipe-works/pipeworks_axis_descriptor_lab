@@ -361,6 +361,13 @@ html, body {
 .badge--warn { background: var(--col-warn); color: #111; }
 .badge--muted { background: var(--col-surface-2); color: var(--col-text-muted); }
 
+/* Active override badge: amber glow to indicate custom content is set.
+   Applied by JS when the system prompt textarea contains user text. */
+.badge--active {
+  background: var(--col-accent);
+  color: #111;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    SLIDER PANEL
 ════════════════════════════════════════════════════════════════════════════ */
