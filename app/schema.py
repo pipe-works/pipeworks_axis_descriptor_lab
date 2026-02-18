@@ -160,6 +160,12 @@ class GenerateResponse(BaseModel):
 
     Carries the raw LLM output plus enough metadata to reconstruct the exact
     call for logging, diffing, and repeatability analysis.
+
+    The four hash fields (``input_hash``, ``system_prompt_hash``,
+    ``output_hash``, ``ipc_id``) form the **Interpretive Provenance Chain
+    (IPC)** — a complete fingerprint of every variable that influenced the
+    generation.  Together they enable drift detection and reproducibility
+    audits.
     """
 
     text: str = Field(
@@ -179,6 +185,36 @@ class GenerateResponse(BaseModel):
         description=(
             "Token-usage information returned by Ollama, if available.  "
             "Keys vary by model (e.g. 'prompt_eval_count', 'eval_count')."
+        ),
+    )
+
+    # ── Interpretive Provenance Chain (IPC) fields ───────────────────────
+    # These four hashes uniquely identify the full generation context.
+
+    input_hash: str | None = Field(
+        default=None,
+        description="SHA-256 hex digest of the canonical serialised AxisPayload.",
+    )
+    system_prompt_hash: str | None = Field(
+        default=None,
+        description=(
+            "SHA-256 hex digest of the normalised system prompt used.  "
+            "Normalisation strips per-line whitespace and edge blank lines."
+        ),
+    )
+    output_hash: str | None = Field(
+        default=None,
+        description=(
+            "SHA-256 hex digest of the normalised output text.  "
+            "Normalisation collapses extra spaces and strips edges."
+        ),
+    )
+    ipc_id: str | None = Field(
+        default=None,
+        description=(
+            "Interpretive Provenance Chain identifier — a SHA-256 digest of "
+            "input_hash:system_prompt_hash:model:temperature:max_tokens:seed.  "
+            "Two generations with the same IPC ID used identical inputs."
         ),
     )
 
@@ -225,6 +261,29 @@ class LogEntry(BaseModel):
     timestamp: str = Field(
         ...,
         description="ISO-8601 UTC timestamp of when the log entry was created.",
+    )
+
+    # ── Interpretive Provenance Chain (IPC) fields ───────────────────────
+    # Optional so that existing JSONL records (written before this feature)
+    # can still be deserialised without error.
+
+    system_prompt_hash: str | None = Field(
+        default=None,
+        description=(
+            "SHA-256 hex digest of the normalised system prompt.  "
+            "None when the log call did not include the prompt text."
+        ),
+    )
+    output_hash: str | None = Field(
+        default=None,
+        description="SHA-256 hex digest of the normalised output text.",
+    )
+    ipc_id: str | None = Field(
+        default=None,
+        description=(
+            "Interpretive Provenance Chain identifier.  None when "
+            "system_prompt was not provided to the log endpoint."
+        ),
     )
 
 
@@ -304,10 +363,13 @@ class SaveResponse(BaseModel):
 
     Fields
     ──────
-    folder_name – The name of the subfolder created inside ``data/``.
-    files       – Sorted list of filenames written inside the subfolder.
-    input_hash  – SHA-256 of the payload (for traceability).
-    timestamp   – ISO-8601 UTC timestamp of when the save occurred.
+    folder_name        – The name of the subfolder created inside ``data/``.
+    files              – Sorted list of filenames written inside the subfolder.
+    input_hash         – SHA-256 of the payload (for traceability).
+    timestamp          – ISO-8601 UTC timestamp of when the save occurred.
+    system_prompt_hash – SHA-256 of the normalised system prompt.
+    output_hash        – SHA-256 of the normalised output (None if no output).
+    ipc_id             – IPC identifier (None if no output was generated).
     """
 
     folder_name: str = Field(
@@ -325,4 +387,25 @@ class SaveResponse(BaseModel):
     timestamp: str = Field(
         ...,
         description="ISO-8601 UTC timestamp of the save operation.",
+    )
+
+    # ── Interpretive Provenance Chain (IPC) fields ───────────────────────
+
+    system_prompt_hash: str | None = Field(
+        default=None,
+        description="SHA-256 hex digest of the normalised system prompt.",
+    )
+    output_hash: str | None = Field(
+        default=None,
+        description=(
+            "SHA-256 hex digest of the normalised output text.  "
+            "None when no output was generated before saving."
+        ),
+    )
+    ipc_id: str | None = Field(
+        default=None,
+        description=(
+            "Interpretive Provenance Chain identifier.  "
+            "None when no output was generated (incomplete chain)."
+        ),
     )

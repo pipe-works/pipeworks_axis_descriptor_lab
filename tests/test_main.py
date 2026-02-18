@@ -244,6 +244,28 @@ class TestGenerateEndpoint:
         assert data["temperature"] == 0.2
         assert data["usage"]["eval_count"] == 10
 
+        # IPC hash fields must be present and well-formed (64-char hex)
+        for key in ("input_hash", "system_prompt_hash", "output_hash", "ipc_id"):
+            assert key in data, f"Missing IPC field: {key}"
+            assert isinstance(data[key], str), f"{key} is not a string"
+            assert len(data[key]) == 64, f"{key} is not 64 chars"
+            int(data[key], 16)  # must be valid hex
+
+    def test_generate_hashes_are_deterministic(
+        self, client: TestClient, sample_payload_dict: dict
+    ) -> None:
+        """Two identical requests must produce identical IPC hashes."""
+        body = self._req_body(sample_payload_dict)
+        results = []
+        for _ in range(2):
+            with patch("app.main.ollama_generate") as mock_gen:
+                mock_gen.return_value = ("Same output.", {})
+                resp = client.post("/api/generate", json=body)
+            results.append(resp.json())
+
+        for key in ("input_hash", "system_prompt_hash", "output_hash", "ipc_id"):
+            assert results[0][key] == results[1][key], f"{key} differs across identical requests"
+
     def test_custom_system_prompt(self, client: TestClient, sample_payload_dict: dict) -> None:
         body = self._req_body(sample_payload_dict)
         body["system_prompt"] = "Custom prompt"
@@ -348,6 +370,57 @@ class TestLogEndpoint:
         assert "input_hash" in data
         assert "timestamp" in data
         assert len(data["input_hash"]) == 64
+
+        # output_hash is always present (output is required)
+        assert data["output_hash"] is not None
+        assert len(data["output_hash"]) == 64
+
+    def test_log_with_system_prompt_includes_all_hashes(
+        self, client: TestClient, sample_payload_dict: dict
+    ) -> None:
+        """When system_prompt is provided, all three IPC hash fields must be set."""
+        resp = client.post(
+            "/api/log",
+            params={
+                "output": "some text",
+                "model": "gemma2:2b",
+                "temperature": "0.2",
+                "max_tokens": "120",
+                "system_prompt": "You are a descriptive layer.",
+            },
+            json=sample_payload_dict,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        for key in ("system_prompt_hash", "output_hash", "ipc_id"):
+            assert data[key] is not None, f"{key} should not be null"
+            assert len(data[key]) == 64, f"{key} should be 64-char hex"
+            int(data[key], 16)
+
+    def test_log_without_system_prompt_has_null_prompt_hash(
+        self, client: TestClient, sample_payload_dict: dict
+    ) -> None:
+        """Without system_prompt, system_prompt_hash and ipc_id must be null."""
+        resp = client.post(
+            "/api/log",
+            params={
+                "output": "some text",
+                "model": "gemma2:2b",
+                "temperature": "0.2",
+                "max_tokens": "120",
+            },
+            json=sample_payload_dict,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        # output_hash is always computed
+        assert data["output_hash"] is not None
+
+        # Without system_prompt, these cannot be computed
+        assert data["system_prompt_hash"] is None
+        assert data["ipc_id"] is None
 
 
 class TestRelabelEndpoint:
@@ -506,6 +579,57 @@ class TestBuildOutputMd:
         assert "2026-02-18" in md
         assert "d845" in md
 
+    def test_includes_ipc_provenance_when_provided(self) -> None:
+        """When system_prompt_hash and ipc_id are passed, they appear in the output."""
+        req = SaveRequest(
+            payload=AxisPayload(
+                axes={"health": AxisValue(label="weary", score=0.5)},
+                policy_hash="abc",
+                seed=42,
+                world_id="w",
+            ),
+            model="gemma2:2b",
+            temperature=0.2,
+            max_tokens=120,
+            system_prompt="You are a test prompt.",
+            output="A weathered figure.",
+        )
+        now = datetime(2026, 2, 18, 14, 0, 0, tzinfo=timezone.utc)
+        sp_hash = "ab" * 32  # 64-char hex
+        ipc = "cd" * 32  # 64-char hex
+        md = _build_output_md(
+            "A weathered figure.",
+            req,
+            now,
+            "d845" + "0" * 60,
+            system_prompt_hash=sp_hash,
+            ipc_id=ipc,
+        )
+
+        assert sp_hash[:16] in md
+        assert ipc[:16] in md
+
+    def test_omits_ipc_provenance_when_not_provided(self) -> None:
+        """When no IPC hashes are passed, their labels must not appear."""
+        req = SaveRequest(
+            payload=AxisPayload(
+                axes={"health": AxisValue(label="weary", score=0.5)},
+                policy_hash="abc",
+                seed=42,
+                world_id="w",
+            ),
+            model="gemma2:2b",
+            temperature=0.2,
+            max_tokens=120,
+            system_prompt="You are a test prompt.",
+            output="A weathered figure.",
+        )
+        now = datetime(2026, 2, 18, 14, 0, 0, tzinfo=timezone.utc)
+        md = _build_output_md("A weathered figure.", req, now, "d845" + "0" * 60)
+
+        assert "system_prompt_hash" not in md
+        assert "ipc_id" not in md
+
 
 class TestBuildBaselineMd:
     """Tests for the _build_baseline_md() Markdown builder."""
@@ -645,7 +769,7 @@ class TestSaveEndpoint:
         save_request_body: dict,
         tmp_path: Path,
     ) -> None:
-        """metadata.json must include all provenance fields."""
+        """metadata.json must include all provenance fields including IPC hashes."""
         import json as _json
 
         with patch("app.main._DATA_DIR", tmp_path):
@@ -665,6 +789,11 @@ class TestSaveEndpoint:
         assert len(metadata["input_hash"]) == 64
         assert "timestamp" in metadata
         assert "folder_name" in metadata
+
+        # IPC hash fields in metadata.json
+        assert len(metadata["system_prompt_hash"]) == 64
+        assert len(metadata["output_hash"]) == 64
+        assert len(metadata["ipc_id"]) == 64
 
     def test_payload_json_round_trips_cleanly(
         self,
@@ -807,3 +936,44 @@ class TestSaveEndpoint:
 
         assert resp.status_code == 500
         assert "disk full" in resp.json()["detail"]
+
+    def test_save_response_contains_hash_fields(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """SaveResponse must include system_prompt_hash, output_hash, and ipc_id."""
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=save_request_body)
+
+        assert resp.status_code == 200
+        data = resp.json()
+
+        for key in ("system_prompt_hash", "output_hash", "ipc_id"):
+            assert key in data, f"Missing field: {key}"
+            assert isinstance(data[key], str), f"{key} should be a string"
+            assert len(data[key]) == 64, f"{key} should be 64-char hex"
+            int(data[key], 16)
+
+    def test_save_without_output_has_null_output_hash(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """When output is None, output_hash and ipc_id must be null."""
+        body = {**save_request_body, "output": None}
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        assert resp.status_code == 200
+        data = resp.json()
+
+        # system_prompt_hash is always computed (prompt is always provided)
+        assert data["system_prompt_hash"] is not None
+        assert len(data["system_prompt_hash"]) == 64
+
+        # Without output, the chain is incomplete
+        assert data["output_hash"] is None
+        assert data["ipc_id"] is None
