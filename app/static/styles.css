@@ -442,6 +442,13 @@ html, body {
   gap: var(--sp-2);
 }
 
+/* Modified indicator — amber accent when a score or label differs from the
+   originally loaded example.  Applied dynamically by buildSlidersFromJson()
+   and the slider/label input event listeners. */
+.axis-modified {
+  color: var(--col-accent) !important;
+}
+
 .axis-score {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -450,17 +457,18 @@ html, body {
   text-align: right;
 }
 
-/* Label input (editable) */
+/* Label input (editable) — default colour is normal text so the amber
+   .axis-modified highlight is visible when the user changes a label. */
 .axis-label-input {
   background: transparent;
   border: none;
   border-bottom: 1px dashed var(--col-border);
-  color: var(--col-accent);
+  color: var(--col-text);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   padding: 1px 2px;
   width: 100%;
-  transition: border-color var(--transition-fast);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
 }
 
 .axis-label-input:focus {

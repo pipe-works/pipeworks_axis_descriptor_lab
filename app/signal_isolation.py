@@ -1,10 +1,10 @@
 """
 app/signal_isolation.py
-─────────────────────────────────────────────────────────────────────────────
+-----------------------------------------------------------------------------
 Signal Isolation Layer for the Axis Descriptor Lab.
 
 Why a dedicated module?
-───────────────────────
+-----------------------
 The signal isolation pipeline transforms raw LLM output text into a filtered
 set of content lemmas so that meaningful lexical pivots can be surfaced
 without structural noise.  Centralising this logic in one module keeps
@@ -12,7 +12,7 @@ without structural noise.  Centralising this logic in one module keeps
 testable.
 
 Pipeline
-────────
+--------
 The module applies a five-step pipeline to each text:
 
 1. **Tokenise** — split text into word tokens using NLTK's Penn Treebank
@@ -29,7 +29,7 @@ The module applies a five-step pipeline to each text:
    that were added or removed.
 
 Design principles (from the specification)
-──────────────────────────────────────────
+------------------------------------------
 • **Deterministic**: same input text always produces the same lemma set.
 • **Transparent**: every step is inspectable; no hidden inference.
 • **No axis attribution**: the pipeline does not know which axis caused
@@ -39,7 +39,7 @@ Design principles (from the specification)
   corpus rarity.  TF-IDF sorting is reserved for a future phase.
 
 NLTK data requirements
-──────────────────────
+----------------------
 This module requires three NLTK data packages:
 
 - ``punkt_tab``  — tokeniser models (Penn Treebank)
@@ -64,9 +64,9 @@ from nltk.tokenize import word_tokenize
 logger = logging.getLogger(__name__)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # NLTK data bootstrap
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 # The three NLTK data packages required by this module.  Each entry is a
 # tuple of (package_name, nltk.data.find path prefix) so that the bootstrap
@@ -109,9 +109,9 @@ def _ensure_nltk_data() -> None:
 _ensure_nltk_data()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Constants
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 # Frozen set of English stopwords for O(1) membership testing.
 # Loaded once at module level after NLTK data is ensured.
@@ -122,9 +122,9 @@ _ENGLISH_STOPWORDS: frozenset[str] = frozenset(stopwords.words("english"))
 _LEMMATIZER: WordNetLemmatizer = WordNetLemmatizer()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Private pipeline helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 def _tokenise(text: str) -> list[str]:
@@ -137,12 +137,12 @@ def _tokenise(text: str) -> list[str]:
     signals.
 
     Parameters
-    ──────────
+    ----------
     text : str
         Raw input text string.
 
     Returns
-    ───────
+    -------
     list[str]
         Lowercase word tokens, each containing at least one letter.
         Empty list if the input is empty or contains no alphabetic tokens.
@@ -177,12 +177,12 @@ def _lemmatise(tokens: list[str]) -> list[str]:
     two-pass heuristic is adequate.
 
     Parameters
-    ──────────
+    ----------
     tokens : list[str]
         List of lowercase word tokens (output of ``_tokenise``).
 
     Returns
-    ───────
+    -------
     list[str]
         Lemmatised tokens in the same order and of the same length as
         the input.
@@ -212,21 +212,21 @@ def _filter_stopwords(tokens: list[str]) -> list[str]:
     ~179 NLTK English stopwords.
 
     Parameters
-    ──────────
+    ----------
     tokens : list[str]
         List of lowercase, lemmatised tokens.
 
     Returns
-    ───────
+    -------
     list[str]
         Tokens with all stopwords removed.  Order is preserved.
     """
     return [t for t in tokens if t not in _ENGLISH_STOPWORDS]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Public API
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 def extract_content_lemmas(text: str) -> set[str]:
@@ -241,12 +241,12 @@ def extract_content_lemmas(text: str) -> set[str]:
     4. Collect into a set — deduplicate remaining content lemmas.
 
     Parameters
-    ──────────
+    ----------
     text : str
         Raw input text (e.g. an LLM-generated paragraph).
 
     Returns
-    ───────
+    -------
     set[str]
         Unique content lemmas extracted from the text.
         Empty set if the text is empty or contains only stopwords.
@@ -272,14 +272,14 @@ def compute_delta(
     added or removed.
 
     Parameters
-    ──────────
+    ----------
     baseline_text : str
         The reference text (A) — typically the stored baseline output.
     current_text : str
         The comparison text (B) — typically the latest generated output.
 
     Returns
-    ───────
+    -------
     tuple[list[str], list[str]]
         A 2-tuple of:
 

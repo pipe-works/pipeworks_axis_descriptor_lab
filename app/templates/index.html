@@ -142,6 +142,18 @@
       <p class="placeholder-text">Load an example or paste JSON to see sliders.</p>
     </div>
 
+    <!-- Randomise button – assigns cryptographically random scores (0.0–1.0)
+         to every axis slider.  Uses crypto.getRandomValues() which is
+         completely isolated from the payload seed and Ollama's RNG.
+         Labels are left unchanged (or recomputed if Auto mode is on). -->
+    <div class="control-row" style="margin-top:0.25rem;">
+      <button id="btn-randomise" class="btn btn--secondary" type="button"
+              data-tooltip="Assign a random score (0.0–1.0) to every axis. Uses the browser's cryptographic RNG (crypto.getRandomValues), which is completely isolated from the payload seed used for Ollama generation. Labels are preserved unless Auto (policy) mode is on, in which case they are recomputed from the new scores."
+              >
+        Randomise
+      </button>
+    </div>
+
     <!-- Divider -->
     <hr class="divider" />
 

@@ -1,13 +1,13 @@
 """
 app/main.py
-─────────────────────────────────────────────────────────────────────────────
+-----------------------------------------------------------------------------
 FastAPI application entrypoint for the Axis Descriptor Lab.
 
 Run with:
     uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 Endpoints
-─────────
+---------
 GET  /                      → serves index.html
 GET  /api/examples          → list of available example names
 GET  /api/examples/{name}   → returns a single example JSON payload
@@ -22,7 +22,7 @@ GET  /api/system-prompt     → return the default system prompt as plain text
 POST /api/save              → save session state to a timestamped data/ subfolder
 
 Architecture notes
-──────────────────
+------------------
 • All blocking I/O (file reads, Ollama HTTP calls) lives in regular `def`
   route handlers.  FastAPI automatically runs those in a threadpool so the
   async event loop is never blocked.
@@ -66,9 +66,9 @@ from app.schema import (
 )
 from app.signal_isolation import compute_delta
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Bootstrap
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 load_dotenv()
 
@@ -91,9 +91,9 @@ _LOG_FILE = _LOGS_DIR / "run_log.jsonl"
 
 _DEFAULT_MODEL: str = os.getenv("DEFAULT_MODEL", "gemma2:2b")
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # FastAPI app + middleware
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 app = FastAPI(
     title="Axis Descriptor Lab",
@@ -111,9 +111,9 @@ app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 def _load_default_prompt() -> str:
@@ -123,7 +123,7 @@ def _load_default_prompt() -> str:
     Returns the text of app/prompts/system_prompt_v01.txt.
 
     Raises
-    ──────
+    ------
     HTTPException(500) if the file is missing.
     """
     prompt_path = _PROMPTS_DIR / "system_prompt_v01.txt"
@@ -143,11 +143,11 @@ def _payload_hash(payload: AxisPayload) -> str:
     to :func:`app.hashing.compute_payload_hash` for the actual hashing.
 
     Parameters
-    ──────────
+    ----------
     payload : The AxisPayload to hash.
 
     Returns
-    ───────
+    -------
     str : 64-character lowercase hex digest.
     """
     return compute_payload_hash(payload.model_dump())
@@ -158,15 +158,15 @@ def _load_example(name: str) -> dict:
     Load and parse a named example JSON file from app/examples/.
 
     Parameters
-    ──────────
+    ----------
     name : Bare filename without extension (e.g. "example_a").
 
     Returns
-    ───────
+    -------
     dict : Parsed JSON object.
 
     Raises
-    ──────
+    ------
     HTTPException(404) if the file doesn't exist.
     HTTPException(500) if the file contains invalid JSON.
     """
@@ -191,15 +191,15 @@ def _load_prompt(name: str) -> str:
     structured data.
 
     Parameters
-    ──────────
+    ----------
     name : Bare filename without extension (e.g. "system_prompt_v01").
 
     Returns
-    ───────
+    -------
     str : The prompt text content, stripped of surrounding whitespace.
 
     Raises
-    ──────
+    ------
     HTTPException(404) if the file doesn't exist.
     """
     path = _PROMPTS_DIR / f"{name}.txt"
@@ -208,9 +208,9 @@ def _load_prompt(name: str) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Routes
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -251,11 +251,11 @@ def get_example(name: str) -> dict:
     Return the parsed JSON for a named example.
 
     Parameters
-    ──────────
+    ----------
     name : Example stem, e.g. "example_a".
 
     Returns
-    ───────
+    -------
     The raw example JSON object (validated loosely by Pydantic when the
     frontend loads it into the textarea).
     """
@@ -290,11 +290,11 @@ def get_prompt(name: str) -> str:
     override textarea.
 
     Parameters
-    ──────────
+    ----------
     name : Prompt stem, e.g. "system_prompt_v01".
 
     Returns
-    ───────
+    -------
     The raw prompt text (plain text, not JSON).
     """
     return _load_prompt(name)
@@ -327,15 +327,15 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     restarting the server.
 
     Parameters
-    ──────────
+    ----------
     req : GenerateRequest – full request body (payload + model settings).
 
     Returns
-    ───────
+    -------
     GenerateResponse containing the generated text and metadata.
 
     Raises
-    ──────
+    ------
     HTTPException(502) if Ollama returns an HTTP error.
     HTTPException(504) if the Ollama request times out.
     HTTPException(500) for any other unexpected error.
@@ -375,7 +375,7 @@ def generate(req: GenerateRequest) -> GenerateResponse:
             status_code=500, detail=f"Unexpected error calling Ollama: {exc}"
         ) from exc
 
-    # ── Compute Interpretive Provenance Chain (IPC) hashes ──────────────
+    # -- Compute Interpretive Provenance Chain (IPC) hashes --------------
     # These four hashes fingerprint the complete generation context so that
     # identical runs can be detected and prompt drift can be audited.
     input_hash = _payload_hash(req.payload)
@@ -424,7 +424,7 @@ def log_run(
     set to None for backward compatibility with older frontend versions.
 
     Parameters
-    ──────────
+    ----------
     payload       : The AxisPayload used in the run.
     output        : The LLM-generated text.
     model         : Ollama model identifier.
@@ -434,7 +434,7 @@ def log_run(
                     enables full IPC chain in the log entry.
 
     Returns
-    ───────
+    -------
     The complete LogEntry that was persisted.
     """
     input_hash = _payload_hash(payload)
@@ -496,11 +496,11 @@ def relabel(payload: AxisPayload) -> AxisPayload:
     sliders meaningful and to show how label changes propagate to LLM output.
 
     Parameters
-    ──────────
+    ----------
     payload : Current AxisPayload (axes with scores, possibly stale labels).
 
     Returns
-    ───────
+    -------
     Updated AxisPayload with labels recomputed from scores.
     """
     # Policy table: axis_name → list of (upper_bound_exclusive, label).
@@ -592,9 +592,9 @@ def relabel(payload: AxisPayload) -> AxisPayload:
     return payload.model_copy(update={"axes": updated_axes})
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # POST /api/analyze-delta
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 @app.post(
@@ -617,12 +617,12 @@ def analyze_delta(req: DeltaRequest) -> DeltaResponse:
     The LLM is not involved — this is pure programmatic text analysis.
 
     Parameters
-    ──────────
+    ----------
     req : DeltaRequest
         Contains ``baseline_text`` and ``current_text``.
 
     Returns
-    ───────
+    -------
     DeltaResponse
         Alphabetically sorted ``removed`` and ``added`` content-lemma
         lists.
@@ -631,9 +631,9 @@ def analyze_delta(req: DeltaRequest) -> DeltaResponse:
     return DeltaResponse(removed=removed, added=added)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Save helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 def _save_folder_name(timestamp: datetime, input_hash: str) -> str:
@@ -645,13 +645,13 @@ def _save_folder_name(timestamp: datetime, input_hash: str) -> str:
     Example: ``20260218_143022_d845cdcf``
 
     Parameters
-    ──────────
+    ----------
     timestamp  : UTC datetime of the save (passed in so the folder name stays
                  consistent with the ``metadata.json`` timestamp).
     input_hash : Full 64-char SHA-256 hex digest of the AxisPayload.
 
     Returns
-    ───────
+    -------
     str : Folder name safe for all major filesystems (no spaces, no special
           characters beyond underscores).
     """
@@ -678,7 +678,7 @@ def _build_output_md(
     carry a complete reproducibility record.
 
     Parameters
-    ──────────
+    ----------
     text               : The raw LLM-generated text.
     req                : The full SaveRequest (for metadata fields).
     now                : UTC datetime of the save (for the provenance header).
@@ -687,7 +687,7 @@ def _build_output_md(
     ipc_id             : Interpretive Provenance Chain identifier (optional).
 
     Returns
-    ───────
+    -------
     str : Markdown string ready to write to disk.
     """
     lines = [
@@ -715,12 +715,12 @@ def _build_baseline_md(text: str, folder_name: str) -> str:
     Format the stored baseline text as a Markdown document.
 
     Parameters
-    ──────────
+    ----------
     text        : The baseline text (state.baseline from the frontend).
     folder_name : Save folder name (used in the provenance comment).
 
     Returns
-    ───────
+    -------
     str : Markdown string ready to write to disk.
     """
     lines = [
@@ -742,12 +742,12 @@ def _build_system_prompt_md(prompt_text: str, folder_name: str) -> str:
     prompt clearly machine-readable when opened in a Markdown viewer.
 
     Parameters
-    ──────────
+    ----------
     prompt_text : The system prompt string (may be multi-line).
     folder_name : Save folder name (for the provenance comment).
 
     Returns
-    ───────
+    -------
     str : Markdown string ready to write to disk.
     """
     lines = [
@@ -763,9 +763,9 @@ def _build_system_prompt_md(prompt_text: str, folder_name: str) -> str:
     return "\n".join(lines)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Save + system-prompt routes
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 
 @app.get(
@@ -782,7 +782,7 @@ def get_system_prompt() -> str:
     prompt text rather than a placeholder.
 
     Returns
-    ───────
+    -------
     str : The default system prompt as plain text.
     """
     return _load_default_prompt()
@@ -804,7 +804,7 @@ def save_run(req: SaveRequest) -> SaveResponse:
     payload → different hash suffix).
 
     Files written
-    ─────────────
+    -------------
     metadata.json     – Model name, temperature, max_tokens, seed, timestamp,
                         input_hash, world_id, policy_hash, and axis count.
     payload.json      – The full AxisPayload as pretty-printed JSON.
@@ -818,15 +818,15 @@ def save_run(req: SaveRequest) -> SaveResponse:
                         does not affect IPC hashes.
 
     Parameters
-    ──────────
+    ----------
     req : SaveRequest – complete session snapshot from the frontend.
 
     Returns
-    ───────
+    -------
     SaveResponse with the folder name, file list, hash, and timestamp.
 
     Raises
-    ──────
+    ------
     HTTPException(500) if file I/O fails.
     """
     now = datetime.now(timezone.utc)
@@ -834,7 +834,7 @@ def save_run(req: SaveRequest) -> SaveResponse:
     folder_name = _save_folder_name(now, input_hash)
     save_dir = _DATA_DIR / folder_name
 
-    # ── Compute IPC hashes ────────────────────────────────────────────────
+    # -- Compute IPC hashes ------------------------------------------------
     # The system prompt hash is always available (system_prompt is required
     # on SaveRequest).  The output hash and IPC ID are only meaningful when
     # output text exists — without output the provenance chain is incomplete.
@@ -858,7 +858,7 @@ def save_run(req: SaveRequest) -> SaveResponse:
     files_written: list[str] = []
 
     try:
-        # ── metadata.json ─────────────────────────────────────────────── #
+        # -- metadata.json ----------------------------------------------- #
         # A flat dict of provenance fields for quick indexing across many
         # saves without parsing the full payload.  Includes IPC hashes
         # so that metadata.json alone is sufficient for reproducibility
@@ -884,7 +884,7 @@ def save_run(req: SaveRequest) -> SaveResponse:
         )
         files_written.append("metadata.json")
 
-        # ── payload.json ──────────────────────────────────────────────── #
+        # -- payload.json ------------------------------------------------ #
         # The full axis payload as pretty-printed JSON, identical to the
         # JSON textarea content in the UI.
         (save_dir / "payload.json").write_text(
@@ -893,13 +893,13 @@ def save_run(req: SaveRequest) -> SaveResponse:
         )
         files_written.append("payload.json")
 
-        # ── system_prompt.md ──────────────────────────────────────────── #
+        # -- system_prompt.md -------------------------------------------- #
         # Always written — the prompt is required by SaveRequest.
         system_prompt_md = _build_system_prompt_md(req.system_prompt, folder_name)
         (save_dir / "system_prompt.md").write_text(system_prompt_md, encoding="utf-8")
         files_written.append("system_prompt.md")
 
-        # ── output.md (conditional) ───────────────────────────────────── #
+        # -- output.md (conditional) ------------------------------------- #
         # Only written when the user has generated text.  Omitting the
         # file (rather than writing an empty one) makes the save folder
         # self-documenting: if output.md is absent, no generation occurred.
@@ -915,14 +915,14 @@ def save_run(req: SaveRequest) -> SaveResponse:
             (save_dir / "output.md").write_text(output_md, encoding="utf-8")
             files_written.append("output.md")
 
-        # ── baseline.md (conditional) ─────────────────────────────────── #
+        # -- baseline.md (conditional) ----------------------------------- #
         # Only written when a baseline was stored via "Set as A".
         if req.baseline is not None:
             baseline_md = _build_baseline_md(req.baseline, folder_name)
             (save_dir / "baseline.md").write_text(baseline_md, encoding="utf-8")
             files_written.append("baseline.md")
 
-        # ── delta.json (conditional) ──────────────────────────────────── #
+        # -- delta.json (conditional) ------------------------------------ #
         # Only written when both output and baseline exist, since the
         # content-word delta requires two texts to compare.
         #

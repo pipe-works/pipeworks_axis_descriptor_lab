@@ -45,6 +45,11 @@ const state = {
   baseline: null,
   current:  null,
   busy:     false,
+
+  // Deep copy of the axes from the most recently loaded example.
+  // Used to detect which scores/labels the user has modified since loading.
+  // Null until an example is loaded; reset on each loadExample() call.
+  originalAxes: null,
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -65,6 +70,7 @@ const btnLoadPrompt        = $("btn-load-prompt");
 const sliderPanel         = $("slider-panel");
 const autoLabelToggle     = $("auto-label-toggle");
 const btnRelabel          = $("btn-relabel");
+const btnRandomise        = $("btn-randomise");
 const modelSelect         = $("model-select");
 const modelInput          = $("model-input");
 const tempRange           = $("temp-range");
@@ -321,6 +327,12 @@ function buildSlidersFromJson() {
     scoreDisplay.className   = "axis-score";
     scoreDisplay.textContent = score.toFixed(3);
 
+    // Highlight the score if it differs from the originally loaded example.
+    const orig = state.originalAxes && state.originalAxes[axisKey];
+    if (orig && Math.abs(score - orig.score) > 0.0001) {
+      scoreDisplay.classList.add("axis-modified");
+    }
+
     sliderWrap.appendChild(slider);
     sliderWrap.appendChild(scoreDisplay);
 
@@ -334,6 +346,11 @@ function buildSlidersFromJson() {
     // Disable label editing when auto-label mode is active
     labelInput.disabled = autoLabelToggle.checked;
 
+    // Highlight the label if it differs from the originally loaded example.
+    if (orig && label !== orig.label) {
+      labelInput.classList.add("axis-modified");
+    }
+
     // ── Wire up events ─────────────────────────────────────────────────── //
 
     /**
@@ -342,6 +359,15 @@ function buildSlidersFromJson() {
     slider.addEventListener("input", () => {
       const newScore = parseFloat(slider.value);
       scoreDisplay.textContent = newScore.toFixed(3);
+
+      // Highlight score if it now differs from the original example value.
+      const origAxis = state.originalAxes && state.originalAxes[axisKey];
+      if (origAxis) {
+        scoreDisplay.classList.toggle(
+          "axis-modified",
+          Math.abs(newScore - origAxis.score) > 0.0001
+        );
+      }
 
       // Write back into state (mutate in place to preserve other fields)
       state.payload.axes[axisKey] = {
@@ -357,6 +383,15 @@ function buildSlidersFromJson() {
      * No auto-relabel is triggered on manual edit – the user owns the label.
      */
     labelInput.addEventListener("input", () => {
+      // Highlight label if it now differs from the original example value.
+      const origAxis = state.originalAxes && state.originalAxes[axisKey];
+      if (origAxis) {
+        labelInput.classList.toggle(
+          "axis-modified",
+          labelInput.value !== origAxis.label
+        );
+      }
+
       state.payload.axes[axisKey] = {
         ...state.payload.axes[axisKey],
         label: labelInput.value,
@@ -412,6 +447,11 @@ async function loadExample(name) {
     const payload = await res.json();
 
     state.payload = payload;
+
+    // Snapshot the original axes so we can highlight user modifications.
+    // Deep copy via JSON round-trip to avoid shared references.
+    state.originalAxes = JSON.parse(JSON.stringify(payload.axes || {}));
+
     syncJsonTextarea();
     buildSlidersFromJson();
     setJsonBadge(true);
@@ -945,6 +985,85 @@ async function relabel() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   RANDOMISE AXIS SCORES
+   ---------------------------------------------------------------------------
+   Assigns a cryptographically random score (0.0-1.0) to every axis in the
+   current payload.  Uses crypto.getRandomValues() which draws from the
+   browser's OS-level CSPRNG — this is completely isolated from:
+
+   - The payload seed (used for Ollama's RNG during token sampling)
+   - JavaScript's Math.random() (not used anywhere in this codebase)
+   - Any server-side random state
+
+   Labels are preserved as-is unless Auto (policy) mode is active, in which
+   case relabel() is called after randomisation to recompute them from the
+   server's policy table.
+════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Generate a single random float in [0, 1] using the Web Crypto API.
+ *
+ * Uses a 32-bit unsigned integer from crypto.getRandomValues() divided by
+ * 2^32 - 1 to produce a uniformly distributed float.  This avoids
+ * Math.random() entirely, ensuring no shared RNG state with any other
+ * part of the system.
+ *
+ * @returns {number} A random float in the closed interval [0, 1].
+ */
+function cryptoRandomFloat() {
+  // Allocate a single 32-bit unsigned integer buffer.
+  const buf = new Uint32Array(1);
+
+  // Fill with cryptographically strong random values from the OS CSPRNG.
+  // This is completely isolated from the payload seed and Ollama's RNG.
+  crypto.getRandomValues(buf);
+
+  // Divide by the maximum Uint32 value (2^32 - 1 = 4294967295) to
+  // normalise into [0, 1].  The result is a uniformly distributed float
+  // with ~32 bits of entropy — far more than needed for axis scores.
+  return buf[0] / 4294967295;
+}
+
+/**
+ * Randomise all axis scores in the current payload.
+ *
+ * For each axis, generates a new score using cryptoRandomFloat() and
+ * rounds it to 3 decimal places (matching the slider step of 0.005).
+ * The axis labels are left unchanged — if the user wants policy-derived
+ * labels, they should have Auto (policy) mode enabled, which triggers
+ * a relabel() call after randomisation.
+ *
+ * Does nothing if no payload is loaded (shows a status message instead).
+ */
+async function randomiseAxes() {
+  if (!state.payload || !state.payload.axes) {
+    setStatus("No payload to randomise.");
+    return;
+  }
+
+  // Assign a new random score to each axis, preserving labels.
+  for (const axisKey of Object.keys(state.payload.axes)) {
+    const newScore = Math.round(cryptoRandomFloat() * 1000) / 1000;
+    state.payload.axes[axisKey] = {
+      ...state.payload.axes[axisKey],
+      score: newScore,
+    };
+  }
+
+  // Reflect the new scores in the JSON textarea and rebuild the sliders.
+  syncJsonTextarea();
+  buildSlidersFromJson();
+
+  // If auto-label mode is active, recompute labels from the server's
+  // policy table so they match the new random scores.
+  if (autoLabelToggle.checked) {
+    await relabel();
+  }
+
+  setStatus("Axis scores randomised.");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    LOGGING
 ════════════════════════════════════════════════════════════════════════════ */
 
@@ -1170,6 +1289,13 @@ function wireEvents() {
   // ── Relabel button ────────────────────────────────────────────────────── //
   btnRelabel.addEventListener("click", () => {
     relabel();
+  });
+
+  // ── Randomise button ──────────────────────────────────────────────────── //
+  // Assigns crypto-random scores to all axes.  Completely isolated from the
+  // payload seed — uses crypto.getRandomValues(), not Math.random().
+  btnRandomise.addEventListener("click", () => {
+    randomiseAxes();
   });
 
   // ── Temperature sync ──────────────────────────────────────────────────── //
