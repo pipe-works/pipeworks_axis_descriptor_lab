@@ -59,6 +59,7 @@ const btnLoadExample      = $("btn-load-example");
 const jsonTextarea        = $("json-textarea");
 const jsonStatusBadge     = $("json-status-badge");
 const systemPromptTextarea = $("system-prompt-textarea");
+const systemPromptBadge    = $("system-prompt-badge");
 const promptSelect         = $("prompt-select");
 const btnLoadPrompt        = $("btn-load-prompt");
 const sliderPanel         = $("slider-panel");
@@ -204,6 +205,24 @@ function setJsonBadge(valid) {
   } else {
     jsonStatusBadge.textContent = "ERR";
     jsonStatusBadge.className   = "badge badge--err";
+  }
+}
+
+/**
+ * Update the system prompt "override" badge to reflect whether a custom
+ * prompt is active.
+ *
+ * When the textarea contains user text the badge switches to amber
+ * (badge--active) to clearly signal that the server default is being
+ * overridden.  When the textarea is empty (server default in effect),
+ * the badge reverts to the muted grey style.
+ */
+function updateSystemPromptBadge() {
+  const hasContent = systemPromptTextarea.value.trim().length > 0;
+  if (hasContent) {
+    systemPromptBadge.className = "badge badge--active";
+  } else {
+    systemPromptBadge.className = "badge badge--muted";
   }
 }
 
@@ -447,6 +466,9 @@ async function loadPrompt(name) {
 
     // Populate the system prompt textarea with the loaded content
     systemPromptTextarea.value = text;
+
+    // Update the override badge to reflect that custom content is now active
+    updateSystemPromptBadge();
 
     // Ensure the System Prompt <details> is open so the user can see it
     const details = document.getElementById("system-prompt-details");
@@ -935,6 +957,13 @@ function wireEvents() {
   promptSelect.addEventListener("dblclick", () => {
     const name = promptSelect.value;
     if (name) loadPrompt(name);
+  });
+
+  // ── System prompt textarea → update override badge ──────────────────── //
+  // When the user types in the system prompt textarea (or clears it), the
+  // badge switches between muted (server default) and active (custom override).
+  systemPromptTextarea.addEventListener("input", () => {
+    updateSystemPromptBadge();
   });
 
   // ── JSON textarea (debounced) → parse → rebuild sliders ──────────────── //
