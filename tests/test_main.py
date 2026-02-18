@@ -15,6 +15,7 @@ from app.main import (
     _build_system_prompt_md,
     _load_default_prompt,
     _load_example,
+    _load_prompt,
     _payload_hash,
     _save_folder_name,
 )
@@ -96,6 +97,32 @@ class TestLoadExample:
             assert exc_info.value.status_code == 500
 
 
+class TestLoadPrompt:
+    """Tests for the _load_prompt() helper function."""
+
+    def test_loads_default_prompt(self) -> None:
+        """Loading system_prompt_v01 should return the known default prompt."""
+        text = _load_prompt("system_prompt_v01")
+        assert "ornamental" in text.lower()
+        assert len(text) > 50
+
+    def test_missing_prompt_raises_404(self) -> None:
+        """A non-existent prompt name must raise HTTPException(404)."""
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            _load_prompt("nonexistent_prompt_xyz")
+        assert exc_info.value.status_code == 404
+
+    def test_returns_stripped_text(self, tmp_path: Path) -> None:
+        """Loaded prompt text must be stripped of leading/trailing whitespace."""
+        prompt_file = tmp_path / "padded.txt"
+        prompt_file.write_text("  \n  Hello world  \n  ", encoding="utf-8")
+        with patch("app.main._PROMPTS_DIR", tmp_path):
+            text = _load_prompt("padded")
+        assert text == "Hello world"
+
+
 # ── API Routes ───────────────────────────────────────────────────────────────
 
 
@@ -131,6 +158,52 @@ class TestGetExample:
 
     def test_missing_example_404(self, client: TestClient) -> None:
         resp = client.get("/api/examples/does_not_exist")
+        assert resp.status_code == 404
+
+
+class TestListPrompts:
+    """Tests for GET /api/prompts – list available prompt names."""
+
+    def test_returns_list(self, client: TestClient) -> None:
+        """Must return a list containing at least the default prompt."""
+        resp = client.get("/api/prompts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+        assert "system_prompt_v01" in data
+
+    def test_sorted(self, client: TestClient) -> None:
+        """Prompt names must be returned in sorted order."""
+        data = client.get("/api/prompts").json()
+        assert data == sorted(data)
+
+    def test_includes_variant_prompts(self, client: TestClient) -> None:
+        """All prompt .txt files in app/prompts/ must appear in the list."""
+        data = client.get("/api/prompts").json()
+        assert len(data) >= 4  # v01 + v02_terse + v03_environmental + v04_contrast
+        assert "system_prompt_v02_terse" in data
+        assert "system_prompt_v03_environmental" in data
+        assert "system_prompt_v04_contrast" in data
+
+
+class TestGetPrompt:
+    """Tests for GET /api/prompts/{name} – retrieve a single prompt's text."""
+
+    def test_returns_prompt_text(self, client: TestClient) -> None:
+        """Loading the default prompt must return non-empty text."""
+        resp = client.get("/api/prompts/system_prompt_v01")
+        assert resp.status_code == 200
+        assert len(resp.text) > 50
+        assert "ornamental" in resp.text.lower()
+
+    def test_returns_plain_text_content_type(self, client: TestClient) -> None:
+        """Response content-type must be text/plain (not JSON)."""
+        resp = client.get("/api/prompts/system_prompt_v01")
+        assert "text/plain" in resp.headers["content-type"]
+
+    def test_missing_prompt_404(self, client: TestClient) -> None:
+        """A non-existent prompt name must return 404."""
+        resp = client.get("/api/prompts/does_not_exist")
         assert resp.status_code == 404
 
 

@@ -59,6 +59,8 @@ const btnLoadExample      = $("btn-load-example");
 const jsonTextarea        = $("json-textarea");
 const jsonStatusBadge     = $("json-status-badge");
 const systemPromptTextarea = $("system-prompt-textarea");
+const promptSelect         = $("prompt-select");
+const btnLoadPrompt        = $("btn-load-prompt");
 const sliderPanel         = $("slider-panel");
 const autoLabelToggle     = $("auto-label-toggle");
 const btnRelabel          = $("btn-relabel");
@@ -376,6 +378,83 @@ async function loadExample(name) {
     setStatus(`Loaded ${name}.`);
   } catch (err) {
     setStatus(`Error loading example: ${err.message}`);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROMPT LIBRARY LOADER
+   ─────────────────────────────────────────────────────────────────────────
+   Mirrors the EXAMPLE LOADER pattern above, but for system prompt text
+   files instead of JSON axis payloads.
+
+   The prompt library lives in app/prompts/ as .txt files.  The API returns
+   file stems (e.g. "system_prompt_v01") and the content as plain text.
+   Loading a prompt populates the system prompt textarea, overriding any
+   existing custom text.
+════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Fetch the list of available system prompts from the server and populate
+ * the prompt <select> dropdown.  Called once at startup.
+ *
+ * Mirrors ``loadExampleList()`` but hits ``/api/prompts`` instead of
+ * ``/api/examples``.  The list contains prompt file stems (e.g.
+ * "system_prompt_v01", "system_prompt_v02_terse").
+ */
+async function loadPromptList() {
+  try {
+    const res  = await fetch("/api/prompts");
+    const list = await res.json();
+
+    // Replace the placeholder option with the full list from the server
+    promptSelect.innerHTML = '<option value="">— choose —</option>';
+    for (const name of list) {
+      const opt       = document.createElement("option");
+      opt.value       = name;
+      opt.textContent = name;
+      promptSelect.appendChild(opt);
+    }
+  } catch (err) {
+    setStatus(`Failed to load prompt list: ${err.message}`);
+  }
+}
+
+/**
+ * Load a named system prompt from the server and populate the system
+ * prompt override textarea with its content.
+ *
+ * Fetches plain text from ``/api/prompts/{name}`` (not JSON — the endpoint
+ * returns ``PlainTextResponse``) and sets it as the textarea value.  The
+ * loaded text takes effect on the next generate call: the backend uses
+ * whatever is in ``system_prompt``, falling back to the server default
+ * only when the textarea is empty.
+ *
+ * After loading, the System Prompt ``<details>`` is opened so the user
+ * can immediately see the loaded content.
+ *
+ * @param {string} name - Prompt stem (e.g. "system_prompt_v01").
+ */
+async function loadPrompt(name) {
+  if (!name) return;
+
+  setStatus(`Loading prompt ${name}…`, true);
+  try {
+    const res = await fetch(`/api/prompts/${name}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    // Use .text() because the endpoint returns PlainTextResponse, not JSON
+    const text = await res.text();
+
+    // Populate the system prompt textarea with the loaded content
+    systemPromptTextarea.value = text;
+
+    // Ensure the System Prompt <details> is open so the user can see it
+    const details = document.getElementById("system-prompt-details");
+    if (details && !details.open) details.open = true;
+
+    setStatus(`Loaded prompt: ${name}`);
+  } catch (err) {
+    setStatus(`Error loading prompt: ${err.message}`);
   }
 }
 
@@ -843,6 +922,21 @@ function wireEvents() {
     if (name) loadExample(name);
   });
 
+  // ── Load prompt button ──────────────────────────────────────────────── //
+  // Mirrors the example-loading pattern: click loads, dblclick is a
+  // convenience shortcut.  The loaded text populates the system prompt
+  // textarea and opens the System Prompt <details> collapsible.
+  btnLoadPrompt.addEventListener("click", () => {
+    const name = promptSelect.value;
+    if (name) loadPrompt(name);
+  });
+
+  // Double-click the prompt dropdown also loads (convenience, mirrors examples)
+  promptSelect.addEventListener("dblclick", () => {
+    const name = promptSelect.value;
+    if (name) loadPrompt(name);
+  });
+
   // ── JSON textarea (debounced) → parse → rebuild sliders ──────────────── //
   jsonTextarea.addEventListener(
     "input",
@@ -1229,6 +1323,7 @@ async function init() {
   wireTooltipToggle();
   wireEvents();
   await loadExampleList();
+  await loadPromptList();
 
   // Auto-load the first example if any exist
   const firstOption = exampleSelect.options[1]; // [0] is the placeholder
