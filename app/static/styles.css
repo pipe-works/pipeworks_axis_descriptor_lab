@@ -535,11 +535,15 @@ html, body {
    DIFF VIEW
 ════════════════════════════════════════════════════════════════════════════ */
 
-.diff-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--sp-2);
-  margin-top: var(--sp-2);
+/*
+ * Vertical stack layout for the A/B comparison boxes in the centre panel.
+ * Replaces the old side-by-side .diff-grid now that A and B live below
+ * the sliders rather than squeezed into the right panel.
+ */
+.diff-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
 }
 
 .diff-label {
@@ -705,8 +709,12 @@ html, body {
    THEME TOGGLE
 ════════════════════════════════════════════════════════════════════════════ */
 
+/*
+ * The theme-toggle no longer needs margin-left: auto because the
+ * tooltip-toggle (which precedes it) now carries that auto-margin
+ * to push both buttons to the right end of the header.
+ */
 .theme-toggle {
-  margin-left: auto;
   background: transparent;
   border: 1px solid var(--col-border-hi);
   border-radius: 4px;
@@ -801,4 +809,164 @@ html, body {
 
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
   background: var(--col-border-hi);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOOLTIP SYSTEM
+   ─────────────────────────────────────────────────────────────────────────
+   Contextual help tooltips that appear on hover for interactive UI elements.
+
+   Architecture
+   ────────────
+   Tooltips are rendered as real DOM elements (#tooltip-bubble, #tooltip-arrow)
+   appended directly to <body> and positioned via JavaScript using
+   getBoundingClientRect().  This approach was chosen because the panels use
+   `overflow-y: auto` which clips CSS pseudo-elements — a <body>-level
+   element is never affected by any ancestor's overflow clipping.
+
+   The tooltip text is stored in `data-tooltip` attributes on the trigger
+   elements.  JavaScript reads the attribute on mouseenter, creates/positions
+   the bubble, and removes it on mouseleave.
+
+   Visibility is gated by the `data-tooltips="on"` attribute on <html>.
+   The JS listeners check this attribute before showing anything.
+
+   The toggle button in the header controls the attribute and persists the
+   user's preference via localStorage (key: "padl-tooltips").
+
+   Positioning logic (in app.js)
+   ─────────────────────────────
+   1. Default: tooltip appears BELOW the element, horizontally centred.
+   2. If below would overflow the viewport bottom → flip ABOVE.
+   3. If the bubble would extend past the left edge → clamp to left edge + 8px.
+   4. If the bubble would extend past the right edge → clamp to right edge − 8px.
+   5. Arrow always points at the horizontal centre of the trigger element.
+
+   Theming
+   ───────
+   Tooltip colours use custom properties so they adapt to both dark and
+   light themes automatically.
+════════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * Custom properties for tooltip styling.
+ * Defined on :root (dark theme) and overridden in [data-theme="light"].
+ */
+:root {
+  --tooltip-bg:       #2a2d34;   /* dark surface for the bubble */
+  --tooltip-text:     #e2e8f0;   /* light text inside the bubble */
+  --tooltip-border:   #3d4149;   /* subtle border around the bubble */
+}
+
+[data-theme="light"] {
+  --tooltip-bg:       #2c2a26;   /* dark bubble on light theme for contrast */
+  --tooltip-text:     #faf8f5;   /* light text against dark bubble */
+  --tooltip-border:   #1a1816;   /* darker border on light theme */
+}
+
+/*
+ * The tooltip bubble — a floating <div> appended to <body> by JS.
+ *
+ * `position: fixed` places it relative to the viewport, matching the
+ * coordinates from getBoundingClientRect().  `pointer-events: none`
+ * ensures it never intercepts mouse events meant for elements beneath.
+ *
+ * z-index 10000 guarantees it floats above the header (z-index 100),
+ * status bar (z-index 100), and all panel content.
+ */
+.tooltip-bubble {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+
+  /* Visual styling */
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
+  border: 1px solid var(--tooltip-border);
+  border-radius: 4px;
+  padding: 6px 10px;
+
+  /* Typography — explicit resets to avoid inheriting parent transforms
+     (uppercase, letter-spacing) from labels and headings. */
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: normal;
+  text-align: left;
+  white-space: normal;
+  word-wrap: break-word;
+
+  /* Size constraints — min-width prevents tiny bubbles for short text;
+     max-width prevents excessively wide bubbles that span the viewport. */
+  min-width: 180px;
+  max-width: 300px;
+  width: max-content;
+
+  /* Subtle shadow for depth separation from the panel surface beneath. */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/*
+ * The tooltip arrow — a small triangle that visually connects the bubble
+ * to its trigger element.
+ *
+ * Created with the CSS border trick: a zero-size element whose borders
+ * on three sides are transparent, while the fourth side's border forms
+ * a visible triangle.  The JS code sets `border-bottom-color` (arrow
+ * pointing up, bubble below) or `border-top-color` (arrow pointing down,
+ * bubble above) depending on the computed placement.
+ *
+ * `position: fixed` + `z-index: 10001` keeps it one layer above the
+ * bubble so the arrow tip overlaps the bubble border cleanly.
+ */
+.tooltip-arrow {
+  position: fixed;
+  z-index: 10001;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+}
+
+/* ── Tooltip toggle button (in header, beside theme toggle) ────────────── */
+
+/*
+ * The tooltip toggle button sits in the header beside the theme toggle.
+ * It shares the same base styling as .theme-toggle but uses the
+ * .btn--secondary.is-active pattern (like "Set as A") when enabled.
+ *
+ * When tooltips are ON, the button gets the amber accent border + glow
+ * to clearly communicate the active state.
+ */
+.tooltip-toggle {
+  margin-left: auto;               /* push this + theme toggle to right end of header */
+  background: transparent;
+  border: 1px solid var(--col-border-hi);
+  border-radius: 4px;
+  color: var(--col-text-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 2px var(--sp-2);
+  transition: color var(--transition-fast),
+              border-color var(--transition-fast),
+              background var(--transition-fast);
+}
+
+.tooltip-toggle:hover {
+  color: var(--col-accent);
+  border-color: var(--col-accent);
+}
+
+/*
+ * Active state mirrors .btn--secondary.is-active exactly:
+ * amber border, amber text, and a subtle amber glow background.
+ * This is the same visual language used by the "Set as A" button.
+ */
+.tooltip-toggle.is-active {
+  border-color: var(--col-accent);
+  color: var(--col-accent);
+  background: var(--col-accent-glow);
 }

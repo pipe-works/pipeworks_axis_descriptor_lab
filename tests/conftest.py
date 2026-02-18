@@ -38,3 +38,22 @@ def sample_payload_dict() -> dict:
 def sample_payload(sample_payload_dict: dict) -> AxisPayload:
     """Minimal valid AxisPayload model instance."""
     return AxisPayload(**sample_payload_dict)
+
+
+@pytest.fixture()
+def save_request_body(sample_payload_dict: dict) -> dict:
+    """A minimal valid SaveRequest body dict for testing POST /api/save.
+
+    Contains all required fields with realistic defaults.  Tests can
+    override individual fields via ``dict.update()`` or by passing
+    keyword arguments when constructing modified copies.
+    """
+    return {
+        "payload": sample_payload_dict,
+        "output": "A weathered figure stands near the threshold.",
+        "baseline": None,
+        "model": "gemma2:2b",
+        "temperature": 0.2,
+        "max_tokens": 120,
+        "system_prompt": "You are a descriptive layer inside a deterministic system.",
+    }
