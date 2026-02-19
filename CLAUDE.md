@@ -42,9 +42,26 @@ The app is a FastAPI backend serving a vanilla JS single-page frontend. There ar
 - **`app/signal_isolation.py`** — NLP pipeline for the Signal Isolation Layer: tokenise (NLTK), lemmatise (WordNet), filter stopwords, compute content-word set delta between two texts. Requires NLTK data packages (punkt_tab, stopwords, wordnet) which are auto-downloaded on first run.
 - **`app/ollama_client.py`** — Synchronous HTTP wrapper around Ollama's `/api/generate` and `/api/tags` endpoints using httpx. 10s connect / 120s read timeout.
 
-### Frontend (Vanilla JS)
+### Frontend (Vanilla JS — ES Modules)
 
-- **`app/static/app.js`** — All interactive behavior: slider controls, JSON textarea sync, generate calls, baseline/diff comparison (word-level LCS diff algorithm), logging.
+The frontend is split into 13 browser-native ES modules (`app/static/mod-*.js`). No bundler — `<script type="module">` loads the entry point and the browser resolves all imports.
+
+- **`mod-init.js`** — Entry point; orchestrates startup (theme, tooltips, events, data loading).
+- **`mod-state.js`** — Singleton state object + cached DOM refs (`state`, `dom`).
+- **`mod-events.js`** — Thin coordinator calling all `wire*Events()` functions.
+- **`mod-utils.js`** — Pure functions: `clamp`, `debounce`, `tokenise`, `lcsWordDiff`, `extractTransformationRows`, `cryptoRandomFloat`, `makePlaceholder`.
+- **`mod-status.js`** — Status bar updates (`setStatus`).
+- **`mod-sync.js`** — Bidirectional sync: `state.payload` ↔ JSON textarea ↔ slider panel. Form readers (`getModelName`, `resolveSeed`), model refresh.
+- **`mod-loaders.js`** — Example and system prompt list/load from server.
+- **`mod-generate.js`** — POST `/api/generate`, output rendering, meta table, diff trigger.
+- **`mod-diff.js`** — Word-level LCS diff, signal isolation (NLP), transformation map.
+- **`mod-axis-actions.js`** — Relabel (server policy), randomise, auto-label toggle.
+- **`mod-persistence.js`** — Save, export zip, import zip, restore session, log.
+- **`mod-tooltip.js`** — JS-positioned tooltip system (standalone, no imports).
+- **`mod-theme.js`** — Dark/light theme toggle with localStorage (standalone).
+
+Supporting files:
+
 - **`app/static/styles.css`** — Dark industrial theme with amber accents, CSS Grid 3-column layout.
 - **`app/templates/index.html`** — SPA shell rendered by Jinja2; injects `default_model` and `available_models` at load time.
 
