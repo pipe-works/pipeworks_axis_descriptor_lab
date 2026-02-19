@@ -42,6 +42,7 @@
  *   baselineMeta:      object|null,
  *   tmapIncludeAll:    boolean,
  *   lastDiff:          Array|null,
+ *   lastTmapResponse:  Array|null,
  *   lastSaveFolderName: string|null
  * }}
  */
@@ -88,6 +89,13 @@ export const state = {
    * can re-render without recomputing the diff.  Null before first diff.
    */
   lastDiff: null,
+
+  /**
+   * Cached server response for the transformation map (rows with indicators).
+   * Each entry is {removed, added, indicators: [...]}.  Null before the
+   * first server-side tmap call or when the server call failed.
+   */
+  lastTmapResponse: null,
 
   /**
    * Folder name returned by the most recent successful save.  Used by

@@ -1049,6 +1049,63 @@ class TestTransformationMapEndpoint:
         )
         assert resp.status_code == 422
 
+    def test_response_includes_indicators_field(self, client: TestClient) -> None:
+        """Every row in the response must include an 'indicators' list."""
+        resp = client.post(
+            "/api/transformation-map",
+            json={
+                "baseline_text": "The old goblin stands near the gate.",
+                "current_text": "The young goblin waits by the door.",
+            },
+        )
+        assert resp.status_code == 200
+        for row in resp.json()["rows"]:
+            assert "indicators" in row
+            assert isinstance(row["indicators"], list)
+
+    def test_indicator_config_accepted(self, client: TestClient) -> None:
+        """Passing indicator_config should not error."""
+        resp = client.post(
+            "/api/transformation-map",
+            json={
+                "baseline_text": "The old goblin stands near the gate.",
+                "current_text": "The young goblin waits by the door.",
+                "indicator_config": {
+                    "compression_ratio": 1.5,
+                    "expansion_ratio": 1.5,
+                    "min_tokens": 1,
+                    "modality_density_threshold": 0.25,
+                },
+            },
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()["rows"]) >= 1
+
+    def test_indicator_config_enabled_filter(self, client: TestClient) -> None:
+        """When enabled is set, only those indicators should appear."""
+        resp = client.post(
+            "/api/transformation-map",
+            json={
+                "baseline_text": "The old goblin stands near the gate.",
+                "current_text": "The young goblin waits by the door.",
+                "indicator_config": {"enabled": ["compression"]},
+            },
+        )
+        assert resp.status_code == 200
+        for row in resp.json()["rows"]:
+            for ind in row["indicators"]:
+                assert ind == "compression"
+
+    def test_identical_texts_indicators_empty(self, client: TestClient) -> None:
+        """Identical texts produce no rows, hence no indicators."""
+        text = "A weathered figure stands near the threshold."
+        resp = client.post(
+            "/api/transformation-map",
+            json={"baseline_text": text, "current_text": text},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["rows"] == []
+
 
 class TestSaveManifest:
     """Tests verifying the manifest section in metadata.json.

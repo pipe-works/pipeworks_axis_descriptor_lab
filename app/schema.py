@@ -442,13 +442,66 @@ class SaveResponse(BaseModel):
 # -----------------------------------------------------------------------------
 
 
+class IndicatorConfig(BaseModel):
+    """
+    Optional tuning parameters for micro-indicator detection.
+
+    Sent as an optional field in :class:`TransformationMapRequest`.  When
+    absent, conservative defaults apply.  All thresholds are designed to
+    minimise false positives — users can loosen them for exploratory use.
+    """
+
+    compression_ratio: float = Field(
+        default=2.0,
+        ge=1.0,
+        description=(
+            "Minimum ratio of removed/added token counts to flag "
+            "'compression'.  Default 2.0 means removed must be at least "
+            "twice as long as added."
+        ),
+    )
+    expansion_ratio: float = Field(
+        default=2.0,
+        ge=1.0,
+        description=(
+            "Minimum ratio of added/removed token counts to flag " "'expansion'.  Default 2.0."
+        ),
+    )
+    min_tokens: int = Field(
+        default=2,
+        ge=1,
+        description=(
+            "Minimum token count on the larger side to consider "
+            "compression/expansion.  Prevents flagging single-word swaps."
+        ),
+    )
+    modality_density_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Minimum absolute change in verb+adjective density "
+            "(proportion of tokens) to flag 'modality shift'.  "
+            "Default 0.3 (conservative)."
+        ),
+    )
+    enabled: list[str] | None = Field(
+        default=None,
+        description=(
+            "When not None, only compute indicators whose names appear "
+            "in this list.  None means all indicators are active."
+        ),
+    )
+
+
 class TransformationMapRequest(BaseModel):
     """
     Request body for ``POST /api/transformation-map``.
 
     Accepts two plain-text strings (baseline and current) for clause-level
     alignment analysis.  The backend runs sentence-aware alignment followed
-    by token-level diffing to extract replacement pairs.
+    by token-level diffing to extract replacement pairs, then classifies
+    each row with structural micro-indicators.
     """
 
     baseline_text: str = Field(
@@ -474,10 +527,24 @@ class TransformationMapRequest(BaseModel):
             "(default), only replacement operations are returned."
         ),
     )
+    indicator_config: IndicatorConfig | None = Field(
+        default=None,
+        description=(
+            "Optional tuning parameters for micro-indicator detection.  "
+            "When absent, conservative defaults apply."
+        ),
+    )
 
 
 class TransformationMapRow(BaseModel):
-    """A single clause-level replacement pair."""
+    """
+    A single clause-level replacement pair with optional micro-indicators.
+
+    The ``indicators`` field contains zero or more structural pattern labels
+    computed by the ``micro_indicators`` module.  Each label is a
+    deterministic heuristic tag such as ``"compression"``,
+    ``"embodiment shift"``, or ``"intensity ↑"``.
+    """
 
     removed: str = Field(
         ...,
@@ -486,6 +553,14 @@ class TransformationMapRow(BaseModel):
     added: str = Field(
         ...,
         description="The text chunk from the current text (B) that replaced it.",
+    )
+    indicators: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Micro-indicator labels for this row (e.g. 'compression', "
+            "'embodiment shift').  Empty list if no indicators match.  "
+            "Computed server-side by deterministic heuristics."
+        ),
     )
 
 

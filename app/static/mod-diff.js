@@ -1,7 +1,8 @@
 /**
  * mod-diff.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Word-level diff visualisation, signal isolation, and transformation map.
+ * Word-level diff visualisation, signal isolation, and transformation map
+ * with micro-indicators.
  *
  * This module handles all three layers of A/B text comparison:
  *
@@ -15,9 +16,11 @@
  *      via POST /api/analyze-delta.  Surfaces meaningful vocabulary pivots
  *      by filtering structural noise.
  *
- *   3. **Transformation map** (updateTransformationMap) — client-side
- *      clause-level grouping of the LCS diff into a REMOVED | ADDED table.
- *      Uses extractTransformationRows() from mod-utils.
+ *   3. **Transformation map** (updateTransformationMap) — server-side
+ *      clause-level alignment via POST /api/transformation-map, returning
+ *      REMOVED | ADDED | INDICATORS rows.  Each row is annotated with
+ *      micro-indicator labels (compression, embodiment shift, etc.).
+ *      Falls back to client-side extraction if the server is unreachable.
  *
  * Data flow
  * ─────────
@@ -244,61 +247,116 @@ export async function updateSignalIsolation() {
 }
 
 /**
- * Build and render the Transformation Map table from a word-level LCS diff.
+ * Fetch transformation map rows (with micro-indicators) from the server
+ * and render as a three-column table: REMOVED | ADDED | INDICATORS.
  *
- * Extracts clause-level rows via `extractTransformationRows()` and renders
- * them as a two-column HTML table (REMOVED | ADDED) inside the
- * `#tmap-panel` element.  Purely client-side — no server API call needed
- * because the diff is already computed by `lcsWordDiff()` in `updateDiff()`.
+ * The server endpoint (POST /api/transformation-map) runs sentence-aware
+ * alignment, token-level diffing, and micro-indicator classification.
+ * Results are cached in `state.lastTmapResponse` so the mode toggle can
+ * re-render without a server round-trip.
  *
- * Called in two contexts:
- *   1. At the end of `updateDiff()` after each generation (with the
- *      freshly computed diff).
- *   2. When the user clicks the mode toggle button (with `state.lastDiff`,
- *      the cached diff from the last `updateDiff()` call).
+ * Falls back to client-side extraction via `extractTransformationRows()`
+ * if the server is unreachable (renders a 2-column table without indicators).
  *
- * Table structure:
- *   - REMOVED column: text from baseline A (red), or em dash for pure inserts.
- *   - ADDED column: text from current B (green), or em dash for pure deletes.
- *
- * @param {Array<[string, string]>} diff - Output of lcsWordDiff(): an array
- *   of [operation, word] tuples.
+ * @param {Array<[string, string]>} diff - Output of lcsWordDiff(): used
+ *   only as a guard (presence means a diff was computed) and as the
+ *   fallback data source when the server call fails.
  */
-export function updateTransformationMap(diff) {
+export async function updateTransformationMap(diff) {
   // Guard: no diff data available
   if (!diff || diff.length === 0) {
     dom.tmapPanel.textContent = "";
     dom.tmapPanel.appendChild(
       makePlaceholder("Set a baseline (A) and generate to see clause-level substitutions.")
     );
+    state.lastTmapResponse = null;
     return;
   }
 
-  const rows = extractTransformationRows(diff, state.tmapIncludeAll);
+  const textA = state.baseline || "";
+  const textB = state.current  || "";
+
+  // Need both texts for server-side analysis
+  if (!textA || !textB) {
+    _renderTmapClientSide(diff);
+    return;
+  }
+
+  try {
+    // Load indicator config from localStorage (if user has tuned thresholds)
+    const storedConfig = localStorage.getItem("adl_indicator_config");
+    const indicatorConfig = storedConfig ? JSON.parse(storedConfig) : null;
+
+    const reqBody = {
+      baseline_text:    textA,
+      current_text:     textB,
+      include_all:      true,   // Always fetch all rows; filter client-side
+      indicator_config: indicatorConfig,
+    };
+
+    const res = await fetch("/api/transformation-map", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify(reqBody),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+
+    // Cache the full response for toggle re-renders and copy handlers
+    state.lastTmapResponse = data.rows;
+
+    _renderTmapFromServer(data.rows);
+  } catch (err) {
+    console.warn("[ADL] Server tmap failed, falling back to client-side:", err);
+    state.lastTmapResponse = null;
+    _renderTmapClientSide(diff);
+  }
+
+  // Auto-open the Transformation Map <details> on first population
+  const tmapDetailsEl = document.getElementById("tmap-details");
+  if (tmapDetailsEl && !tmapDetailsEl.open) {
+    tmapDetailsEl.open = true;
+  }
+}
+
+
+/**
+ * Render a three-column transformation map table from server response data.
+ *
+ * Columns: REMOVED (red) | ADDED (green) | INDICATORS (amber tags).
+ * Rows are filtered client-side based on `state.tmapIncludeAll`:
+ *   - false: only rows where both removed and added are non-empty
+ *   - true: all rows (inserts/deletes shown with em dashes)
+ *
+ * @param {Array<{removed: string, added: string, indicators: string[]}>} allRows
+ *   Full server response rows (fetched with include_all=true).
+ */
+function _renderTmapFromServer(allRows) {
+  // Filter based on mode toggle
+  const rows = state.tmapIncludeAll
+    ? allRows
+    : allRows.filter(r => r.removed && r.added);
 
   const fragment = document.createDocumentFragment();
 
   if (rows.length === 0) {
     fragment.appendChild(makePlaceholder("No clause-level substitutions detected."));
   } else {
-    // ── Two-column table: REMOVED | ADDED ────────────────────────── //
+    // ── Three-column table: REMOVED | ADDED | INDICATORS ──────── //
     const table = document.createElement("table");
-    table.className = "tmap-table";
+    table.className = "tmap-table tmap-table--3col";
 
     // Header row
     const thead = document.createElement("thead");
     const headerRow = document.createElement("tr");
-
-    const thRemoved = document.createElement("th");
-    thRemoved.className = "tmap-header";
-    thRemoved.textContent = "REMOVED";
-    headerRow.appendChild(thRemoved);
-
-    const thAdded = document.createElement("th");
-    thAdded.className = "tmap-header";
-    thAdded.textContent = "ADDED";
-    headerRow.appendChild(thAdded);
-
+    for (const label of ["REMOVED", "ADDED", "INDICATORS"]) {
+      const th = document.createElement("th");
+      th.className = "tmap-header";
+      th.textContent = label;
+      headerRow.appendChild(th);
+    }
     thead.appendChild(headerRow);
     table.appendChild(thead);
 
@@ -307,27 +365,43 @@ export function updateTransformationMap(diff) {
     for (const row of rows) {
       const tr = document.createElement("tr");
 
-      // REMOVED cell: text from A, or em dash for pure inserts
-      const tdRemoved = document.createElement("td");
-      tdRemoved.className = "tmap-cell tmap-cell--removed";
+      // REMOVED cell
+      const tdR = document.createElement("td");
+      tdR.className = "tmap-cell tmap-cell--removed";
       if (row.removed) {
-        tdRemoved.textContent = row.removed;
+        tdR.textContent = row.removed;
       } else {
-        tdRemoved.textContent = "\u2014";  // em dash
-        tdRemoved.classList.add("tmap-cell--empty");
+        tdR.textContent = "\u2014";
+        tdR.classList.add("tmap-cell--empty");
       }
-      tr.appendChild(tdRemoved);
+      tr.appendChild(tdR);
 
-      // ADDED cell: text from B, or em dash for pure deletes
-      const tdAdded = document.createElement("td");
-      tdAdded.className = "tmap-cell tmap-cell--added";
+      // ADDED cell
+      const tdA = document.createElement("td");
+      tdA.className = "tmap-cell tmap-cell--added";
       if (row.added) {
-        tdAdded.textContent = row.added;
+        tdA.textContent = row.added;
       } else {
-        tdAdded.textContent = "\u2014";  // em dash
-        tdAdded.classList.add("tmap-cell--empty");
+        tdA.textContent = "\u2014";
+        tdA.classList.add("tmap-cell--empty");
       }
-      tr.appendChild(tdAdded);
+      tr.appendChild(tdA);
+
+      // INDICATORS cell — render as inline tags
+      const tdI = document.createElement("td");
+      tdI.className = "tmap-cell tmap-cell--indicators";
+      if (row.indicators && row.indicators.length > 0) {
+        for (const ind of row.indicators) {
+          const tag = document.createElement("span");
+          tag.className = "tmap-indicator";
+          tag.textContent = ind;
+          tdI.appendChild(tag);
+        }
+      } else {
+        tdI.textContent = "\u2014";
+        tdI.classList.add("tmap-cell--empty");
+      }
+      tr.appendChild(tdI);
 
       tbody.appendChild(tr);
     }
@@ -337,13 +411,86 @@ export function updateTransformationMap(diff) {
 
   dom.tmapPanel.textContent = "";
   dom.tmapPanel.appendChild(fragment);
-
-  // Auto-open the Transformation Map <details> on first population
-  const tmapDetailsEl = document.getElementById("tmap-details");
-  if (tmapDetailsEl && !tmapDetailsEl.open) {
-    tmapDetailsEl.open = true;
-  }
 }
+
+
+/**
+ * Fallback: render a two-column transformation map from client-side LCS diff.
+ *
+ * Used when the server endpoint is unreachable.  No indicators column.
+ *
+ * @param {Array<[string, string]>} diff - LCS word diff tuples.
+ */
+function _renderTmapClientSide(diff) {
+  const rows = extractTransformationRows(diff, state.tmapIncludeAll);
+
+  const fragment = document.createDocumentFragment();
+
+  if (rows.length === 0) {
+    fragment.appendChild(makePlaceholder("No clause-level substitutions detected."));
+  } else {
+    const table = document.createElement("table");
+    table.className = "tmap-table";
+
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    for (const label of ["REMOVED", "ADDED"]) {
+      const th = document.createElement("th");
+      th.className = "tmap-header";
+      th.textContent = label;
+      headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+
+      const tdR = document.createElement("td");
+      tdR.className = "tmap-cell tmap-cell--removed";
+      tdR.textContent = row.removed || "\u2014";
+      if (!row.removed) tdR.classList.add("tmap-cell--empty");
+      tr.appendChild(tdR);
+
+      const tdA = document.createElement("td");
+      tdA.className = "tmap-cell tmap-cell--added";
+      tdA.textContent = row.added || "\u2014";
+      if (!row.added) tdA.classList.add("tmap-cell--empty");
+      tr.appendChild(tdA);
+
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    fragment.appendChild(table);
+  }
+
+  dom.tmapPanel.textContent = "";
+  dom.tmapPanel.appendChild(fragment);
+}
+
+/**
+ * Get the currently displayable transformation map rows.
+ *
+ * Prefers server-computed rows (with indicators) when available.
+ * Falls back to client-side extraction from the cached LCS diff.
+ * Applies the include-all / replacements-only filter in both cases.
+ *
+ * @returns {Array<{removed: string, added: string, indicators?: string[]}>}
+ *   Filtered rows for display or copy, or empty array if nothing available.
+ */
+function _getTmapRows() {
+  if (state.lastTmapResponse) {
+    return state.tmapIncludeAll
+      ? state.lastTmapResponse
+      : state.lastTmapResponse.filter(r => r.removed && r.added);
+  }
+  if (state.lastDiff) {
+    return extractTransformationRows(state.lastDiff, state.tmapIncludeAll);
+  }
+  return [];
+}
+
 
 /**
  * Wire diff-related event listeners.
@@ -353,8 +500,9 @@ export function updateTransformationMap(diff) {
  *   - Copy TSV button (tab-separated clipboard copy)
  *   - Copy MD button (GitHub-Flavoured Markdown table clipboard copy)
  *
- * All three handlers operate on `state.lastDiff` (the cached LCS diff)
- * and re-render or copy without making any API call.
+ * The toggle re-renders from cached data (server response or LCS diff)
+ * without making a server call.  Copy handlers produce 3-column output
+ * when server data (with indicators) is available, 2-column otherwise.
  *
  * Called once during startup by the mod-events coordinator.
  */
@@ -362,34 +510,40 @@ export function wireDiffEvents() {
   // ── Transformation Map mode toggle ─────────────────────────────── //
   // Switches between "Replacements only" (default) and "All changes"
   // (includes pure inserts and pure deletes).  Re-renders instantly
-  // from the cached diff without any server call.
+  // from cached data without any server call.
   dom.btnTmapMode.addEventListener("click", () => {
     state.tmapIncludeAll = !state.tmapIncludeAll;
     dom.btnTmapMode.textContent = state.tmapIncludeAll ? "All changes" : "Replacements only";
     dom.btnTmapMode.classList.toggle("is-active", state.tmapIncludeAll);
-    if (state.lastDiff) {
-      updateTransformationMap(state.lastDiff);
+
+    // Re-render from cached server response or client-side diff
+    if (state.lastTmapResponse) {
+      _renderTmapFromServer(state.lastTmapResponse);
+    } else if (state.lastDiff) {
+      _renderTmapClientSide(state.lastDiff);
     }
   });
 
   // ── Copy as TSV ────────────────────────────────────────────────── //
-  // Copies the tmap table as tab-separated values.  TSV is chosen over
-  // CSV because it pastes cleanly into spreadsheets and avoids quoting
-  // issues with commas in descriptive text.
+  // Copies the tmap table as tab-separated values.  Includes the
+  // INDICATORS column when server data is available (3-column output).
   dom.btnTmapCopy.addEventListener("click", () => {
-    if (!state.lastDiff) {
-      setStatus("Nothing to copy \u2013 generate a diff first.");
-      return;
-    }
-    const rows = extractTransformationRows(state.lastDiff, state.tmapIncludeAll);
+    const rows = _getTmapRows();
     if (rows.length === 0) {
       setStatus("No transformation rows to copy.");
       return;
     }
 
-    const lines = ["REMOVED\tADDED"];
+    const hasIndicators = state.lastTmapResponse !== null;
+    const header = hasIndicators ? "REMOVED\tADDED\tINDICATORS" : "REMOVED\tADDED";
+    const lines = [header];
     for (const row of rows) {
-      lines.push(`${row.removed || "\u2014"}\t${row.added || "\u2014"}`);
+      let line = `${row.removed || "\u2014"}\t${row.added || "\u2014"}`;
+      if (hasIndicators) {
+        const indicators = (row.indicators || []).join(", ") || "\u2014";
+        line += `\t${indicators}`;
+      }
+      lines.push(line);
     }
 
     navigator.clipboard.writeText(lines.join("\n")).then(() => {
@@ -399,28 +553,29 @@ export function wireDiffEvents() {
   });
 
   // ── Copy as Markdown ───────────────────────────────────────────── //
-  // Copies the tmap table as a GFM Markdown table.  Pipe characters
-  // inside cell text are escaped as \| to prevent column separator
-  // misinterpretation.
+  // Copies the tmap table as a GFM Markdown table.  Includes the
+  // Indicators column when server data is available (3-column output).
   dom.btnTmapCopyMd.addEventListener("click", () => {
-    if (!state.lastDiff) {
-      setStatus("Nothing to copy \u2013 generate a diff first.");
-      return;
-    }
-    const rows = extractTransformationRows(state.lastDiff, state.tmapIncludeAll);
+    const rows = _getTmapRows();
     if (rows.length === 0) {
       setStatus("No transformation rows to copy.");
       return;
     }
 
-    const lines = [
-      "| Removed | Added |",
-      "| --- | --- |",
-    ];
+    const hasIndicators = state.lastTmapResponse !== null;
+    const lines = hasIndicators
+      ? ["| Removed | Added | Indicators |", "| --- | --- | --- |"]
+      : ["| Removed | Added |", "| --- | --- |"];
+
     for (const row of rows) {
       const removed = (row.removed || "\u2014").replace(/\|/g, "\\|");
       const added   = (row.added   || "\u2014").replace(/\|/g, "\\|");
-      lines.push(`| ${removed} | ${added} |`);
+      if (hasIndicators) {
+        const indicators = ((row.indicators || []).join(", ") || "\u2014").replace(/\|/g, "\\|");
+        lines.push(`| ${removed} | ${added} | ${indicators} |`);
+      } else {
+        lines.push(`| ${removed} | ${added} |`);
+      }
     }
 
     navigator.clipboard.writeText(lines.join("\n")).then(() => {

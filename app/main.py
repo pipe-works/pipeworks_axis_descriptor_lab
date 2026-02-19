@@ -14,6 +14,7 @@ Domain modules
 - ``app.ollama_client``    – Synchronous HTTP wrapper around Ollama.
 - ``app.signal_isolation`` – NLP pipeline for content-word delta.
 - ``app.transformation_map`` – Clause-level sentence alignment and diffing.
+- ``app.micro_indicators`` – Structural pattern indicators for transformation map rows.
 - ``app.save_package``     – Manifest builder, zip archive, import/export.
 - ``app.relabel_policy``   – Policy table and score-to-label mapping.
 - ``app.save_formatting``  – Markdown builders and folder-name generator.
@@ -112,6 +113,8 @@ from app.schema import (
     TransformationMapResponse,
     TransformationMapRow,
 )
+from app.micro_indicators import IndicatorConfig as _IndicatorConfig
+from app.micro_indicators import classify_rows
 from app.signal_isolation import compute_delta
 from app.transformation_map import compute_transformation_map
 
@@ -515,36 +518,68 @@ def analyze_delta(req: DeltaRequest) -> DeltaResponse:
 @app.post(
     "/api/transformation-map",
     response_model=TransformationMapResponse,
-    summary="Compute clause-level replacement pairs between baseline and current text",
+    summary="Compute clause-level replacement pairs with micro-indicators",
 )
 def transformation_map(req: TransformationMapRequest) -> TransformationMapResponse:
     """
-    Transformation Map endpoint.
+    Transformation Map endpoint with micro-indicators.
 
     Takes two text strings (baseline A and current B), runs sentence-aware
     alignment followed by token-level diffing, and returns clause-level
-    replacement pairs.
+    replacement pairs.  Each row is then classified with structural
+    micro-indicators (compression, embodiment shift, intensity change, etc.)
+    using deterministic heuristics.
 
     This fills the gap between word-level diff (too granular) and
     content-word delta (structure-blind) by showing *what chunk of text
-    was replaced by what chunk* at the clause scale.
+    was replaced by what chunk* at the clause scale, annotated with
+    structural pattern labels.
 
     The LLM is not involved — this is pure programmatic text analysis.
 
     Parameters
     ----------
     req : TransformationMapRequest
-        Contains ``baseline_text`` and ``current_text``.
+        Contains ``baseline_text``, ``current_text``, and optional
+        ``indicator_config`` for tuning heuristic thresholds.
 
     Returns
     -------
     TransformationMapResponse
-        Ordered list of ``TransformationMapRow`` replacement pairs.
+        Ordered list of ``TransformationMapRow`` replacement pairs,
+        each annotated with zero or more micro-indicator labels.
     """
     rows = compute_transformation_map(
         req.baseline_text, req.current_text, include_all=req.include_all
     )
-    return TransformationMapResponse(rows=[TransformationMapRow(**row) for row in rows])
+
+    # Convert the Pydantic IndicatorConfig to the module's dataclass.
+    config = None
+    if req.indicator_config is not None:
+        config = _IndicatorConfig(
+            compression_ratio=req.indicator_config.compression_ratio,
+            expansion_ratio=req.indicator_config.expansion_ratio,
+            min_tokens=req.indicator_config.min_tokens,
+            modality_density_threshold=req.indicator_config.modality_density_threshold,
+            enabled=(
+                tuple(req.indicator_config.enabled)
+                if req.indicator_config.enabled is not None
+                else None
+            ),
+        )
+
+    indicators = classify_rows(rows, config=config)
+
+    return TransformationMapResponse(
+        rows=[
+            TransformationMapRow(
+                removed=row["removed"],
+                added=row["added"],
+                indicators=ind,
+            )
+            for row, ind in zip(rows, indicators)
+        ]
+    )
 
 
 # -----------------------------------------------------------------------------

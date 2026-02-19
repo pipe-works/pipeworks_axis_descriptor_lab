@@ -190,6 +190,7 @@ cython_debug/
 
 # Runtime save output (session snapshots)
 data/
+!app/data/
 
 # Ruff stuff:
 .ruff_cache/

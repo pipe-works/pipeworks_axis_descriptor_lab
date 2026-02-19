@@ -37,13 +37,15 @@ The app is a FastAPI backend serving a vanilla JS single-page frontend. There ar
 ### Backend (Python)
 
 - **`app/main.py`** — FastAPI app: thin routing layer that orchestrates calls to domain modules. Sync handlers (not async); FastAPI runs them in a threadpool. Serves the Jinja2 template at `/` and all `/api/*` endpoints.
-- **`app/schema.py`** — Pydantic v2 models: `AxisValue` (label + score 0.0–1.0), `AxisPayload` (dict of axes + policy_hash + seed + world_id), `GenerateRequest`, `GenerateResponse`, `LogEntry`, `DeltaRequest`, `DeltaResponse`.
+- **`app/schema.py`** — Pydantic v2 models: `AxisValue` (label + score 0.0–1.0), `AxisPayload` (dict of axes + policy_hash + seed + world_id), `GenerateRequest`, `GenerateResponse`, `LogEntry`, `DeltaRequest`, `DeltaResponse`, `IndicatorConfig`, `TransformationMapRow` (with `indicators`).
 - **`app/hashing.py`** — IPC normalisation and hash utilities (payload, system prompt, output, composite IPC ID, typed `payload_hash` convenience wrapper).
 - **`app/signal_isolation.py`** — NLP pipeline for the Signal Isolation Layer: tokenise (NLTK), lemmatise (WordNet), filter stopwords, compute content-word set delta between two texts. Requires NLTK data packages (punkt_tab, stopwords, wordnet) which are auto-downloaded on first run.
 - **`app/ollama_client.py`** — Synchronous HTTP wrapper around Ollama's `/api/generate` and `/api/tags` endpoints using httpx. 10s connect / 120s read timeout.
 - **`app/relabel_policy.py`** — Policy data table (`RELABEL_POLICY`) and `apply_relabel_policy()` function for score-to-label mapping across 11 axes.
 - **`app/save_formatting.py`** — Pure formatting functions for the save system: `save_folder_name()`, `build_output_md()`, `build_baseline_md()`, `build_system_prompt_md()`. No I/O, no app dependencies.
 - **`app/file_loaders.py`** — File-loading utilities: `load_default_prompt()`, `load_example()`, `load_prompt()`, `list_example_names()`, `list_prompt_names()`. Reads from `app/prompts/` and `app/examples/`.
+- **`app/micro_indicators.py`** — Structural Learning Layer: 10 deterministic heuristic classifiers (`compression`, `expansion`, `embodiment shift`, `abstraction ↑`, `intensity ↑/↓`, `consolidation`, `fragmentation`, `modality shift`, `tone reframing`, `lexical pivot`) that label transformation-map rows. Uses NLTK for POS tagging/sentence segmentation and JSON lexicon data from `app/data/`. Configurable via `IndicatorConfig`.
+- **`app/data/`** — JSON lexicon files for micro-indicators: `embodiment_v0_1.json`, `abstraction_v0_1.json`, `intensity_v0_1.json`.
 
 ### Frontend (Vanilla JS — ES Modules)
 
@@ -57,7 +59,7 @@ The frontend is split into 13 browser-native ES modules (`app/static/mod-*.js`).
 - **`mod-sync.js`** — Bidirectional sync: `state.payload` ↔ JSON textarea ↔ slider panel. Form readers (`getModelName`, `resolveSeed`), model refresh.
 - **`mod-loaders.js`** — Example and system prompt list/load from server.
 - **`mod-generate.js`** — POST `/api/generate`, output rendering, meta table, diff trigger.
-- **`mod-diff.js`** — Word-level LCS diff, signal isolation (NLP), transformation map.
+- **`mod-diff.js`** — Word-level LCS diff, signal isolation (NLP), transformation map (server-side with micro-indicator tags, client-side fallback).
 - **`mod-axis-actions.js`** — Relabel (server policy), randomise, auto-label toggle.
 - **`mod-persistence.js`** — Save, export zip, import zip, restore session, log.
 - **`mod-tooltip.js`** — JS-positioned tooltip system (standalone, no imports).
