@@ -34,16 +34,18 @@ Architecture notes
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import re
 import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
@@ -55,12 +57,21 @@ from app.hashing import (
     compute_system_prompt_hash,
 )
 from app.ollama_client import OLLAMA_HOST, list_local_models, ollama_generate
+from app.save_package import (
+    build_manifest,
+    create_zip_archive,
+    extract_body_text,
+    extract_fenced_code,
+    validate_and_extract_zip,
+    MAX_UPLOAD_SIZE,
+)
 from app.schema import (
     AxisPayload,
     DeltaRequest,
     DeltaResponse,
     GenerateRequest,
     GenerateResponse,
+    ImportResponse,
     LogEntry,
     SaveRequest,
     SaveResponse,
@@ -918,33 +929,6 @@ def save_run(req: SaveRequest) -> SaveResponse:
     files_written: list[str] = []
 
     try:
-        # -- metadata.json ----------------------------------------------- #
-        # A flat dict of provenance fields for quick indexing across many
-        # saves without parsing the full payload.  Includes IPC hashes
-        # so that metadata.json alone is sufficient for reproducibility
-        # audits without parsing the other saved files.
-        metadata = {
-            "folder_name": folder_name,
-            "timestamp": now.isoformat(),
-            "input_hash": input_hash,
-            "system_prompt_hash": sp_hash,
-            "output_hash": out_hash,
-            "ipc_id": ipc,
-            "model": req.model,
-            "temperature": req.temperature,
-            "max_tokens": req.max_tokens,
-            "seed": req.payload.seed,
-            "world_id": req.payload.world_id,
-            "policy_hash": req.payload.policy_hash,
-            "axis_count": len(req.payload.axes),
-            "diff_change_pct": req.diff_change_pct,
-        }
-        (save_dir / "metadata.json").write_text(
-            json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        files_written.append("metadata.json")
-
         # -- payload.json ------------------------------------------------ #
         # The full axis payload as pretty-printed JSON, identical to the
         # JSON textarea content in the UI.
@@ -1022,6 +1006,39 @@ def save_run(req: SaveRequest) -> SaveResponse:
             )
             files_written.append("transformation_map.json")
 
+        # -- metadata.json (written LAST) -------------------------------- #
+        # metadata.json is written after all other files so that the
+        # manifest can include SHA-256 checksums of every file.  The
+        # manifest makes the save package self-describing and verifiable.
+        metadata: dict[str, object] = {
+            "folder_name": folder_name,
+            "timestamp": now.isoformat(),
+            "input_hash": input_hash,
+            "system_prompt_hash": sp_hash,
+            "output_hash": out_hash,
+            "ipc_id": ipc,
+            "model": req.model,
+            "temperature": req.temperature,
+            "max_tokens": req.max_tokens,
+            "seed": req.payload.seed,
+            "world_id": req.payload.world_id,
+            "policy_hash": req.payload.policy_hash,
+            "axis_count": len(req.payload.axes),
+            "diff_change_pct": req.diff_change_pct,
+        }
+
+        # Build the manifest from all files written so far (before
+        # metadata.json itself exists).  metadata.json gets sha256=null
+        # in the manifest because it cannot hash its own content.
+        manifest = build_manifest(save_dir, files_written)
+        metadata["manifest"] = manifest
+
+        (save_dir / "metadata.json").write_text(
+            json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        files_written.append("metadata.json")
+
     except OSError as exc:
         raise HTTPException(
             status_code=500,
@@ -1036,4 +1053,187 @@ def save_run(req: SaveRequest) -> SaveResponse:
         system_prompt_hash=sp_hash,
         output_hash=out_hash,
         ipc_id=ipc,
+    )
+
+
+# -----------------------------------------------------------------------------
+# GET /api/save/{folder_name}/export
+# -----------------------------------------------------------------------------
+
+# Regex pattern for valid save folder names (YYYYMMDD_HHMMSS_<8hex>).
+# Used as a security check to prevent path traversal via crafted folder names.
+_FOLDER_NAME_PATTERN = re.compile(r"^\d{8}_\d{6}_[0-9a-f]{8}$")
+
+
+@app.get(
+    "/api/save/{folder_name}/export",
+    summary="Download a save package as a zip file",
+)
+def export_save(folder_name: str) -> StreamingResponse:
+    """
+    Stream a save folder as a compressed zip archive for download.
+
+    The endpoint validates the folder name against a strict pattern to
+    prevent path-traversal attacks, then bundles all known save-package
+    files into a zip using ``save_package.create_zip_archive()``.
+
+    Parameters
+    ----------
+    folder_name : The save folder name (e.g. '20260219_101437_5d628967').
+                  Must match the ``YYYYMMDD_HHMMSS_<8hex>`` pattern.
+
+    Returns
+    -------
+    StreamingResponse : A zip file with ``Content-Disposition: attachment``.
+
+    Raises
+    ------
+    HTTPException(400) : If the folder name doesn't match the expected pattern.
+    HTTPException(404) : If the folder does not exist under ``data/``.
+    """
+    # Security: validate folder name format to prevent path traversal.
+    if not _FOLDER_NAME_PATTERN.match(folder_name):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid folder name format: '{folder_name}'.",
+        )
+
+    save_dir = _DATA_DIR / folder_name
+    if not save_dir.is_dir():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Save folder not found: '{folder_name}'.",
+        )
+
+    zip_bytes = create_zip_archive(save_dir)
+
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{folder_name}.zip"',
+        },
+    )
+
+
+# -----------------------------------------------------------------------------
+# POST /api/import
+# -----------------------------------------------------------------------------
+
+
+@app.post(
+    "/api/import",
+    response_model=ImportResponse,
+    summary="Import a save package from a zip upload",
+)
+async def import_save(file: UploadFile) -> ImportResponse:
+    """
+    Accept an uploaded save-package zip, validate it, and return structured
+    state for the frontend to restore a complete session.
+
+    The endpoint reads the uploaded file, enforces a maximum upload size,
+    validates the zip structure and manifest checksums (if present), then
+    extracts plain text from the Markdown files so the frontend can
+    populate the UI directly without parsing.
+
+    Parameters
+    ----------
+    file : The uploaded zip file (multipart form data).
+
+    Returns
+    -------
+    ImportResponse : Everything the frontend needs to restore session state.
+
+    Raises
+    ------
+    HTTPException(400) : If the file is not a valid zip, exceeds size limits,
+                         or fails checksum validation.
+    HTTPException(422) : If required files (metadata.json, payload.json,
+                         system_prompt.md) are missing from the zip.
+    """
+    # Read the uploaded file and enforce the size limit.
+    zip_bytes = await file.read()
+    if len(zip_bytes) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Upload size ({len(zip_bytes):,} bytes) exceeds the "
+                f"{MAX_UPLOAD_SIZE:,}-byte limit."
+            ),
+        )
+
+    # Validate and extract the zip contents.
+    try:
+        extracted, warnings = validate_and_extract_zip(zip_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # -- Parse required files -------------------------------------------- #
+
+    # metadata.json — provides model, temperature, max_tokens, seed, etc.
+    if "metadata.json" not in extracted:
+        raise HTTPException(
+            status_code=422,
+            detail="Missing required file: metadata.json",
+        )
+    try:
+        metadata = json.loads(extracted["metadata.json"].decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"metadata.json is not valid JSON: {exc}",
+        ) from exc
+
+    # payload.json — the authoritative axis data.
+    if "payload.json" not in extracted:
+        raise HTTPException(
+            status_code=422,
+            detail="Missing required file: payload.json",
+        )
+    try:
+        payload_dict = json.loads(extracted["payload.json"].decode("utf-8"))
+        payload = AxisPayload(**payload_dict)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"payload.json is invalid: {exc}",
+        ) from exc
+
+    # system_prompt.md — the prompt text (required).
+    if "system_prompt.md" not in extracted:
+        raise HTTPException(
+            status_code=422,
+            detail="Missing required file: system_prompt.md",
+        )
+    system_prompt = extract_fenced_code(extracted["system_prompt.md"].decode("utf-8"))
+
+    # -- Parse optional files -------------------------------------------- #
+
+    output: str | None = None
+    if "output.md" in extracted:
+        output = extract_body_text(extracted["output.md"].decode("utf-8"))
+
+    baseline: str | None = None
+    if "baseline.md" in extracted:
+        baseline = extract_body_text(extracted["baseline.md"].decode("utf-8"))
+
+    # -- Determine manifest validity ------------------------------------- #
+    # If validation passed without raising (no checksum mismatch),
+    # the manifest is valid.  This is always True here because
+    # validate_and_extract_zip raises on mismatch.
+    manifest_valid = True
+
+    return ImportResponse(
+        folder_name=metadata.get("folder_name", "unknown"),
+        metadata=metadata,
+        payload=payload,
+        system_prompt=system_prompt,
+        output=output,
+        baseline=baseline,
+        model=metadata.get("model", "unknown"),
+        temperature=metadata.get("temperature", 0.2),
+        max_tokens=metadata.get("max_tokens", 120),
+        manifest_valid=manifest_valid,
+        files=sorted(extracted.keys()),
+        warnings=warnings,
     )
