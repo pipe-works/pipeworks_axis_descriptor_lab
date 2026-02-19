@@ -255,7 +255,15 @@
       </div>
       <!-- Current B -->
       <div>
-        <div class="diff-label">B · Current</div>
+        <div class="diff-label">B · Current
+          <!-- "Set as A" promotes the current output (B) to become the
+               baseline (A).  Placed here so its action is visually tied
+               to the text it operates on. -->
+          <button id="btn-set-baseline" class="btn btn--secondary btn--sm" type="button"
+                  data-tooltip="Store the current generated text as Baseline A. Once set, subsequent generations become B and are compared word-by-word against A in the Diff panel below. The button glows amber when a baseline is active.">
+            Set as A
+          </button>
+        </div>
         <div id="diff-b" class="diff-box diff-box--b">
           <span class="placeholder-text">Generate to populate B.</span>
         </div>
@@ -297,13 +305,10 @@
     <div class="output-header">
       <h2 class="panel__heading">Output</h2>
       <!-- Output action buttons.
-           "Set as A" stores the current output as a baseline for diff comparison.
-           "Clear" resets the output, baseline, and diff panels. -->
+           "Clear" resets the output, baseline, and diff panels.
+           "Set as A" has been moved to sit next to the B · Current label
+           in the diff section, where its purpose is more obvious. -->
       <div class="output-actions">
-        <button id="btn-set-baseline" class="btn btn--secondary btn--sm" type="button"
-                data-tooltip="Store the current generated text as Baseline A. Once set, subsequent generations become B and are compared word-by-word against A in the Diff panel below. The button glows amber when a baseline is active.">
-          Set as A
-        </button>
         <!-- Save button: persists the entire session state (payload, output,
              baseline, system prompt, generation settings) to a timestamped
              subfolder under data/.  Each save creates individual JSON and
