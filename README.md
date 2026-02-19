@@ -149,7 +149,7 @@ axis_descriptor_lab/
 │  ├─ index.rst
 │  ├─ api/                   # autodoc API reference
 │  └─ guides/                # narrative guides (IPC, hashing)
-├─ tests/                    # pytest test suite (547 tests, 99% coverage)
+├─ tests/                    # pytest test suite (554 tests, 99% coverage)
 │  ├─ conftest.py
 │  ├─ test_hashing.py
 │  ├─ test_main.py
@@ -192,7 +192,7 @@ Key documentation pages:
 pip install -e ".[dev]"
 
 # Run tests
-pytest                             # all 547 tests
+pytest                             # all 554 tests
 pytest -v --cov --cov-report=term  # with coverage (99%)
 
 # Lint

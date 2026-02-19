@@ -542,6 +542,74 @@ class TestIndicatorConfig:
 # ── ALL_INDICATORS constant ──────────────────────────────────────────────
 
 
+class TestClassifyRowIntegrationPaths:
+    """Cover classify_row() integration paths for consolidation, fragmentation,
+    abstraction ↑, and lexical pivot that only fire inside the main dispatcher."""
+
+    def test_consolidation_via_classify_row(self) -> None:
+        """Sentence count decrease should surface 'consolidation' through classify_row."""
+        result = classify_row(
+            "The goblin stands. It watches. Waiting.",
+            "The goblin stands and watches.",
+        )
+        assert "consolidation" in result
+
+    def test_fragmentation_via_classify_row(self) -> None:
+        """Sentence count increase should surface 'fragmentation' through classify_row."""
+        result = classify_row(
+            "The goblin stands and watches.",
+            "The goblin stands. It watches. Waiting.",
+        )
+        assert "fragmentation" in result
+
+    def test_abstraction_up_via_classify_row(self) -> None:
+        """Concrete→abstract lexicon match through classify_row."""
+        # "face" is in _CONCRETE_TERMS, "burden" is in _ABSTRACT_TERMS
+        result = classify_row("face", "burden")
+        assert "abstraction \u2191" in result
+
+    def test_lexical_pivot_via_classify_row(self) -> None:
+        """Rare content-word swap when tone reframing is disabled → lexical pivot."""
+        # Disable tone reframing so the lexical pivot fallback can fire
+        config = IndicatorConfig(enabled=("lexical pivot",))
+        result = classify_row("crevice", "fracture", config=config)
+        assert "lexical pivot" in result
+
+    def test_intensity_skips_unmatched_added_word(self) -> None:
+        """When removed word is on a scale but added word is not, skip gracefully."""
+        # "uneasy" is on unease_scale; "goblin" is not on any scale
+        result = _check_intensity(["uneasy"], ["goblin"])
+        assert result is None
+
+
+class TestNltkFallback:
+    """Cover the NLTK download-failure and pos_tag exception paths."""
+
+    def test_pos_tag_exception_returns_none(self) -> None:
+        """If nltk.pos_tag raises, _check_modality_shift should return None."""
+        import unittest.mock
+
+        with unittest.mock.patch("app.micro_indicators.nltk.pos_tag", side_effect=RuntimeError):
+            result = _check_modality_shift(["old", "dark"], ["new", "bright"], IndicatorConfig())
+            assert result is None
+
+    def test_nltk_download_failure_logged(self) -> None:
+        """If NLTK download fails, the warning path should execute without raising."""
+        import unittest.mock
+
+        from app.micro_indicators import _ensure_pos_tagger_data
+
+        with (
+            unittest.mock.patch("app.micro_indicators.nltk.data.find", side_effect=LookupError),
+            unittest.mock.patch(
+                "app.micro_indicators.nltk.download", side_effect=OSError("network error")
+            ),
+            unittest.mock.patch("app.micro_indicators.logger") as mock_logger,
+        ):
+            _ensure_pos_tagger_data()
+            assert mock_logger.warning.called
+
+
 class TestAllIndicators:
     """Verify the canonical indicator list."""
 
