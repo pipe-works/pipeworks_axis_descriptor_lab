@@ -7,8 +7,7 @@ Tiny web tool for testing how small LLMs (via Ollama) produce _non-authoritative
 **Key principle:** The system (axes, scores, seeds) is _authoritative_. The LLM is _ornamental_ -- it produces flavour text only, never makes decisions, and its output is never trusted as ground truth.
 
 <p align="center">
-  <img src="docs/images/lab_ui_dark.png" alt="Axis Descriptor Lab – dark theme" width="49%">
-  <img src="docs/images/lab_ui_light.png" alt="Axis Descriptor Lab – light theme" width="49%">
+  <img src="docs/images/lab_ui_dark_v2.png" alt="Axis Descriptor Lab – dark theme with micro-indicators" width="90%">
 </p>
 
 ## Quick start
@@ -92,6 +91,7 @@ For a comprehensive explanation of the IPC framework, normalisation rules, and d
 | POST | `/api/log` | Persist a run log entry |
 | POST | `/api/relabel` | Recompute labels from policy |
 | POST | `/api/analyze-delta` | Content-word delta (signal isolation) |
+| POST | `/api/transformation-map` | Clause-level diff with micro-indicators |
 | POST | `/api/save` | Save session state to data/ |
 
 Interactive API docs: **<http://127.0.0.1:8242/docs>**
@@ -114,6 +114,11 @@ axis_descriptor_lab/
 │  ├─ relabel_policy.py      # Policy table + score-to-label mapping
 │  ├─ save_formatting.py     # Markdown builders + folder-name generator
 │  ├─ file_loaders.py        # Example + prompt file loading/listing
+│  ├─ micro_indicators.py   # Structural Learning Layer — 10 heuristic classifiers
+│  ├─ data/
+│  │  ├─ embodiment_v0_1.json    # Lexicon: abstract ↔ physical terms
+│  │  ├─ abstraction_v0_1.json   # Lexicon: concrete ↔ abstract terms
+│  │  └─ intensity_v0_1.json     # Lexicon: ordered intensity scales
 │  ├─ prompts/
 │  │  ├─ system_prompt_v01.txt
 │  │  ├─ system_prompt_v02_terse.txt
@@ -144,7 +149,7 @@ axis_descriptor_lab/
 │  ├─ index.rst
 │  ├─ api/                   # autodoc API reference
 │  └─ guides/                # narrative guides (IPC, hashing)
-├─ tests/                    # pytest test suite (474 tests, 99% coverage)
+├─ tests/                    # pytest test suite (554 tests, 99% coverage)
 │  ├─ conftest.py
 │  ├─ test_hashing.py
 │  ├─ test_main.py
@@ -156,7 +161,8 @@ axis_descriptor_lab/
 │  ├─ test_transformation_map.py
 │  ├─ test_relabel_policy.py    # policy table + relabel logic
 │  ├─ test_save_formatting.py   # Markdown builders + folder names
-│  └─ test_file_loaders.py      # file loading + listing
+│  ├─ test_file_loaders.py      # file loading + listing
+   │  └─ test_micro_indicators.py  # heuristic classifier tests
 ├─ data/                     # session saves (gitignored)
 └─ logs/
    └─ run_log.jsonl          # created automatically on first log call
@@ -186,7 +192,7 @@ Key documentation pages:
 pip install -e ".[dev]"
 
 # Run tests
-pytest                             # all 474 tests
+pytest                             # all 554 tests
 pytest -v --cov --cov-report=term  # with coverage (99%)
 
 # Lint

@@ -98,11 +98,19 @@ export async function saveRun() {
   const max_tokens  = parseInt(dom.tokensInput.value, 10);
 
   // ── Extract diff metadata (if available) ──────────────────────────── //
+  // Prefer server-computed rows (with indicators) when available.
   let tmapRows = null;
   let diffChangePct = null;
-  if (state.lastDiff) {
+  if (state.lastTmapResponse) {
+    const filtered = state.tmapIncludeAll
+      ? state.lastTmapResponse
+      : state.lastTmapResponse.filter(r => r.removed && r.added);
+    if (filtered.length > 0) tmapRows = filtered;
+  } else if (state.lastDiff) {
     const rows = extractTransformationRows(state.lastDiff, state.tmapIncludeAll);
     if (rows.length > 0) tmapRows = rows;
+  }
+  if (state.lastDiff) {
 
     // Recompute change percentage from the cached diff
     const eqCount  = state.lastDiff.filter(([op]) => op === "=").length;
@@ -358,6 +366,7 @@ export function restoreSessionState(data) {
     dom.diffDelta.appendChild(makePlaceholder("Set a baseline and generate to compare."));
     dom.diffPct.style.display = "none";
     state.lastDiff = null;
+    state.lastTmapResponse = null;
   }
 
   // ── 6. Enable export ──────────────────────────────────────────────── //
@@ -470,6 +479,7 @@ export function wirePersistenceEvents() {
     state.lastMeta       = null;
     state.baselineMeta   = null;
     state.lastDiff       = null;
+    state.lastTmapResponse = null;
     state.lastSaveFolderName = null;
 
     // Disable export and hide diff percentage badge

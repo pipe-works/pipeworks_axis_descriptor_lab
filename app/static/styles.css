@@ -827,6 +827,37 @@ html, body {
   gap: var(--sp-2);
 }
 
+/* Three-column variant (REMOVED | ADDED | INDICATORS) */
+.tmap-table--3col { table-layout: fixed; }
+.tmap-table--3col th:nth-child(1),
+.tmap-table--3col td:nth-child(1) { width: 37%; }
+.tmap-table--3col th:nth-child(2),
+.tmap-table--3col td:nth-child(2) { width: 37%; }
+.tmap-table--3col th:nth-child(3),
+.tmap-table--3col td:nth-child(3) { width: 26%; }
+
+/* Indicator cell */
+.tmap-cell--indicators {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.7;
+}
+
+/* Individual micro-indicator tag (amber accent) */
+.tmap-indicator {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  line-height: 1;
+  padding: 0.15em 0.4em;
+  margin: 0.1em 0.15em;
+  border-radius: 3px;
+  background: rgba(255, 191, 0, 0.08);
+  color: var(--col-amber, #ffbf00);
+  border: 1px solid rgba(255, 191, 0, 0.22);
+  white-space: nowrap;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    COLLAPSIBLE (details/summary)
 ════════════════════════════════════════════════════════════════════════════ */
