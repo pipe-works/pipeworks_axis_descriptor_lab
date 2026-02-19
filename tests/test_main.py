@@ -1739,6 +1739,106 @@ class TestImportEndpoint:
         files = import_resp.json()["files"]
         assert files == sorted(files)
 
+    def test_import_oversized_upload_returns_400(self, client: TestClient) -> None:
+        """An upload exceeding MAX_UPLOAD_SIZE must return 400."""
+        import zipfile as _zipfile
+
+        from unittest.mock import patch as _patch
+
+        # Build a valid zip, then enforce a tiny upload limit
+        buf = io.BytesIO()
+        with _zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("metadata.json", '{"model": "test"}')
+            zf.writestr("payload.json", '{"axes": {}}')
+            zf.writestr("system_prompt.md", "```text\ntest\n```")
+        zip_bytes = buf.getvalue()
+
+        with _patch("app.main.MAX_UPLOAD_SIZE", 10):
+            resp = client.post(
+                "/api/import",
+                files={"file": ("big.zip", zip_bytes, "application/zip")},
+            )
+        assert resp.status_code == 400
+        assert "exceeds" in resp.json()["detail"].lower()
+
+    def test_import_missing_metadata_json_returns_422(self, client: TestClient) -> None:
+        """A zip without metadata.json must return 422."""
+        import zipfile as _zipfile
+
+        buf = io.BytesIO()
+        with _zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr(
+                "payload.json",
+                '{"axes": {"health": {"label": "ok", "score": 0.5}}, "policy_hash": "a", "seed": 1, "world_id": "w"}',
+            )
+            zf.writestr("system_prompt.md", "```text\ntest\n```")
+            # metadata.json intentionally omitted
+        zip_bytes = buf.getvalue()
+
+        resp = client.post(
+            "/api/import",
+            files={"file": ("no_meta.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 422
+        assert "metadata.json" in resp.json()["detail"]
+
+    def test_import_corrupt_metadata_json_returns_400(self, client: TestClient) -> None:
+        """A zip with invalid JSON in metadata.json must return 400."""
+        import zipfile as _zipfile
+
+        buf = io.BytesIO()
+        with _zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("metadata.json", "NOT VALID JSON {{{")
+            zf.writestr("payload.json", '{"axes": {}}')
+            zf.writestr("system_prompt.md", "```text\ntest\n```")
+        zip_bytes = buf.getvalue()
+
+        resp = client.post(
+            "/api/import",
+            files={"file": ("bad_meta.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 400
+        assert "not valid json" in resp.json()["detail"].lower()
+
+    def test_import_corrupt_payload_json_returns_400(self, client: TestClient) -> None:
+        """A zip with invalid JSON in payload.json must return 400."""
+        import zipfile as _zipfile
+
+        buf = io.BytesIO()
+        with _zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("metadata.json", '{"model": "test"}')
+            zf.writestr("payload.json", "NOT VALID JSON")
+            zf.writestr("system_prompt.md", "```text\ntest\n```")
+        zip_bytes = buf.getvalue()
+
+        resp = client.post(
+            "/api/import",
+            files={"file": ("bad_payload.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 400
+        assert "payload.json" in resp.json()["detail"].lower()
+
+    def test_import_missing_system_prompt_returns_422(self, client: TestClient) -> None:
+        """A zip without system_prompt.md must return 422."""
+        import zipfile as _zipfile
+
+        buf = io.BytesIO()
+        with _zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("metadata.json", '{"model": "test"}')
+            zf.writestr(
+                "payload.json",
+                '{"axes": {"health": {"label": "ok", "score": 0.5}}, "policy_hash": "a", "seed": 1, "world_id": "w"}',
+            )
+            # system_prompt.md intentionally omitted
+        zip_bytes = buf.getvalue()
+
+        resp = client.post(
+            "/api/import",
+            files={"file": ("no_prompt.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 422
+        assert "system_prompt.md" in resp.json()["detail"]
+
 
 class TestTransformationMapSave:
     """Tests for transformation_map.json in the save package."""

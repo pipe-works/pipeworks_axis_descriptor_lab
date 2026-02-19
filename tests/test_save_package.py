@@ -347,6 +347,27 @@ class TestValidateAndExtractZip:
         with pytest.raises(ValueError, match="exceeding the maximum"):
             validate_and_extract_zip(zip_bytes)
 
+    def test_oversized_file_raises(self) -> None:
+        """A single file exceeding MAX_FILE_SIZE must raise ValueError."""
+        # We can't actually write 5 MB+ in a fast test, so patch the limit.
+        from unittest.mock import patch as _patch
+
+        with _patch("app.save_package.MAX_FILE_SIZE", 10):
+            zip_bytes = _make_zip({"payload.json": b"x" * 11})
+            with pytest.raises(ValueError, match="exceeding the.*limit"):
+                validate_and_extract_zip(zip_bytes)
+
+    def test_corrupt_metadata_json_in_zip_raises(self) -> None:
+        """metadata.json that is not valid JSON should raise ValueError during checksum validation."""
+        zip_bytes = _make_zip(
+            {
+                "metadata.json": b"NOT VALID JSON {{{",
+                "payload.json": b'{"axes": {}}',
+            }
+        )
+        with pytest.raises(ValueError, match="not valid JSON"):
+            validate_and_extract_zip(zip_bytes)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # _validate_checksums
@@ -441,6 +462,22 @@ class TestExtractBodyText:
         content = "Just plain text, no headers."
         result = extract_body_text(content)
         assert result == "Just plain text, no headers."
+
+    def test_multiline_html_comment_opening_skipped(self) -> None:
+        """An opening <!-- without --> on the same line is skipped as a header line.
+
+        The parser skips the opening <!-- line (so it doesn't become the
+        body start), but continuation lines are not tracked — the body
+        starts at the first non-header/non-comment/non-blank line after
+        the opening.  In practice our save format always uses single-line
+        comments, so this edge case just ensures the opening line is not
+        mistaken for body text.
+        """
+        content = (
+            "# Output\n" "\n" "<!-- unclosed multi-line comment start\n" "\n" "Body text here."
+        )
+        result = extract_body_text(content)
+        assert result == "Body text here."
 
     def test_only_headers_returns_content(self) -> None:
         """If the file is all headers with no body, return stripped content."""
