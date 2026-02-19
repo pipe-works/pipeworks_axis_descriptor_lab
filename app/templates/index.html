@@ -312,6 +312,20 @@
                 data-tooltip="Save the current session state (payload, output, baseline, system prompt, and generation settings) to a timestamped subfolder under data/. Creates metadata.json, payload.json, system_prompt.md, and optionally output.md and baseline.md.">
           Save
         </button>
+        <!-- Export Zip: downloads the last saved session as a .zip archive.
+             Disabled until a save is completed (requires a folder name). -->
+        <button id="btn-export" class="btn btn--secondary btn--sm" type="button" disabled
+                data-tooltip="Download the last saved session as a .zip archive. Save first to enable. The zip contains all save-package files with SHA-256 checksums in the manifest for integrity verification.">
+          Export Zip
+        </button>
+        <!-- Import Zip: upload a .zip save package to restore session state.
+             Opens a hidden file input that accepts only .zip files. -->
+        <button id="btn-import" class="btn btn--secondary btn--sm" type="button"
+                data-tooltip="Upload a .zip save package to restore session state. Validates manifest checksums for scientific integrity, then repopulates the payload, output, baseline, model settings, and system prompt.">
+          Import Zip
+        </button>
+        <!-- Hidden file input for zip import — triggered by btn-import click -->
+        <input type="file" id="import-file-input" accept=".zip" class="hidden" aria-hidden="true" />
         <button id="btn-clear-output" class="btn btn--ghost btn--sm" type="button"
                 data-tooltip="Clear the generated output, remove the stored baseline, and reset the diff panels. Returns everything to its initial empty state.">
           Clear

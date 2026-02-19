@@ -20,6 +20,8 @@ dependencies = [
     "python-dotenv>=1.0.1",
     # Tokenisation, lemmatisation, and stopword filtering for the signal isolation layer
     "nltk>=3.9.0",
+    # Multipart form data support for FastAPI file uploads (zip import)
+    "python-multipart>=0.0.7",
 ]
 
 [project.optional-dependencies]

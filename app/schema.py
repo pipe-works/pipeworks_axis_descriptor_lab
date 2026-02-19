@@ -15,7 +15,7 @@ Design principles
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -561,5 +561,144 @@ class DeltaResponse(BaseModel):
         description=(
             "Content lemmas present in the current text (B) but absent from "
             "the baseline (A).  Alphabetically sorted."
+        ),
+    )
+
+
+# -----------------------------------------------------------------------------
+# Manifest
+# -----------------------------------------------------------------------------
+
+
+class ManifestFileEntry(BaseModel):
+    """
+    A single file's entry in the save-package manifest.
+
+    Provides the SHA-256 checksum, role classification, and byte size for
+    one file within a save folder.  Used inside the ``manifest`` section
+    of ``metadata.json`` to make save packages self-describing and
+    verifiable.
+    """
+
+    sha256: Optional[str] = Field(
+        ...,
+        description=(
+            "SHA-256 hex digest of the file's raw bytes.  None for "
+            "metadata.json (which cannot hash itself without creating "
+            "a circular dependency)."
+        ),
+    )
+    role: str = Field(
+        ...,
+        description=(
+            "Human-readable role classification for this file.  "
+            "One of: provenance, payload, system_prompt, output, "
+            "baseline, delta, transformation_map."
+        ),
+        examples=["payload", "output", "provenance"],
+    )
+    size_bytes: int = Field(
+        ...,
+        ge=0,
+        description="File size in bytes.  0 for metadata.json (sentinel).",
+    )
+
+
+# -----------------------------------------------------------------------------
+# POST /api/import  response
+# -----------------------------------------------------------------------------
+
+
+class ImportResponse(BaseModel):
+    """
+    Response body for ``POST /api/import``.
+
+    Contains everything the frontend needs to fully restore session state
+    from an uploaded save-package zip file.  The backend parses the zip,
+    validates manifest checksums (if present), and extracts plain text
+    from the Markdown files so the frontend can populate the UI directly
+    without any further parsing.
+
+    Fields
+    ------
+    folder_name     – Original save folder name from metadata.json.
+    metadata        – The full metadata.json content as a dict.
+    payload         – Parsed AxisPayload from payload.json.
+    system_prompt   – Plain text extracted from system_prompt.md (fence stripped).
+    output          – Plain text extracted from output.md, or None.
+    baseline        – Plain text extracted from baseline.md, or None.
+    model           – Model name from metadata.json.
+    temperature     – Sampling temperature from metadata.json.
+    max_tokens      – Token budget from metadata.json.
+    manifest_valid  – True if all checksums passed (or no manifest present).
+    files           – List of filenames found in the zip.
+    warnings        – Non-fatal issues encountered during import.
+    """
+
+    folder_name: str = Field(
+        ...,
+        description="Original save folder name (e.g. '20260219_101437_5d628967').",
+    )
+    metadata: dict[str, Any] = Field(
+        ...,
+        description="The full metadata.json content as a dict, including manifest.",
+    )
+    payload: AxisPayload = Field(
+        ...,
+        description="Parsed AxisPayload from payload.json.",
+    )
+    system_prompt: str = Field(
+        ...,
+        description=(
+            "Plain text of the system prompt, extracted from system_prompt.md "
+            "with Markdown heading and fenced code block stripped."
+        ),
+    )
+    output: Optional[str] = Field(
+        default=None,
+        description=(
+            "Plain text of the generated output, extracted from output.md "
+            "with heading and HTML comment header stripped.  None if output.md "
+            "was not present in the zip."
+        ),
+    )
+    baseline: Optional[str] = Field(
+        default=None,
+        description=(
+            "Plain text of the baseline, extracted from baseline.md with "
+            "heading and HTML comment header stripped.  None if baseline.md "
+            "was not present in the zip."
+        ),
+    )
+    model: str = Field(
+        ...,
+        description="Ollama model name from metadata.json.",
+    )
+    temperature: float = Field(
+        ...,
+        description="Sampling temperature from metadata.json.",
+    )
+    max_tokens: int = Field(
+        ...,
+        description="Token budget from metadata.json.",
+    )
+    manifest_valid: bool = Field(
+        ...,
+        description=(
+            "True if all manifest checksums passed verification, or if "
+            "no manifest was present (backward compatibility).  False if "
+            "any checksum mismatch was detected but import proceeded."
+        ),
+    )
+    files: list[str] = Field(
+        ...,
+        description="Sorted list of filenames found in the uploaded zip.",
+    )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Non-fatal issues encountered during import (e.g. missing "
+            "manifest, skipped unknown files).  Empty list when everything "
+            "is clean."
         ),
     )

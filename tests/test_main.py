@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1298,6 +1299,445 @@ class TestTransformationMapEndpoint:
             json={"baseline_text": "", "current_text": "Some text."},
         )
         assert resp.status_code == 422
+
+
+class TestSaveManifest:
+    """Tests verifying the manifest section in metadata.json.
+
+    The manifest provides per-file SHA-256 checksums, roles, and byte sizes
+    so that save packages are self-describing and scientifically verifiable.
+    metadata.json is written LAST so the manifest can include checksums of
+    all other files; its own entry carries ``sha256: null`` because it
+    cannot hash itself.
+    """
+
+    def test_metadata_contains_manifest_key(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """metadata.json must include a 'manifest' section after saving."""
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=save_request_body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+        metadata = json.loads((save_dir / "metadata.json").read_text(encoding="utf-8"))
+
+        assert "manifest" in metadata
+        assert "manifest_version" in metadata["manifest"]
+        assert "files" in metadata["manifest"]
+
+    def test_manifest_version_is_one(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """Manifest version must be 1."""
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=save_request_body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+        metadata = json.loads((save_dir / "metadata.json").read_text(encoding="utf-8"))
+
+        assert metadata["manifest"]["manifest_version"] == 1
+
+    def test_manifest_lists_all_written_files(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """Every file in the response's files list must appear in the manifest."""
+        body = {**save_request_body, "baseline": "Baseline text."}
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+        metadata = json.loads((save_dir / "metadata.json").read_text(encoding="utf-8"))
+
+        manifest_files = metadata["manifest"]["files"]
+        for filename in data["files"]:
+            assert filename in manifest_files, f"'{filename}' missing from manifest"
+
+    def test_manifest_checksums_are_valid(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """Non-null SHA-256 checksums in the manifest must match file contents."""
+        import hashlib
+
+        body = {**save_request_body, "baseline": "Baseline text."}
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+        metadata = json.loads((save_dir / "metadata.json").read_text(encoding="utf-8"))
+
+        for filename, entry in metadata["manifest"]["files"].items():
+            if entry["sha256"] is None:
+                # metadata.json cannot hash itself — skip
+                assert filename == "metadata.json"
+                continue
+            actual_hash = hashlib.sha256((save_dir / filename).read_bytes()).hexdigest()
+            assert actual_hash == entry["sha256"], (
+                f"Checksum mismatch for {filename}: expected {entry['sha256'][:16]}…, "
+                f"got {actual_hash[:16]}…"
+            )
+
+    def test_manifest_metadata_json_has_null_sha256(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """metadata.json's manifest entry must have sha256=null (cannot hash itself)."""
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=save_request_body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+        metadata = json.loads((save_dir / "metadata.json").read_text(encoding="utf-8"))
+
+        assert metadata["manifest"]["files"]["metadata.json"]["sha256"] is None
+        assert metadata["manifest"]["files"]["metadata.json"]["role"] == "provenance"
+
+    def test_manifest_roles_are_correct(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """Each file's role in the manifest must match the expected _FILE_ROLES mapping."""
+        expected_roles = {
+            "metadata.json": "provenance",
+            "payload.json": "payload",
+            "system_prompt.md": "system_prompt",
+            "output.md": "output",
+        }
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=save_request_body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+        metadata = json.loads((save_dir / "metadata.json").read_text(encoding="utf-8"))
+
+        for filename, expected_role in expected_roles.items():
+            if filename in metadata["manifest"]["files"]:
+                assert metadata["manifest"]["files"][filename]["role"] == expected_role
+
+    def test_manifest_size_bytes_match_actual(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """size_bytes in manifest entries must match actual file sizes on disk."""
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=save_request_body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+        metadata = json.loads((save_dir / "metadata.json").read_text(encoding="utf-8"))
+
+        for filename, entry in metadata["manifest"]["files"].items():
+            if filename == "metadata.json":
+                # metadata.json uses size_bytes=0 as sentinel
+                assert entry["size_bytes"] == 0
+                continue
+            actual_size = (save_dir / filename).stat().st_size
+            assert actual_size == entry["size_bytes"], (
+                f"Size mismatch for {filename}: manifest says {entry['size_bytes']}, "
+                f"actual is {actual_size}"
+            )
+
+
+# ── GET /api/save/{folder_name}/export ──────────────────────────────────────
+
+
+class TestExportEndpoint:
+    """Tests for the GET /api/save/{folder_name}/export zip download endpoint.
+
+    Each test saves a package first (via POST /api/save), then exports it
+    as a zip to verify the export pipeline end-to-end.
+    """
+
+    def test_happy_path_save_then_export(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """Save a package, export as zip, verify it's a valid zip with expected files."""
+        import zipfile as _zipfile
+
+        with patch("app.main._DATA_DIR", tmp_path):
+            save_resp = client.post("/api/save", json=save_request_body)
+            folder_name = save_resp.json()["folder_name"]
+
+            export_resp = client.get(f"/api/save/{folder_name}/export")
+
+        assert export_resp.status_code == 200
+        assert export_resp.headers["content-type"] == "application/zip"
+        assert folder_name in export_resp.headers["content-disposition"]
+
+        # Parse the zip and verify expected files
+        zf = _zipfile.ZipFile(io.BytesIO(export_resp.content))
+        names = zf.namelist()
+        assert "metadata.json" in names
+        assert "payload.json" in names
+        assert "system_prompt.md" in names
+        assert "output.md" in names
+
+    def test_zip_content_round_trips(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """File contents inside the exported zip must match the originals on disk."""
+        import zipfile as _zipfile
+
+        with patch("app.main._DATA_DIR", tmp_path):
+            save_resp = client.post("/api/save", json=save_request_body)
+            folder_name = save_resp.json()["folder_name"]
+
+            export_resp = client.get(f"/api/save/{folder_name}/export")
+
+        save_dir = tmp_path / folder_name
+        zf = _zipfile.ZipFile(io.BytesIO(export_resp.content))
+        for name in zf.namelist():
+            assert zf.read(name) == (save_dir / name).read_bytes()
+
+    def test_missing_folder_returns_404(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        """Exporting a non-existent folder must return 404."""
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.get("/api/save/20260219_120000_deadbeef/export")
+        assert resp.status_code == 404
+
+    def test_invalid_folder_name_returns_400(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        """A folder name that doesn't match the expected pattern must return 400."""
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.get("/api/save/not_a_valid_folder_name/export")
+        assert resp.status_code == 400
+
+    def test_correct_content_disposition_header(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """The Content-Disposition header must include the folder name as the filename."""
+        with patch("app.main._DATA_DIR", tmp_path):
+            save_resp = client.post("/api/save", json=save_request_body)
+            folder_name = save_resp.json()["folder_name"]
+
+            export_resp = client.get(f"/api/save/{folder_name}/export")
+
+        expected = f'attachment; filename="{folder_name}.zip"'
+        assert export_resp.headers["content-disposition"] == expected
+
+
+# ── POST /api/import ────────────────────────────────────────────────────────
+
+
+class TestImportEndpoint:
+    """Tests for the POST /api/import zip upload endpoint.
+
+    Most tests perform a save → export → import round-trip to verify the
+    complete pipeline.  The endpoint accepts multipart file uploads and
+    returns an ImportResponse with all state needed for frontend restoration.
+    """
+
+    def test_round_trip_save_export_import(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """Full round-trip: save → export → import → verify restored state."""
+        with patch("app.main._DATA_DIR", tmp_path):
+            # 1. Save
+            save_resp = client.post("/api/save", json=save_request_body)
+            folder_name = save_resp.json()["folder_name"]
+
+            # 2. Export
+            export_resp = client.get(f"/api/save/{folder_name}/export")
+
+            # 3. Import
+            import_resp = client.post(
+                "/api/import",
+                files={"file": (f"{folder_name}.zip", export_resp.content, "application/zip")},
+            )
+
+        assert import_resp.status_code == 200
+        data = import_resp.json()
+
+        # Verify restored state matches the save request
+        assert data["folder_name"] == folder_name
+        assert data["model"] == "gemma2:2b"
+        assert data["temperature"] == 0.2
+        assert data["max_tokens"] == 120
+        assert data["manifest_valid"] is True
+        assert data["payload"]["seed"] == 42
+        assert data["payload"]["world_id"] == "test_world"
+        assert "health" in data["payload"]["axes"]
+
+        # System prompt extracted from fenced code block
+        assert "deterministic system" in data["system_prompt"]
+
+        # Output extracted from markdown body
+        assert "weathered figure" in data["output"]
+
+    def test_import_preserves_baseline(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """When baseline was saved, import must restore it."""
+        body = {**save_request_body, "baseline": "The old goblin shuffles forward."}
+        with patch("app.main._DATA_DIR", tmp_path):
+            save_resp = client.post("/api/save", json=body)
+            folder_name = save_resp.json()["folder_name"]
+            export_resp = client.get(f"/api/save/{folder_name}/export")
+
+            import_resp = client.post(
+                "/api/import",
+                files={"file": (f"{folder_name}.zip", export_resp.content, "application/zip")},
+            )
+
+        data = import_resp.json()
+        assert data["baseline"] is not None
+        assert "old goblin" in data["baseline"]
+
+    def test_import_without_manifest_warns(
+        self,
+        client: TestClient,
+        tmp_path: Path,
+    ) -> None:
+        """Importing a zip without a manifest should succeed with a warning."""
+        import zipfile as _zipfile
+
+        # Build a minimal zip without manifest in metadata.json
+        metadata = {"model": "gemma2:2b", "temperature": 0.2, "max_tokens": 120}
+        payload = {
+            "axes": {"health": {"label": "weary", "score": 0.5}},
+            "policy_hash": "abc",
+            "seed": 42,
+            "world_id": "w",
+        }
+        prompt_md = "# System Prompt\n\n```text\nYou are a test prompt.\n```\n"
+
+        buf = io.BytesIO()
+        with _zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("metadata.json", json.dumps(metadata))
+            zf.writestr("payload.json", json.dumps(payload))
+            zf.writestr("system_prompt.md", prompt_md)
+        zip_bytes = buf.getvalue()
+
+        resp = client.post(
+            "/api/import",
+            files={"file": ("test.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert any("manifest" in w.lower() or "checksum" in w.lower() for w in data["warnings"])
+
+    def test_import_checksum_mismatch_returns_400(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """A zip with tampered file contents must fail checksum validation."""
+        import zipfile as _zipfile
+
+        with patch("app.main._DATA_DIR", tmp_path):
+            save_resp = client.post("/api/save", json=save_request_body)
+            folder_name = save_resp.json()["folder_name"]
+            export_resp = client.get(f"/api/save/{folder_name}/export")
+
+        # Tamper with the zip: replace payload.json content
+        original_zip = _zipfile.ZipFile(io.BytesIO(export_resp.content))
+        tampered_buf = io.BytesIO()
+        with _zipfile.ZipFile(tampered_buf, "w") as tampered:
+            for name in original_zip.namelist():
+                content = original_zip.read(name)
+                if name == "payload.json":
+                    content = b'{"tampered": true}'
+                tampered.writestr(name, content)
+
+        resp = client.post(
+            "/api/import",
+            files={"file": ("tampered.zip", tampered_buf.getvalue(), "application/zip")},
+        )
+        assert resp.status_code == 400
+        assert (
+            "checksum" in resp.json()["detail"].lower()
+            or "mismatch" in resp.json()["detail"].lower()
+        )
+
+    def test_import_non_zip_returns_400(self, client: TestClient) -> None:
+        """Uploading a non-zip file must return 400."""
+        resp = client.post(
+            "/api/import",
+            files={"file": ("notazip.txt", b"This is not a zip file", "text/plain")},
+        )
+        assert resp.status_code == 400
+
+    def test_import_missing_required_file_returns_422(self, client: TestClient) -> None:
+        """A zip missing payload.json must return 422."""
+        import zipfile as _zipfile
+
+        buf = io.BytesIO()
+        with _zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("metadata.json", '{"model": "test"}')
+            zf.writestr("system_prompt.md", "# Prompt\n\n```text\ntest\n```\n")
+            # payload.json intentionally omitted
+        zip_bytes = buf.getvalue()
+
+        resp = client.post(
+            "/api/import",
+            files={"file": ("incomplete.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 422
+        assert "payload.json" in resp.json()["detail"]
+
+    def test_import_files_list_is_sorted(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """The files list in ImportResponse must be sorted alphabetically."""
+        with patch("app.main._DATA_DIR", tmp_path):
+            save_resp = client.post("/api/save", json=save_request_body)
+            folder_name = save_resp.json()["folder_name"]
+            export_resp = client.get(f"/api/save/{folder_name}/export")
+
+            import_resp = client.post(
+                "/api/import",
+                files={"file": (f"{folder_name}.zip", export_resp.content, "application/zip")},
+            )
+
+        files = import_resp.json()["files"]
+        assert files == sorted(files)
 
 
 class TestTransformationMapSave:

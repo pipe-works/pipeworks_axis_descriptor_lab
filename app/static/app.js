@@ -68,6 +68,11 @@ const state = {
   // Cached LCS diff from the last updateDiff() call, so the tmap toggle
   // can re-render without recomputing the diff.
   lastDiff: null,
+
+  // Folder name returned by the most recent successful save.  Used by
+  // exportSave() to construct the export URL.  Null before the first save;
+  // set in saveRun() on success.  Enables the Export Zip button.
+  lastSaveFolderName: null,
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -111,6 +116,9 @@ const tmapPanel           = $("tmap-panel");
 const btnTmapMode         = $("btn-tmap-mode");
 const btnTmapCopy         = $("btn-tmap-copy");
 const btnTmapCopyMd       = $("btn-tmap-copy-md");
+const btnExport           = $("btn-export");
+const btnImport           = $("btn-import");
+const importFileInput     = $("import-file-input");
 const statusText          = $("status-text");
 const spinner             = $("spinner");
 
@@ -1579,6 +1587,12 @@ async function saveRun() {
 
     const data = await res.json();
 
+    // Store the folder name so the Export Zip button knows which folder
+    // to request from the server.  Also enable the button now that a
+    // valid save exists.
+    state.lastSaveFolderName = data.folder_name;
+    if (btnExport) btnExport.disabled = false;
+
     // Show the folder name and file list so the user knows where to find
     // the saved files on disk.
     setStatus(`Saved \u2192 data/${data.folder_name}/ (${data.files.join(", ")})`);
@@ -1588,6 +1602,236 @@ async function saveRun() {
     btnSave.disabled = false;
     spinner.classList.add("hidden");
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EXPORT / IMPORT
+   ─────────────────────────────────────────────────────────────────────────
+   Export downloads the last saved session as a .zip archive via
+   GET /api/save/{folder_name}/export.
+
+   Import uploads a .zip file via POST /api/import, validates manifest
+   checksums server-side, and restores the full session state in the
+   frontend without touching the data/ directory.
+════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Download the last saved session as a .zip archive.
+ *
+ * Fetches the zip bytes from the export endpoint, creates a temporary
+ * blob URL, and triggers a download via a synthetic <a> click.  The blob
+ * URL is revoked immediately after the click to free memory.
+ *
+ * Requires `state.lastSaveFolderName` to be set (i.e. a save must have
+ * succeeded in this session).  The Export Zip button is disabled until
+ * this field is populated.
+ */
+async function exportSave() {
+  if (!state.lastSaveFolderName) {
+    setStatus("Nothing to export \u2013 save first.");
+    return;
+  }
+
+  setStatus("Exporting zip\u2026", true);
+
+  try {
+    const res = await fetch(
+      `/api/save/${encodeURIComponent(state.lastSaveFolderName)}/export`
+    );
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
+
+    // Convert the response to a Blob and create a temporary object URL
+    // for triggering the browser's native download dialog.
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+
+    // Create a temporary <a> element to trigger the download.
+    // The filename matches the folder name with a .zip extension.
+    const a = document.createElement("a");
+    a.href     = url;
+    a.download = `${state.lastSaveFolderName}.zip`;
+    document.body.appendChild(a);
+    a.click();
+
+    // Clean up: remove the temporary element and revoke the blob URL
+    // to free memory.  A short delay ensures the browser has started
+    // the download before the URL is revoked.
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+
+    setStatus(`Exported \u2192 ${state.lastSaveFolderName}.zip`);
+  } catch (err) {
+    setStatus(`Export error: ${err.message}`);
+  } finally {
+    spinner.classList.add("hidden");
+  }
+}
+
+/**
+ * Upload a .zip save package and restore the full session state.
+ *
+ * Triggered by the hidden file input's "change" event (which fires after
+ * the user picks a file from the OS dialog).  Reads the selected file,
+ * POSTs it to /api/import as multipart form data, and on success calls
+ * restoreSessionState() to repopulate the entire UI.
+ *
+ * The file input's value is reset after each attempt (success or failure)
+ * so the user can re-import the same file without the browser suppressing
+ * the change event.
+ */
+async function importSave() {
+  const file = importFileInput.files[0];
+  if (!file) return;
+
+  setStatus("Importing zip\u2026", true);
+
+  try {
+    // Build a FormData payload with the zip file attached under the
+    // field name "file" (matching the FastAPI UploadFile parameter).
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch("/api/import", {
+      method: "POST",
+      body:   formData,
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    // Restore all frontend state from the import response.
+    restoreSessionState(data);
+
+    // Build a status message including any server-side warnings
+    // (e.g. "no manifest found", "baseline not included").
+    let msg = `Imported ${data.folder_name} (${data.files.length} files)`;
+    if (data.warnings.length > 0) {
+      msg += ` \u2014 warnings: ${data.warnings.join("; ")}`;
+    }
+    setStatus(msg);
+  } catch (err) {
+    setStatus(`Import error: ${err.message}`);
+  } finally {
+    // Reset the file input so the same file can be re-imported.
+    // Without this, selecting the same file a second time would not
+    // fire the "change" event because the value hasn't changed.
+    importFileInput.value = "";
+    spinner.classList.add("hidden");
+  }
+}
+
+/**
+ * Restore all frontend state from an ImportResponse object.
+ *
+ * Called after a successful POST /api/import.  Repopulates every piece
+ * of session state — payload, sliders, output, baseline, model settings,
+ * system prompt, and diff — so the UI looks exactly as it did when the
+ * session was originally saved.
+ *
+ * Restoration order matters:
+ *   1. Payload → JSON textarea → sliders (must happen first because
+ *      output/baseline may reference axis names).
+ *   2. Model / temperature / max_tokens / seed (generation settings).
+ *   3. System prompt (override textarea).
+ *   4. Output and baseline text.
+ *   5. Diff recomputation (requires both baseline and current to be set).
+ *
+ * @param {object} data - The ImportResponse JSON from POST /api/import.
+ */
+function restoreSessionState(data) {
+  // ── 1. Payload → textarea → sliders ────────────────────────────────── //
+  // The payload drives the JSON editor and slider panel.  Setting it
+  // first ensures downstream UI elements have consistent axis data.
+  state.payload = data.payload;
+  syncJsonTextarea();
+  buildSlidersFromJson();
+  setJsonBadge(true);
+
+  // ── 2. Model / temperature / max_tokens / seed ─────────────────────── //
+  // Populate the generation settings controls with the saved values.
+  // For the model, try the <select> first; if the model isn't in the
+  // dropdown (e.g. it was manually entered), fall back to the text input.
+  const modelInSelect = Array.from(modelSelect.options).some(
+    (opt) => opt.value === data.model
+  );
+  if (modelInSelect) {
+    modelSelect.value = data.model;
+    modelSelect.classList.remove("hidden");
+    modelInput.classList.add("hidden");
+  } else {
+    modelInput.value = data.model;
+    modelInput.classList.remove("hidden");
+    modelSelect.classList.add("hidden");
+  }
+
+  tempInput.value = data.temperature;
+  tempRange.value = data.temperature;
+  tokensInput.value = data.max_tokens;
+
+  // Restore the seed from metadata if available.  The seed lives in
+  // metadata.seed (integer) rather than as a top-level ImportResponse field.
+  if (data.metadata && data.metadata.seed !== undefined) {
+    seedInput.value = data.metadata.seed;
+  }
+
+  // ── 3. System prompt ───────────────────────────────────────────────── //
+  // Populate the override textarea and update the badge to reflect
+  // whether a custom prompt is active.
+  systemPromptTextarea.value = data.system_prompt || "";
+  updateSystemPromptBadge();
+
+  // ── 4. Output and baseline ─────────────────────────────────────────── //
+  // Restore the generated output text and any baseline snapshot.
+  state.current = data.output || null;
+  if (state.current) {
+    outputBox.textContent = state.current;
+  } else {
+    outputBox.textContent = "";
+    outputBox.appendChild(makePlaceholder("Click Generate to produce a description."));
+  }
+
+  state.baseline = data.baseline || null;
+  if (state.baseline) {
+    diffA.textContent = state.baseline;
+    btnSetBaseline.classList.add("is-active");
+  } else {
+    diffA.textContent = "";
+    diffA.appendChild(makePlaceholder("No baseline set."));
+    btnSetBaseline.classList.remove("is-active");
+  }
+
+  // ── 5. Diff recomputation ──────────────────────────────────────────── //
+  // If both baseline and current are present, recompute the word-level
+  // diff, signal isolation, and transformation map.  Otherwise clear
+  // the diff panels.
+  if (state.baseline && state.current) {
+    updateDiff();
+  } else {
+    diffB.textContent = state.current || "";
+    if (!state.current) {
+      diffB.textContent = "";
+      diffB.appendChild(makePlaceholder("Generate to populate B."));
+    }
+    diffDelta.textContent = "";
+    diffDelta.appendChild(makePlaceholder("Set a baseline and generate to compare."));
+    diffPct.style.display = "none";
+    state.lastDiff = null;
+  }
+
+  // ── 6. Enable export (the imported package came from a saved folder) ── //
+  // Store the folder name so the user can re-export without saving again.
+  state.lastSaveFolderName = data.folder_name;
+  if (btnExport) btnExport.disabled = false;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1740,6 +1984,32 @@ function wireEvents() {
     saveRun();
   });
 
+  // ── Export Zip ─────────────────────────────────────────────────────── //
+  // Downloads the last saved session as a .zip archive.  The button
+  // starts disabled and is enabled after a successful save sets
+  // state.lastSaveFolderName.
+  if (btnExport) {
+    btnExport.addEventListener("click", () => {
+      exportSave();
+    });
+  }
+
+  // ── Import Zip ─────────────────────────────────────────────────────── //
+  // Opens the OS file picker (via the hidden file input), then uploads
+  // the selected .zip to restore session state.
+  if (btnImport) {
+    btnImport.addEventListener("click", () => {
+      importFileInput.click();
+    });
+  }
+
+  // When the file input changes (user picked a file), trigger the import.
+  if (importFileInput) {
+    importFileInput.addEventListener("change", () => {
+      importSave();
+    });
+  }
+
   // ── Transformation Map mode toggle ──────────────────────────────────── //
   // Switches between two display modes for the clause-level alignment:
   //   • "Replacements only" (default) — only shows rows where text in A was
@@ -1846,7 +2116,9 @@ function wireEvents() {
     state.lastMeta       = null;
     state.baselineMeta   = null;
     state.lastDiff       = null;
+    state.lastSaveFolderName = null;
     diffPct.style.display = "none";
+    if (btnExport) btnExport.disabled = true;
     diffA.textContent = "";
     diffA.appendChild(makePlaceholder("No baseline set."));
     diffB.textContent = "";
