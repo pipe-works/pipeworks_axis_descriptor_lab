@@ -701,7 +701,9 @@ html, body {
 .signal-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0 var(--sp-3);
+  gap: 0;
+  border: 1px solid var(--col-border);
+  border-radius: 2px;
 }
 
 /* Column headers: "REMOVED (19)" / "ADDED (24)" */
@@ -710,9 +712,13 @@ html, body {
   color: var(--col-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  padding-bottom: var(--sp-1);
+  padding: var(--sp-1);
   border-bottom: 1px solid var(--col-border);
-  margin-bottom: var(--sp-1);
+}
+
+/* Vertical divider between the two columns */
+.signal-columns > :nth-child(odd) {
+  border-right: 1px solid var(--col-border);
 }
 
 /* Vertical word list within each column */
@@ -722,12 +728,17 @@ html, body {
   gap: 1px;
 }
 
-/* Individual word entry — plain text, no tag background */
+/* Individual word entry — plain text, faint row separator */
 .signal-word {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   line-height: 1.7;
-  padding: 0 var(--sp-1);
+  padding: 1px var(--sp-1);
+  border-bottom: 1px solid var(--col-border);
+}
+
+.signal-word:last-child {
+  border-bottom: none;
 }
 
 /* Removed words — subtle red text, no strikethrough for legibility */
@@ -738,6 +749,71 @@ html, body {
 /* Added words — subtle green text, no decoration */
 .signal-word--added {
   color: var(--col-diff-add-text);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TRANSFORMATION MAP (clause-level alignment)
+   ─────────────────────────────────────────────────────────────────────────
+   Two-column table showing clause-level replacement pairs (Removed | Added).
+   Follows the signal panel conventions: monospace, small text, scrollable.
+════════════════════════════════════════════════════════════════════════════ */
+
+/* Container */
+.tmap-panel {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.8;
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+/* Full-width two-column table */
+.tmap-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+/* Column headers: uppercase muted labels */
+.tmap-header {
+  font-size: var(--text-xs);
+  color: var(--col-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: left;
+  padding: 0 var(--sp-1) var(--sp-1);
+  border-bottom: 1px solid var(--col-border);
+}
+
+/* Individual cells */
+.tmap-cell {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.7;
+  padding: var(--sp-1);
+  vertical-align: top;
+  border-bottom: 1px solid var(--col-border);
+}
+
+/* Removed text — subtle red */
+.tmap-cell--removed {
+  color: var(--col-diff-del-text);
+}
+
+/* Added text — subtle green */
+.tmap-cell--added {
+  color: var(--col-diff-add-text);
+}
+
+/* Empty cell placeholder (em dash for pure insert/delete rows) */
+.tmap-cell--empty {
+  color: var(--col-text-dim);
+}
+
+/* Controls row above the table */
+.tmap-controls {
+  display: flex;
+  gap: var(--sp-2);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

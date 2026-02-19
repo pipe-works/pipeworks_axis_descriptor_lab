@@ -360,6 +360,14 @@ class SaveRequest(BaseModel):
             "server default) and send it verbatim.  Must not be empty."
         ),
     )
+    transformation_map: list[TransformationMapRow] | None = Field(
+        default=None,
+        description=(
+            "Optional clause-level transformation map rows computed "
+            "client-side from the word-level LCS diff.  When present, "
+            "saved as transformation_map.json alongside other files."
+        ),
+    )
 
 
 class SaveResponse(BaseModel):
@@ -422,6 +430,70 @@ class SaveResponse(BaseModel):
 # -----------------------------------------------------------------------------
 # POST /api/analyze-delta  request / response
 # -----------------------------------------------------------------------------
+
+
+class TransformationMapRequest(BaseModel):
+    """
+    Request body for ``POST /api/transformation-map``.
+
+    Accepts two plain-text strings (baseline and current) for clause-level
+    alignment analysis.  The backend runs sentence-aware alignment followed
+    by token-level diffing to extract replacement pairs.
+    """
+
+    baseline_text: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "The reference text (A) — typically the stored baseline output.  " "Must not be empty."
+        ),
+    )
+    current_text: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "The comparison text (B) — typically the latest generated output.  "
+            "Must not be empty."
+        ),
+    )
+    include_all: bool = Field(
+        default=False,
+        description=(
+            "When True, include insert-only and delete-only operations as "
+            "rows (with an empty removed or added side).  When False "
+            "(default), only replacement operations are returned."
+        ),
+    )
+
+
+class TransformationMapRow(BaseModel):
+    """A single clause-level replacement pair."""
+
+    removed: str = Field(
+        ...,
+        description="The text chunk from the baseline (A) that was replaced.",
+    )
+    added: str = Field(
+        ...,
+        description="The text chunk from the current text (B) that replaced it.",
+    )
+
+
+class TransformationMapResponse(BaseModel):
+    """
+    Response body for ``POST /api/transformation-map``.
+
+    Contains a list of clause-level replacement pairs extracted by
+    sentence-aware alignment and token-level diffing.
+    """
+
+    rows: list[TransformationMapRow] = Field(
+        ...,
+        description=(
+            "Ordered list of clause-level replacement pairs.  Each row shows "
+            "text removed from A and the corresponding text added in B."
+        ),
+    )
 
 
 class DeltaRequest(BaseModel):

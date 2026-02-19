@@ -1243,3 +1243,124 @@ class TestAnalyzeDeltaEndpoint:
         r1 = client.post("/api/analyze-delta", json=body).json()
         r2 = client.post("/api/analyze-delta", json=body).json()
         assert r1 == r2
+
+
+class TestTransformationMapEndpoint:
+    """Tests for the POST /api/transformation-map endpoint."""
+
+    def test_successful_replacement(self, client: TestClient) -> None:
+        """Two different texts should produce at least one replacement row."""
+        resp = client.post(
+            "/api/transformation-map",
+            json={
+                "baseline_text": "The old goblin stands near the gate.",
+                "current_text": "The young goblin waits by the door.",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "rows" in data
+        assert isinstance(data["rows"], list)
+        assert len(data["rows"]) >= 1
+        for row in data["rows"]:
+            assert "removed" in row
+            assert "added" in row
+
+    def test_identical_texts_empty_rows(self, client: TestClient) -> None:
+        """Identical texts should produce no rows."""
+        text = "A weathered figure stands near the threshold."
+        resp = client.post(
+            "/api/transformation-map",
+            json={"baseline_text": text, "current_text": text},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["rows"] == []
+
+    def test_include_all_parameter(self, client: TestClient) -> None:
+        """include_all=True should include insert/delete rows."""
+        resp = client.post(
+            "/api/transformation-map",
+            json={
+                "baseline_text": "The goblin stands.",
+                "current_text": "The goblin stands. A new sentence appears.",
+                "include_all": True,
+            },
+        )
+        assert resp.status_code == 200
+        rows = resp.json()["rows"]
+        found = any(row["removed"] == "" and "new sentence" in row["added"] for row in rows)
+        assert found, f"Expected insert row in {rows}"
+
+    def test_empty_baseline_returns_422(self, client: TestClient) -> None:
+        """Empty baseline_text must be rejected by validation."""
+        resp = client.post(
+            "/api/transformation-map",
+            json={"baseline_text": "", "current_text": "Some text."},
+        )
+        assert resp.status_code == 422
+
+
+class TestTransformationMapSave:
+    """Tests for transformation_map.json in the save package."""
+
+    def test_tmap_json_written_when_provided(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """transformation_map.json must be written when rows are provided."""
+        body = {
+            **save_request_body,
+            "transformation_map": [
+                {"removed": "old dark", "added": "young bright"},
+                {"removed": "stands", "added": "waits"},
+            ],
+        }
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+
+        assert (save_dir / "transformation_map.json").exists()
+        assert "transformation_map.json" in data["files"]
+
+        tmap = json.loads((save_dir / "transformation_map.json").read_text(encoding="utf-8"))
+        assert isinstance(tmap["rows"], list)
+        assert tmap["row_count"] == 2
+        assert tmap["rows"][0]["removed"] == "old dark"
+
+    def test_tmap_json_omitted_when_not_provided(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """transformation_map.json must not be created when field is absent."""
+        body = {**save_request_body}
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+
+        assert not (save_dir / "transformation_map.json").exists()
+        assert "transformation_map.json" not in data["files"]
+
+    def test_tmap_json_omitted_when_empty_list(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """transformation_map.json must not be created when rows list is empty."""
+        body = {**save_request_body, "transformation_map": []}
+        with patch("app.main._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+
+        assert not (save_dir / "transformation_map.json").exists()
+        assert "transformation_map.json" not in data["files"]

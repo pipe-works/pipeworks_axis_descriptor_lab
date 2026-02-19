@@ -61,6 +61,13 @@ const state = {
   // Used to highlight which meta rows have changed in subsequent generations.
   // Null until "Set as A" is clicked.
   baselineMeta: null,
+
+  // Transformation Map mode: false = replacements only, true = all changes.
+  tmapIncludeAll: false,
+
+  // Cached LCS diff from the last updateDiff() call, so the tmap toggle
+  // can re-render without recomputing the diff.
+  lastDiff: null,
 };
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -99,6 +106,10 @@ const diffA               = $("diff-a");
 const diffB               = $("diff-b");
 const diffDelta           = $("diff-delta");
 const signalPanel         = $("signal-panel");
+const tmapPanel           = $("tmap-panel");
+const btnTmapMode         = $("btn-tmap-mode");
+const btnTmapCopy         = $("btn-tmap-copy");
+const btnTmapCopyMd       = $("btn-tmap-copy-md");
 const statusText          = $("status-text");
 const spinner             = $("spinner");
 
@@ -863,9 +874,15 @@ function updateDiff() {
     detailsEl.open = true;
   }
 
+  // Store the diff so the tmap toggle can re-render without recomputing.
+  state.lastDiff = diff;
+
   // After building the word-level diff, also run signal isolation
   // to surface meaningful content-word pivots.
   updateSignalIsolation();
+
+  // Extract clause-level rows directly from the LCS diff.
+  updateTransformationMap(diff);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -994,6 +1011,228 @@ async function updateSignalIsolation() {
     errSpan.style.color = "var(--col-err)";
     errSpan.textContent = `Signal analysis error: ${err.message}`;
     signalPanel.appendChild(errSpan);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TRANSFORMATION MAP (clause-level alignment)
+   ─────────────────────────────────────────────────────────────────────────
+   Extracts clause-level replacement rows directly from the word-level LCS
+   diff that is already computed client-side.
+
+   Algorithm:
+   1. Walk the [op, word] tuples from lcsWordDiff()
+   2. Accumulate consecutive "-" words into a removed buffer
+   3. Accumulate consecutive "+" words into an added buffer
+   4. When an "=" word is hit, flush: if either buffer is non-empty,
+      emit { removed: join(buf), added: join(buf) } and clear both
+   5. Flush any remaining buffers at the end
+
+   Row boundaries naturally occur where unchanged (equal) text resumes,
+   producing clause-scale groupings that match human reading of the diff.
+════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Extract clause-level replacement rows from a word-level LCS diff.
+ *
+ * Groups consecutive removed ("-") and added ("+") words between runs of
+ * equal ("=") words into clause-level rows.  Each row represents a
+ * contiguous region of change in the diff — a clause-scale substitution.
+ *
+ * The algorithm treats "=" (equal) words as row boundaries:
+ *   - Consecutive "-" words accumulate into a "removed" buffer.
+ *   - Consecutive "+" words accumulate into an "added" buffer.
+ *   - When an "=" word is encountered, both buffers are flushed as a row
+ *     and cleared, so the next change region starts fresh.
+ *   - After the loop, any remaining buffered words are flushed as a final row.
+ *
+ * This produces groupings that match human reading of the word-level diff:
+ * each row corresponds to the contiguous red/green region visible in the
+ * Δ Changes panel.
+ *
+ * @param {Array<[string, string]>} diff - Output of lcsWordDiff(): an array
+ *   of [operation, word] tuples where operation is "=", "+", or "-".
+ * @param {boolean} includeAll - When true, include pure inserts (removed="")
+ *   and pure deletes (added="") as rows.  When false, only rows where both
+ *   the removed and added sides are non-empty are returned (replacement-only
+ *   mode).
+ * @returns {Array<{removed: string, added: string}>} Ordered list of
+ *   clause-level change rows.  Each row has `removed` (text from A) and
+ *   `added` (text from B), either of which may be empty when includeAll
+ *   is true.
+ */
+function extractTransformationRows(diff, includeAll) {
+  const rows = [];
+
+  // Accumulation buffers: collect consecutive removed/added words until
+  // an equal word signals the end of the current change region.
+  let removedBuf = [];
+  let addedBuf   = [];
+
+  /**
+   * Flush the current accumulation buffers into a row.
+   *
+   * Called when an "=" word is hit (marking a boundary between change
+   * regions) and after the loop completes (to capture any trailing
+   * change region at the end of the diff).
+   *
+   * In "replacements only" mode (includeAll=false), rows where one side
+   * is empty are silently discarded — these represent pure insertions or
+   * deletions with no counterpart text.
+   */
+  function flush() {
+    if (removedBuf.length === 0 && addedBuf.length === 0) return;
+
+    const removed = removedBuf.join(" ");
+    const added   = addedBuf.join(" ");
+
+    // In "replacements only" mode, skip rows where one side is empty
+    // (pure inserts or pure deletes).  In "all changes" mode, include
+    // everything.
+    if (includeAll || (removed && added)) {
+      rows.push({ removed, added });
+    }
+
+    // Clear buffers for the next change region.
+    removedBuf = [];
+    addedBuf   = [];
+  }
+
+  for (const [op, word] of diff) {
+    if (op === "=") {
+      // Equal word = boundary between change regions.  Flush any
+      // accumulated removed/added words as a completed row.
+      flush();
+    } else if (op === "-") {
+      // Word present in A but absent from B — accumulate into the
+      // removed buffer for the current change region.
+      removedBuf.push(word);
+    } else if (op === "+") {
+      // Word present in B but absent from A — accumulate into the
+      // added buffer for the current change region.
+      addedBuf.push(word);
+    }
+  }
+
+  // Flush any trailing change region that wasn't terminated by an "=" word
+  // (e.g. when the diff ends with additions or removals).
+  flush();
+
+  return rows;
+}
+
+/**
+ * Build and render the Transformation Map table from a word-level LCS diff.
+ *
+ * Extracts clause-level rows via ``extractTransformationRows()`` and renders
+ * them as a two-column HTML table (REMOVED | ADDED) inside the
+ * ``#tmap-panel`` element.  Purely client-side — no server API call needed
+ * because the diff is already computed by ``lcsWordDiff()`` in
+ * ``updateDiff()``.
+ *
+ * Called in two contexts:
+ *   1. At the end of ``updateDiff()`` after each generation (with the
+ *      freshly computed diff).
+ *   2. When the user clicks the mode toggle button (with ``state.lastDiff``,
+ *      the cached diff from the last ``updateDiff()`` call).
+ *
+ * Table structure:
+ *   - REMOVED column: text from baseline A (red), or "—" for pure inserts.
+ *   - ADDED column: text from current B (green), or "—" for pure deletes.
+ *   - The ``<details>`` element auto-opens on first population so the user
+ *     immediately sees results without a manual click.
+ *
+ * @param {Array<[string, string]>} diff - Output of lcsWordDiff(): an array
+ *   of [operation, word] tuples.
+ */
+function updateTransformationMap(diff) {
+  // Guard: if no diff data is available, show a placeholder message
+  // instead of an empty table.
+  if (!diff || diff.length === 0) {
+    tmapPanel.textContent = "";
+    tmapPanel.appendChild(
+      makePlaceholder("Set a baseline (A) and generate to see clause-level substitutions.")
+    );
+    return;
+  }
+
+  const rows = extractTransformationRows(diff, state.tmapIncludeAll);
+
+  // Build the display as a document fragment (avoids reflows).
+  const fragment = document.createDocumentFragment();
+
+  if (rows.length === 0) {
+    fragment.appendChild(makePlaceholder("No clause-level substitutions detected."));
+  } else {
+    // ── Two-column table: REMOVED | ADDED ──────────────────────────── //
+    const table = document.createElement("table");
+    table.className = "tmap-table";
+
+    // Header row
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+
+    const thRemoved = document.createElement("th");
+    thRemoved.className = "tmap-header";
+    thRemoved.textContent = "REMOVED";
+    headerRow.appendChild(thRemoved);
+
+    const thAdded = document.createElement("th");
+    thAdded.className = "tmap-header";
+    thAdded.textContent = "ADDED";
+    headerRow.appendChild(thAdded);
+
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Data rows
+    const tbody = document.createElement("tbody");
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+
+      // REMOVED cell: shows text from baseline A in red.
+      // For pure inserts (text added in B with no counterpart in A),
+      // the cell shows an em dash "—" in dim text to indicate absence.
+      const tdRemoved = document.createElement("td");
+      tdRemoved.className = "tmap-cell tmap-cell--removed";
+      if (row.removed) {
+        tdRemoved.textContent = row.removed;
+      } else {
+        tdRemoved.textContent = "\u2014";
+        tdRemoved.classList.add("tmap-cell--empty");
+      }
+      tr.appendChild(tdRemoved);
+
+      // ADDED cell: shows text from current B in green.
+      // For pure deletes (text removed from A with no replacement in B),
+      // the cell shows an em dash "—" in dim text to indicate absence.
+      const tdAdded = document.createElement("td");
+      tdAdded.className = "tmap-cell tmap-cell--added";
+      if (row.added) {
+        tdAdded.textContent = row.added;
+      } else {
+        tdAdded.textContent = "\u2014";
+        tdAdded.classList.add("tmap-cell--empty");
+      }
+      tr.appendChild(tdAdded);
+
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    fragment.appendChild(table);
+  }
+
+  // Replace panel contents.
+  tmapPanel.textContent = "";
+  tmapPanel.appendChild(fragment);
+
+  // Auto-open the Transformation Map <details> collapsible on first
+  // population so the user sees results immediately without having to
+  // manually expand the section.  Subsequent calls leave the open/closed
+  // state as-is so the user's preference is respected.
+  const tmapDetailsEl = document.getElementById("tmap-details");
+  if (tmapDetailsEl && !tmapDetailsEl.open) {
+    tmapDetailsEl.open = true;
   }
 }
 
@@ -1277,14 +1516,22 @@ async function saveRun() {
   const temperature = parseFloat(tempInput.value);
   const max_tokens  = parseInt(tokensInput.value, 10);
 
+  // Compute transformation map rows from cached diff (if available)
+  let tmapRows = null;
+  if (state.lastDiff) {
+    const rows = extractTransformationRows(state.lastDiff, state.tmapIncludeAll);
+    if (rows.length > 0) tmapRows = rows;
+  }
+
   const reqBody = {
-    payload:       state.payload,
-    output:        state.current,     // null if not generated yet
-    baseline:      state.baseline,    // null if no baseline set
+    payload:            state.payload,
+    output:             state.current,     // null if not generated yet
+    baseline:           state.baseline,    // null if no baseline set
     model,
     temperature,
     max_tokens,
-    system_prompt: systemPromptVal,
+    system_prompt:      systemPromptVal,
+    transformation_map: tmapRows,
   };
 
   // ── POST to /api/save ──────────────────────────────────────────────────
@@ -1466,6 +1713,101 @@ function wireEvents() {
     saveRun();
   });
 
+  // ── Transformation Map mode toggle ──────────────────────────────────── //
+  // Switches between two display modes for the clause-level alignment:
+  //   • "Replacements only" (default) — only shows rows where text in A was
+  //     replaced by different text in B (both sides non-empty).
+  //   • "All changes" — additionally includes pure inserts (new text in B
+  //     with no counterpart in A) and pure deletes (text in A removed with
+  //     no replacement in B), displayed with an em dash on the empty side.
+  //
+  // The toggle re-renders instantly from the cached diff (state.lastDiff)
+  // without making any API call — the LCS diff is computed once in
+  // updateDiff() and reused for all subsequent re-renders.
+  btnTmapMode.addEventListener("click", () => {
+    state.tmapIncludeAll = !state.tmapIncludeAll;
+    btnTmapMode.textContent = state.tmapIncludeAll ? "All changes" : "Replacements only";
+    btnTmapMode.classList.toggle("is-active", state.tmapIncludeAll);
+    if (state.lastDiff) {
+      updateTransformationMap(state.lastDiff);
+    }
+  });
+
+  // ── Transformation Map copy as TSV ──────────────────────────────── //
+  // Copies the current transformation map rows to the clipboard in
+  // tab-separated values (TSV) format.  TSV is chosen over CSV because
+  // it pastes cleanly into spreadsheets and avoids quoting issues with
+  // commas in descriptive text.
+  //
+  // Format:
+  //   REMOVED\tADDED        ← header row
+  //   old text\tnew text    ← data rows
+  //   —\tnew text           ← pure insert (em dash for empty removed side)
+  //
+  // Respects the current mode (state.tmapIncludeAll) so the clipboard
+  // content matches what the user sees in the table.
+  btnTmapCopy.addEventListener("click", () => {
+    if (!state.lastDiff) {
+      setStatus("Nothing to copy \u2013 generate a diff first.");
+      return;
+    }
+    const rows = extractTransformationRows(state.lastDiff, state.tmapIncludeAll);
+    if (rows.length === 0) {
+      setStatus("No transformation rows to copy.");
+      return;
+    }
+
+    const lines = ["REMOVED\tADDED"];
+    for (const row of rows) {
+      lines.push(`${row.removed || "\u2014"}\t${row.added || "\u2014"}`);
+    }
+
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      btnTmapCopy.textContent = "Copied";
+      setTimeout(() => { btnTmapCopy.textContent = "Copy TSV"; }, 1200);
+    });
+  });
+
+  // ── Transformation Map copy as Markdown ────────────────────────────── //
+  // Copies the transformation map as a GitHub-Flavoured Markdown (GFM)
+  // table, ready to paste into documentation, PRs, or spec files.
+  //
+  // Format:
+  //   | Removed | Added |
+  //   | --- | --- |
+  //   | old text | new text |
+  //   | — | new text |          ← pure insert (em dash for empty side)
+  //
+  // Pipe characters (|) inside cell text are escaped as \| to prevent
+  // them from being interpreted as column separators in the Markdown
+  // renderer.  Respects the current mode (state.tmapIncludeAll).
+  btnTmapCopyMd.addEventListener("click", () => {
+    if (!state.lastDiff) {
+      setStatus("Nothing to copy \u2013 generate a diff first.");
+      return;
+    }
+    const rows = extractTransformationRows(state.lastDiff, state.tmapIncludeAll);
+    if (rows.length === 0) {
+      setStatus("No transformation rows to copy.");
+      return;
+    }
+
+    const lines = [
+      "| Removed | Added |",
+      "| --- | --- |",
+    ];
+    for (const row of rows) {
+      const removed = (row.removed || "\u2014").replace(/\|/g, "\\|");
+      const added   = (row.added   || "\u2014").replace(/\|/g, "\\|");
+      lines.push(`| ${removed} | ${added} |`);
+    }
+
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      btnTmapCopyMd.textContent = "Copied";
+      setTimeout(() => { btnTmapCopyMd.textContent = "Copy MD"; }, 1200);
+    });
+  });
+
   // ── Clear output ─────────────────────────────────────────────────────── //
   btnClearOutput.addEventListener("click", () => {
     outputBox.textContent = "";
@@ -1476,6 +1818,7 @@ function wireEvents() {
     state.baseline       = null;
     state.lastMeta       = null;
     state.baselineMeta   = null;
+    state.lastDiff       = null;
     diffA.textContent = "";
     diffA.appendChild(makePlaceholder("No baseline set."));
     diffB.textContent = "";
@@ -1485,6 +1828,10 @@ function wireEvents() {
     signalPanel.textContent = "";
     signalPanel.appendChild(
       makePlaceholder("Set a baseline (A) and generate to analyze content-word changes.")
+    );
+    tmapPanel.textContent = "";
+    tmapPanel.appendChild(
+      makePlaceholder("Set a baseline (A) and generate to see clause-level substitutions.")
     );
     btnSetBaseline.classList.remove("is-active");
     setStatus("Output cleared.");
