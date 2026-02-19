@@ -104,11 +104,16 @@ axis_descriptor_lab/
 ├─ pyproject.toml
 ├─ .env.example
 ├─ app/
-│  ├─ main.py                # FastAPI app + all routes
+│  ├─ main.py                # FastAPI app — thin routing layer
 │  ├─ hashing.py             # IPC normalisation and hash utilities
-│  ├─ signal_isolation.py    # NLP pipeline for content-word delta
-│  ├─ ollama_client.py       # HTTP wrapper around Ollama /api/generate
 │  ├─ schema.py              # Pydantic v2 models
+│  ├─ ollama_client.py       # HTTP wrapper around Ollama /api/generate
+│  ├─ signal_isolation.py    # NLP pipeline for content-word delta
+│  ├─ transformation_map.py  # Clause-level sentence alignment + diffing
+│  ├─ save_package.py        # Manifest builder, zip archive, import/export
+│  ├─ relabel_policy.py      # Policy table + score-to-label mapping
+│  ├─ save_formatting.py     # Markdown builders + folder-name generator
+│  ├─ file_loaders.py        # Example + prompt file loading/listing
 │  ├─ prompts/
 │  │  ├─ system_prompt_v01.txt
 │  │  ├─ system_prompt_v02_terse.txt
@@ -139,7 +144,7 @@ axis_descriptor_lab/
 │  ├─ index.rst
 │  ├─ api/                   # autodoc API reference
 │  └─ guides/                # narrative guides (IPC, hashing)
-├─ tests/                    # pytest test suite (405 tests, 99% coverage)
+├─ tests/                    # pytest test suite (474 tests, 99% coverage)
 │  ├─ conftest.py
 │  ├─ test_hashing.py
 │  ├─ test_main.py
@@ -147,8 +152,11 @@ axis_descriptor_lab/
 │  ├─ test_save_package.py
 │  ├─ test_schema.py
 │  ├─ test_signal_isolation.py
-│  ├─ test_static_modules.py  # ES module structure verification
-│  └─ test_transformation_map.py
+│  ├─ test_static_modules.py    # ES module structure verification
+│  ├─ test_transformation_map.py
+│  ├─ test_relabel_policy.py    # policy table + relabel logic
+│  ├─ test_save_formatting.py   # Markdown builders + folder names
+│  └─ test_file_loaders.py      # file loading + listing
 ├─ data/                     # session saves (gitignored)
 └─ logs/
    └─ run_log.jsonl          # created automatically on first log call
@@ -178,7 +186,7 @@ Key documentation pages:
 pip install -e ".[dev]"
 
 # Run tests
-pytest                             # all 405 tests
+pytest                             # all 474 tests
 pytest -v --cov --cov-report=term  # with coverage (99%)
 
 # Lint

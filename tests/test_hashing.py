@@ -17,7 +17,9 @@ from app.hashing import (
     compute_output_hash,
     compute_payload_hash,
     compute_system_prompt_hash,
+    payload_hash,
 )
+from app.schema import AxisPayload, AxisValue
 
 # ── _normalise_system_prompt ────────────────────────────────────────────────
 
@@ -306,3 +308,68 @@ class TestComputePayloadHash:
         """Different payload content must produce different hashes."""
         modified = {**self._SAMPLE, "seed": 999}
         assert compute_payload_hash(self._SAMPLE) != compute_payload_hash(modified)
+
+
+# ── payload_hash (typed convenience wrapper) ────────────────────────────────
+
+
+class TestPayloadHash:
+    """Verify the typed AxisPayload → hash convenience wrapper.
+
+    These tests were migrated from test_main.py where they tested the
+    former ``_payload_hash()`` private helper.  The logic is identical;
+    only the import path changed.
+    """
+
+    def test_deterministic(self) -> None:
+        """Same payload must always produce the same hash."""
+        p = AxisPayload(
+            axes={"health": AxisValue(label="weary", score=0.5)},
+            policy_hash="h",
+            seed=1,
+            world_id="w",
+        )
+        h1 = payload_hash(p)
+        h2 = payload_hash(p)
+        assert h1 == h2
+        assert len(h1) == 64  # SHA-256 hex
+
+    def test_different_payloads_differ(self) -> None:
+        """Different payloads must produce different hashes."""
+        p1 = AxisPayload(
+            axes={"a": AxisValue(label="x", score=0.1)},
+            policy_hash="h1",
+            seed=1,
+            world_id="w",
+        )
+        p2 = AxisPayload(
+            axes={"a": AxisValue(label="x", score=0.2)},
+            policy_hash="h1",
+            seed=1,
+            world_id="w",
+        )
+        assert payload_hash(p1) != payload_hash(p2)
+
+    def test_order_independent(self) -> None:
+        """Axes dict ordering must not affect hash."""
+        axes_a = {
+            "z": AxisValue(label="z", score=0.1),
+            "a": AxisValue(label="a", score=0.9),
+        }
+        axes_b = {
+            "a": AxisValue(label="a", score=0.9),
+            "z": AxisValue(label="z", score=0.1),
+        }
+        p1 = AxisPayload(axes=axes_a, policy_hash="h", seed=1, world_id="w")
+        p2 = AxisPayload(axes=axes_b, policy_hash="h", seed=1, world_id="w")
+        assert payload_hash(p1) == payload_hash(p2)
+
+    def test_consistent_with_compute_payload_hash(self) -> None:
+        """payload_hash(model) must equal compute_payload_hash(model.model_dump())."""
+        p = AxisPayload(
+            axes={"health": AxisValue(label="weary", score=0.5)},
+            policy_hash="abc",
+            seed=42,
+            world_id="w",
+        )
+        assert payload_hash(p) == compute_payload_hash(p.model_dump())
