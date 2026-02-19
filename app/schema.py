@@ -368,6 +368,16 @@ class SaveRequest(BaseModel):
             "saved as transformation_map.json alongside other files."
         ),
     )
+    diff_change_pct: int | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description=(
+            "Word-level change percentage between baseline and current output, "
+            "computed client-side as (insertions + deletions) / total words. "
+            "None when no diff was computed (missing baseline or output)."
+        ),
+    )
 
 
 class SaveResponse(BaseModel):

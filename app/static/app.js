@@ -105,6 +105,7 @@ const btnClearOutput      = $("btn-clear-output");
 const diffA               = $("diff-a");
 const diffB               = $("diff-b");
 const diffDelta           = $("diff-delta");
+const diffPct             = $("diff-pct");
 const signalPanel         = $("signal-panel");
 const tmapPanel           = $("tmap-panel");
 const btnTmapMode         = $("btn-tmap-mode");
@@ -835,6 +836,7 @@ function updateDiff() {
   if (!textA || !textB) {
     diffDelta.textContent = "";
     diffDelta.appendChild(makePlaceholder("Set a baseline and generate to compare."));
+    diffPct.style.display = "none";
     return;
   }
 
@@ -867,6 +869,20 @@ function updateDiff() {
 
   diffDelta.textContent = "";
   diffDelta.appendChild(fragment);
+
+  // Compute change percentage: (insertions + deletions) / total words.
+  // Total = equal + inserted + deleted (each word counted once).
+  const eqCount  = diff.filter(([op]) => op === "=").length;
+  const addCount = diff.filter(([op]) => op === "+").length;
+  const delCount = diff.filter(([op]) => op === "-").length;
+  const total    = eqCount + addCount + delCount;
+  if (total > 0) {
+    const pct = Math.round(((addCount + delCount) / total) * 100);
+    diffPct.textContent = `${pct}% changed`;
+    diffPct.style.display = "";
+  } else {
+    diffPct.style.display = "none";
+  }
 
   // Open the diff <details> automatically if it isn't already
   const detailsEl = document.getElementById("diff-details");
@@ -1518,9 +1534,19 @@ async function saveRun() {
 
   // Compute transformation map rows from cached diff (if available)
   let tmapRows = null;
+  let diffChangePct = null;
   if (state.lastDiff) {
     const rows = extractTransformationRows(state.lastDiff, state.tmapIncludeAll);
     if (rows.length > 0) tmapRows = rows;
+
+    // Compute word-level change percentage from the cached diff
+    const eqCount  = state.lastDiff.filter(([op]) => op === "=").length;
+    const addCount = state.lastDiff.filter(([op]) => op === "+").length;
+    const delCount = state.lastDiff.filter(([op]) => op === "-").length;
+    const total    = eqCount + addCount + delCount;
+    if (total > 0) {
+      diffChangePct = Math.round(((addCount + delCount) / total) * 100);
+    }
   }
 
   const reqBody = {
@@ -1532,6 +1558,7 @@ async function saveRun() {
     max_tokens,
     system_prompt:      systemPromptVal,
     transformation_map: tmapRows,
+    diff_change_pct:    diffChangePct,
   };
 
   // ── POST to /api/save ──────────────────────────────────────────────────
@@ -1819,6 +1846,7 @@ function wireEvents() {
     state.lastMeta       = null;
     state.baselineMeta   = null;
     state.lastDiff       = null;
+    diffPct.style.display = "none";
     diffA.textContent = "";
     diffA.appendChild(makePlaceholder("No baseline set."));
     diffB.textContent = "";

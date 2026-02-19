@@ -937,6 +937,7 @@ def save_run(req: SaveRequest) -> SaveResponse:
             "world_id": req.payload.world_id,
             "policy_hash": req.payload.policy_hash,
             "axis_count": len(req.payload.axes),
+            "diff_change_pct": req.diff_change_pct,
         }
         (save_dir / "metadata.json").write_text(
             json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",

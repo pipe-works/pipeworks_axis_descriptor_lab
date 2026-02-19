@@ -88,7 +88,6 @@
     <textarea
       id="json-textarea"
       class="code-editor"
-      rows="22"
       spellcheck="false"
       autocomplete="off"
       aria-label="Axis payload JSON"
@@ -338,7 +337,7 @@
     <details class="collapsible" id="diff-details">
       <summary class="collapsible__summary"
                data-tooltip="Word-level change highlighting between Baseline A and Current B (shown in the centre panel). Additions in B appear green; words removed from A appear red with strikethrough. Useful for measuring LLM drift across runs."
-               >Δ Changes (word-level)</summary>
+               >Δ Changes (word-level) <span id="diff-pct" class="badge badge--muted" style="display:none;" data-tooltip="Percentage of words changed between Baseline A and Current B. Calculated as (insertions + deletions) ÷ total words across both texts."></span></summary>
 
       <div id="diff-delta" class="diff-delta" style="margin-top:var(--sp-2);">
         <span class="placeholder-text">Set a baseline (A) and generate to compare.</span>
