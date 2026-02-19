@@ -7,7 +7,8 @@ Tiny web tool for testing how small LLMs (via Ollama) produce _non-authoritative
 **Key principle:** The system (axes, scores, seeds) is _authoritative_. The LLM is _ornamental_ -- it produces flavour text only, never makes decisions, and its output is never trusted as ground truth.
 
 <p align="center">
-  <img src="docs/images/lab_ui.png" alt="Axis Descriptor Lab UI" width="720">
+  <img src="docs/images/lab_ui_dark.png" alt="Axis Descriptor Lab – dark theme" width="49%">
+  <img src="docs/images/lab_ui_light.png" alt="Axis Descriptor Lab – light theme" width="49%">
 </p>
 
 ## Quick start
