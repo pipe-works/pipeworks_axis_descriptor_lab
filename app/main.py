@@ -3,33 +3,52 @@ app/main.py
 -----------------------------------------------------------------------------
 FastAPI application entrypoint for the Axis Descriptor Lab.
 
+This module is a **thin routing layer** — each route handler orchestrates
+calls to domain modules and returns the result.  All business logic lives
+in dedicated modules:
+
+Domain modules
+~~~~~~~~~~~~~~
+- ``app.hashing``          – IPC normalisation and SHA-256 hash functions.
+- ``app.schema``           – Pydantic v2 request / response models.
+- ``app.ollama_client``    – Synchronous HTTP wrapper around Ollama.
+- ``app.signal_isolation`` – NLP pipeline for content-word delta.
+- ``app.transformation_map`` – Clause-level sentence alignment and diffing.
+- ``app.save_package``     – Manifest builder, zip archive, import/export.
+- ``app.relabel_policy``   – Policy table and score-to-label mapping.
+- ``app.save_formatting``  – Markdown builders and folder-name generator.
+- ``app.file_loaders``     – Example and prompt file loading/listing.
+
 Run with:
-    uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+    uvicorn app.main:app --reload --host 127.0.0.1 --port 8242
 
 Endpoints
 ---------
-GET  /                      → serves index.html
-GET  /api/examples          → list of available example names
-GET  /api/examples/{name}   → returns a single example JSON payload
-GET  /api/prompts           → list of available prompt names
-GET  /api/prompts/{name}    → returns a single prompt's text content
-GET  /api/models            → returns locally available Ollama models
-POST /api/generate          → send axis payload to Ollama, return description
-POST /api/log               → persist a run log entry to logs/run_log.jsonl
-POST /api/relabel           → (optional) recompute labels from policy rules
-POST /api/analyze-delta     → content-word delta between two texts
-GET  /api/system-prompt     → return the default system prompt as plain text
-POST /api/save              → save session state to a timestamped data/ subfolder
+GET  /                         → serves index.html
+GET  /api/examples             → list of available example names
+GET  /api/examples/{name}      → returns a single example JSON payload
+GET  /api/prompts              → list of available prompt names
+GET  /api/prompts/{name}       → returns a single prompt's text content
+GET  /api/models               → returns locally available Ollama models
+POST /api/generate             → send axis payload to Ollama, return description
+POST /api/log                  → persist a run log entry to logs/run_log.jsonl
+POST /api/relabel              → (optional) recompute labels from policy rules
+POST /api/analyze-delta        → content-word delta between two texts
+POST /api/transformation-map   → clause-level replacement pairs
+GET  /api/system-prompt        → return the default system prompt as plain text
+POST /api/save                 → save session state to a timestamped data/ subfolder
+GET  /api/save/{name}/export   → download a save package as a zip
+POST /api/import               → import a save package from a zip upload
 
 Architecture notes
 ------------------
-• All blocking I/O (file reads, Ollama HTTP calls) lives in regular `def`
+- All blocking I/O (file reads, Ollama HTTP calls) lives in regular ``def``
   route handlers.  FastAPI automatically runs those in a threadpool so the
   async event loop is never blocked.
-• Static files are served by Starlette's StaticFiles middleware.
-• Jinja2Templates renders index.html (single page – the JS takes over).
-• A simple JSONL log file under logs/ provides the Pipe-Works audit trail
-  without any database dependency.
+- Static files are served by Starlette's StaticFiles middleware.
+- Jinja2Templates renders index.html (single page — the JS takes over).
+- A simple JSONL log file under ``logs/`` provides the Pipe-Works audit
+  trail without any database dependency.
 """
 
 from __future__ import annotations
@@ -53,10 +72,24 @@ from starlette.requests import Request
 from app.hashing import (
     compute_ipc_id,
     compute_output_hash,
-    compute_payload_hash,
     compute_system_prompt_hash,
+    payload_hash,
+)
+from app.file_loaders import (
+    list_example_names,
+    list_prompt_names,
+    load_default_prompt,
+    load_example,
+    load_prompt,
 )
 from app.ollama_client import OLLAMA_HOST, list_local_models, ollama_generate
+from app.relabel_policy import apply_relabel_policy
+from app.save_formatting import (
+    build_baseline_md,
+    build_output_md,
+    build_system_prompt_md,
+    save_folder_name,
+)
 from app.save_package import (
     build_manifest,
     create_zip_archive,
@@ -91,8 +124,6 @@ load_dotenv()
 # Resolve paths relative to this file so the app works regardless of the
 # working directory from which uvicorn is launched.
 _HERE = Path(__file__).parent
-_PROMPTS_DIR = _HERE / "prompts"
-_EXAMPLES_DIR = _HERE / "examples"
 _TEMPLATES_DIR = _HERE / "templates"
 _STATIC_DIR = _HERE / "static"
 _LOGS_DIR = _HERE.parent / "logs"
@@ -133,103 +164,6 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 
 # -----------------------------------------------------------------------------
-# Helpers
-# -----------------------------------------------------------------------------
-
-
-def _load_default_prompt() -> str:
-    """
-    Read the default system prompt from disk.
-
-    Returns the text of app/prompts/system_prompt_v01.txt.
-
-    Raises
-    ------
-    HTTPException(500) if the file is missing.
-    """
-    prompt_path = _PROMPTS_DIR / "system_prompt_v01.txt"
-    if not prompt_path.exists():
-        raise HTTPException(
-            status_code=500,
-            detail=f"Default system prompt not found at {prompt_path}",
-        )
-    return prompt_path.read_text(encoding="utf-8").strip()
-
-
-def _payload_hash(payload: AxisPayload) -> str:
-    """
-    Produce a stable SHA-256 hex digest for an AxisPayload.
-
-    Convenience wrapper that accepts a typed Pydantic model and delegates
-    to :func:`app.hashing.compute_payload_hash` for the actual hashing.
-
-    Parameters
-    ----------
-    payload : The AxisPayload to hash.
-
-    Returns
-    -------
-    str : 64-character lowercase hex digest.
-    """
-    return compute_payload_hash(payload.model_dump())
-
-
-def _load_example(name: str) -> dict:
-    """
-    Load and parse a named example JSON file from app/examples/.
-
-    Parameters
-    ----------
-    name : Bare filename without extension (e.g. "example_a").
-
-    Returns
-    -------
-    dict : Parsed JSON object.
-
-    Raises
-    ------
-    HTTPException(404) if the file doesn't exist.
-    HTTPException(500) if the file contains invalid JSON.
-    """
-    path = _EXAMPLES_DIR / f"{name}.json"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Example '{name}' not found.")
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=500, detail=f"Example '{name}' contains invalid JSON: {exc}"
-        ) from exc
-
-
-def _load_prompt(name: str) -> str:
-    """
-    Load a named prompt text file from app/prompts/.
-
-    Unlike ``_load_example()`` which parses structured JSON, this simply reads
-    the file as plain UTF-8 text and returns it stripped of leading/trailing
-    whitespace.  Prompts are natural-language instructions for the LLM, not
-    structured data.
-
-    Parameters
-    ----------
-    name : Bare filename without extension (e.g. "system_prompt_v01").
-
-    Returns
-    -------
-    str : The prompt text content, stripped of surrounding whitespace.
-
-    Raises
-    ------
-    HTTPException(404) if the file doesn't exist.
-    """
-    path = _PROMPTS_DIR / f"{name}.txt"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found.")
-    return path.read_text(encoding="utf-8").strip()
-
-
-# -----------------------------------------------------------------------------
 # Routes
 # -----------------------------------------------------------------------------
 
@@ -264,8 +198,7 @@ def list_examples() -> list[str]:
 
     The frontend uses this to populate its example dropdown.
     """
-    names = sorted(p.stem for p in _EXAMPLES_DIR.glob("*.json"))
-    return names
+    return list_example_names()
 
 
 @app.get("/api/examples/{name}", summary="Get a named example payload")
@@ -282,7 +215,7 @@ def get_example(name: str) -> dict:
     The raw example JSON object (validated loosely by Pydantic when the
     frontend loads it into the textarea).
     """
-    return _load_example(name)
+    return load_example(name)
 
 
 @app.get("/api/prompts", summary="List available prompt names")
@@ -295,8 +228,7 @@ def list_prompts() -> list[str]:
     users to browse and load different system prompt variants into the
     system prompt override textarea.
     """
-    names = sorted(p.stem for p in _PROMPTS_DIR.glob("*.txt"))
-    return names
+    return list_prompt_names()
 
 
 @app.get(
@@ -320,7 +252,7 @@ def get_prompt(name: str) -> str:
     -------
     The raw prompt text (plain text, not JSON).
     """
-    return _load_prompt(name)
+    return load_prompt(name)
 
 
 @app.get("/api/models", summary="List locally available Ollama models")
@@ -368,7 +300,7 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     HTTPException(504) if the Ollama request times out.
     HTTPException(500) for any other unexpected error.
     """
-    system_prompt = req.system_prompt or _load_default_prompt()
+    system_prompt = req.system_prompt or load_default_prompt()
 
     # Serialise the payload as pretty-printed JSON – this is the "user turn"
     # the LLM receives.  The prompt instructs it not to reference JSON by name.
@@ -409,7 +341,7 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     # -- Compute Interpretive Provenance Chain (IPC) hashes --------------
     # These four hashes fingerprint the complete generation context so that
     # identical runs can be detected and prompt drift can be audited.
-    input_hash = _payload_hash(req.payload)
+    input_hash = payload_hash(req.payload)
     sp_hash = compute_system_prompt_hash(system_prompt)
     out_hash = compute_output_hash(text)
     ipc = compute_ipc_id(
@@ -468,7 +400,7 @@ def log_run(
     -------
     The complete LogEntry that was persisted.
     """
-    input_hash = _payload_hash(payload)
+    input_hash = payload_hash(payload)
 
     # Always compute the output hash — the output text is always available.
     out_hash = compute_output_hash(output)
@@ -522,9 +454,8 @@ def relabel(payload: AxisPayload) -> AxisPayload:
     the lab can demonstrate *policy drift* as well as LLM drift.  Unknown
     axes are left unchanged.
 
-    The mapping is intentionally simple and Pipe-Works-flavoured – it is NOT
-    a substitute for a real policy engine.  It is here to make the score
-    sliders meaningful and to show how label changes propagate to LLM output.
+    Delegates to :func:`app.relabel_policy.apply_relabel_policy` which owns
+    the policy table and mapping logic.
 
     Parameters
     ----------
@@ -534,93 +465,7 @@ def relabel(payload: AxisPayload) -> AxisPayload:
     -------
     Updated AxisPayload with labels recomputed from scores.
     """
-    # Policy table: axis_name → list of (upper_bound_exclusive, label).
-    # Thresholds are checked in order; the first match wins.
-    # A final entry with upper_bound = 1.01 acts as the catch-all.
-    _POLICY: dict[str, list[tuple[float, str]]] = {
-        "age": [
-            (0.25, "young"),
-            (0.5, "middle-aged"),
-            (0.75, "old"),
-            (1.01, "ancient"),
-        ],
-        "demeanor": [
-            (0.2, "cordial"),
-            (0.4, "guarded"),
-            (0.6, "resentful"),
-            (0.8, "hostile"),
-            (1.01, "menacing"),
-        ],
-        "dependency": [
-            (0.33, "dispensable"),
-            (0.66, "necessary"),
-            (1.01, "indispensable"),
-        ],
-        "facial_signal": [
-            (0.3, "open"),
-            (0.6, "asymmetrical"),
-            (1.01, "closed"),
-        ],
-        "health": [
-            (0.25, "vigorous"),
-            (0.5, "weary"),
-            (0.75, "ailing"),
-            (1.01, "failing"),
-        ],
-        "legitimacy": [
-            (0.25, "unchallenged"),
-            (0.5, "tolerated"),
-            (0.65, "questioned"),
-            (0.8, "contested"),
-            (1.01, "illegitimate"),
-        ],
-        "moral_load": [
-            (0.3, "clear"),
-            (0.6, "conflicted"),
-            (1.01, "burdened"),
-        ],
-        "physique": [
-            (0.3, "gaunt"),
-            (0.45, "lean"),
-            (0.55, "stocky"),
-            (0.7, "hunched"),
-            (1.01, "imposing"),
-        ],
-        "risk_exposure": [
-            (0.33, "sheltered"),
-            (0.66, "hazardous"),
-            (1.01, "perilous"),
-        ],
-        "visibility": [
-            (0.33, "obscure"),
-            (0.66, "routine"),
-            (1.01, "prominent"),
-        ],
-        "wealth": [
-            (0.25, "destitute"),
-            (0.45, "threadbare"),
-            (0.55, "well-kept"),
-            (0.75, "comfortable"),
-            (1.01, "affluent"),
-        ],
-    }
-
-    # Build an updated axes dict with recomputed labels where policy exists.
-    updated_axes = {}
-    for axis_name, axis_val in payload.axes.items():
-        if axis_name in _POLICY:
-            new_label = axis_val.label  # default: keep existing
-            for upper_bound, label in _POLICY[axis_name]:
-                if axis_val.score < upper_bound:
-                    new_label = label
-                    break
-            # Create a new AxisValue with the updated label, same score.
-            updated_axes[axis_name] = axis_val.model_copy(update={"label": new_label})
-        else:
-            updated_axes[axis_name] = axis_val
-
-    # Return a new payload with updated axes; all other fields unchanged.
-    return payload.model_copy(update={"axes": updated_axes})
+    return apply_relabel_policy(payload)
 
 
 # -----------------------------------------------------------------------------
@@ -703,138 +548,6 @@ def transformation_map(req: TransformationMapRequest) -> TransformationMapRespon
 
 
 # -----------------------------------------------------------------------------
-# Save helpers
-# -----------------------------------------------------------------------------
-
-
-def _save_folder_name(timestamp: datetime, input_hash: str) -> str:
-    """
-    Produce a unique folder name for a save operation.
-
-    Format: ``YYYYMMDD_HHMMSS_<8-char-hash-prefix>``
-
-    Example: ``20260218_143022_d845cdcf``
-
-    Parameters
-    ----------
-    timestamp  : UTC datetime of the save (passed in so the folder name stays
-                 consistent with the ``metadata.json`` timestamp).
-    input_hash : Full 64-char SHA-256 hex digest of the AxisPayload.
-
-    Returns
-    -------
-    str : Folder name safe for all major filesystems (no spaces, no special
-          characters beyond underscores).
-    """
-    date_part = timestamp.strftime("%Y%m%d_%H%M%S")
-    hash_part = input_hash[:8]
-    return f"{date_part}_{hash_part}"
-
-
-def _build_output_md(
-    text: str,
-    req: SaveRequest,
-    now: datetime,
-    input_hash: str,
-    *,
-    system_prompt_hash: str | None = None,
-    ipc_id: str | None = None,
-) -> str:
-    """
-    Format the generated LLM output as a Markdown document.
-
-    Includes an HTML-comment provenance header (model, temperature, seed,
-    hashes) so the file is self-documenting when opened in any Markdown
-    viewer.  The IPC hashes are included when available so saved files
-    carry a complete reproducibility record.
-
-    Parameters
-    ----------
-    text               : The raw LLM-generated text.
-    req                : The full SaveRequest (for metadata fields).
-    now                : UTC datetime of the save (for the provenance header).
-    input_hash         : SHA-256 of the payload.
-    system_prompt_hash : SHA-256 of the normalised system prompt (optional).
-    ipc_id             : Interpretive Provenance Chain identifier (optional).
-
-    Returns
-    -------
-    str : Markdown string ready to write to disk.
-    """
-    lines = [
-        "# Output",
-        "",
-        "<!-- Axis Descriptor Lab – generated output -->",
-        f"<!-- saved: {now.isoformat()} -->",
-        f"<!-- model: {req.model} | temp: {req.temperature} | max_tokens: {req.max_tokens} -->",
-        f"<!-- seed: {req.payload.seed} | input_hash: {input_hash[:16]}... -->",
-    ]
-
-    # Append IPC provenance hashes when available so the saved file carries
-    # a complete reproducibility record without needing metadata.json.
-    if system_prompt_hash:
-        lines.append(f"<!-- system_prompt_hash: {system_prompt_hash[:16]}... -->")
-    if ipc_id:
-        lines.append(f"<!-- ipc_id: {ipc_id[:16]}... -->")
-
-    lines += ["", text, ""]
-    return "\n".join(lines)
-
-
-def _build_baseline_md(text: str, folder_name: str) -> str:
-    """
-    Format the stored baseline text as a Markdown document.
-
-    Parameters
-    ----------
-    text        : The baseline text (state.baseline from the frontend).
-    folder_name : Save folder name (used in the provenance comment).
-
-    Returns
-    -------
-    str : Markdown string ready to write to disk.
-    """
-    lines = [
-        "# Baseline (A)",
-        "",
-        f"<!-- Axis Descriptor Lab – baseline text for save {folder_name} -->",
-        "",
-        text,
-        "",
-    ]
-    return "\n".join(lines)
-
-
-def _build_system_prompt_md(prompt_text: str, folder_name: str) -> str:
-    """
-    Format the system prompt as a Markdown document with a fenced code block.
-
-    Wrapping in a fenced code block preserves all whitespace and makes the
-    prompt clearly machine-readable when opened in a Markdown viewer.
-
-    Parameters
-    ----------
-    prompt_text : The system prompt string (may be multi-line).
-    folder_name : Save folder name (for the provenance comment).
-
-    Returns
-    -------
-    str : Markdown string ready to write to disk.
-    """
-    lines = [
-        "# System Prompt",
-        "",
-        f"<!-- Axis Descriptor Lab – system prompt for save {folder_name} -->",
-        "",
-        "```text",
-        prompt_text,
-        "```",
-        "",
-    ]
-    return "\n".join(lines)
-
-
-# -----------------------------------------------------------------------------
 # Save + system-prompt routes
 # -----------------------------------------------------------------------------
 
@@ -856,7 +569,7 @@ def get_system_prompt() -> str:
     -------
     str : The default system prompt as plain text.
     """
-    return _load_default_prompt()
+    return load_default_prompt()
 
 
 @app.post(
@@ -901,8 +614,8 @@ def save_run(req: SaveRequest) -> SaveResponse:
     HTTPException(500) if file I/O fails.
     """
     now = datetime.now(timezone.utc)
-    input_hash = _payload_hash(req.payload)
-    folder_name = _save_folder_name(now, input_hash)
+    input_hash = payload_hash(req.payload)
+    folder_name = save_folder_name(now, input_hash)
     save_dir = _DATA_DIR / folder_name
 
     # -- Compute IPC hashes ------------------------------------------------
@@ -940,7 +653,7 @@ def save_run(req: SaveRequest) -> SaveResponse:
 
         # -- system_prompt.md -------------------------------------------- #
         # Always written — the prompt is required by SaveRequest.
-        system_prompt_md = _build_system_prompt_md(req.system_prompt, folder_name)
+        system_prompt_md = build_system_prompt_md(req.system_prompt, folder_name)
         (save_dir / "system_prompt.md").write_text(system_prompt_md, encoding="utf-8")
         files_written.append("system_prompt.md")
 
@@ -949,11 +662,14 @@ def save_run(req: SaveRequest) -> SaveResponse:
         # file (rather than writing an empty one) makes the save folder
         # self-documenting: if output.md is absent, no generation occurred.
         if req.output is not None:
-            output_md = _build_output_md(
+            output_md = build_output_md(
                 req.output,
-                req,
-                now,
-                input_hash,
+                model=req.model,
+                temperature=req.temperature,
+                max_tokens=req.max_tokens,
+                seed=req.payload.seed,
+                timestamp=now,
+                input_hash=input_hash,
                 system_prompt_hash=sp_hash,
                 ipc_id=ipc,
             )
@@ -963,7 +679,7 @@ def save_run(req: SaveRequest) -> SaveResponse:
         # -- baseline.md (conditional) ----------------------------------- #
         # Only written when a baseline was stored via "Set as A".
         if req.baseline is not None:
-            baseline_md = _build_baseline_md(req.baseline, folder_name)
+            baseline_md = build_baseline_md(req.baseline, folder_name)
             (save_dir / "baseline.md").write_text(baseline_md, encoding="utf-8")
             files_written.append("baseline.md")
 

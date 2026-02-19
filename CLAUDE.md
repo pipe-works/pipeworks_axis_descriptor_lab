@@ -36,11 +36,14 @@ The app is a FastAPI backend serving a vanilla JS single-page frontend. There ar
 
 ### Backend (Python)
 
-- **`app/main.py`** — FastAPI app with all routes. Sync handlers (not async); FastAPI runs them in a threadpool. Serves the Jinja2 template at `/` and all `/api/*` endpoints.
+- **`app/main.py`** — FastAPI app: thin routing layer that orchestrates calls to domain modules. Sync handlers (not async); FastAPI runs them in a threadpool. Serves the Jinja2 template at `/` and all `/api/*` endpoints.
 - **`app/schema.py`** — Pydantic v2 models: `AxisValue` (label + score 0.0–1.0), `AxisPayload` (dict of axes + policy_hash + seed + world_id), `GenerateRequest`, `GenerateResponse`, `LogEntry`, `DeltaRequest`, `DeltaResponse`.
-- **`app/hashing.py`** — IPC normalisation and hash utilities (payload, system prompt, output, composite IPC ID).
+- **`app/hashing.py`** — IPC normalisation and hash utilities (payload, system prompt, output, composite IPC ID, typed `payload_hash` convenience wrapper).
 - **`app/signal_isolation.py`** — NLP pipeline for the Signal Isolation Layer: tokenise (NLTK), lemmatise (WordNet), filter stopwords, compute content-word set delta between two texts. Requires NLTK data packages (punkt_tab, stopwords, wordnet) which are auto-downloaded on first run.
 - **`app/ollama_client.py`** — Synchronous HTTP wrapper around Ollama's `/api/generate` and `/api/tags` endpoints using httpx. 10s connect / 120s read timeout.
+- **`app/relabel_policy.py`** — Policy data table (`RELABEL_POLICY`) and `apply_relabel_policy()` function for score-to-label mapping across 11 axes.
+- **`app/save_formatting.py`** — Pure formatting functions for the save system: `save_folder_name()`, `build_output_md()`, `build_baseline_md()`, `build_system_prompt_md()`. No I/O, no app dependencies.
+- **`app/file_loaders.py`** — File-loading utilities: `load_default_prompt()`, `load_example()`, `load_prompt()`, `list_example_names()`, `list_prompt_names()`. Reads from `app/prompts/` and `app/examples/`.
 
 ### Frontend (Vanilla JS — ES Modules)
 

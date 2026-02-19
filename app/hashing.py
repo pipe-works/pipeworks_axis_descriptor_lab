@@ -12,7 +12,7 @@ a single change to normalisation propagates everywhere.
 
 Hash types
 ----------
-This module provides four public hash functions:
+This module provides five public hash functions:
 
 1. ``compute_payload_hash``       – SHA-256 of the canonical AxisPayload JSON.
 2. ``compute_system_prompt_hash`` – SHA-256 of the normalised system prompt.
@@ -20,6 +20,9 @@ This module provides four public hash functions:
 4. ``compute_ipc_id``             – SHA-256 of the concatenated provenance
                                     fields (the Interpretive Provenance Chain
                                     identifier).
+5. ``payload_hash``               – Typed convenience wrapper that accepts an
+                                    ``AxisPayload`` model and delegates to
+                                    ``compute_payload_hash``.
 
 All functions return lowercase 64-character hex digest strings.
 
@@ -45,6 +48,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.schema import AxisPayload
 
 # -----------------------------------------------------------------------------
 # Private normalisation helpers
@@ -266,3 +273,33 @@ def compute_ipc_id(
     combined = ":".join(parts)
 
     return hashlib.sha256(combined.encode("utf-8")).hexdigest()
+
+
+# -----------------------------------------------------------------------------
+# Typed convenience wrapper
+# -----------------------------------------------------------------------------
+
+
+def payload_hash(payload: AxisPayload) -> str:
+    """
+    Produce a stable SHA-256 hex digest for an AxisPayload model.
+
+    This is a typed convenience wrapper around :func:`compute_payload_hash`.
+    It accepts a Pydantic ``AxisPayload`` instance (instead of a raw dict),
+    calls ``.model_dump()`` internally, and delegates to
+    ``compute_payload_hash`` for the actual hashing.
+
+    This function is the preferred entry point for callers that already have
+    a typed ``AxisPayload`` — it avoids repeating ``.model_dump()`` at every
+    call site.
+
+    Parameters
+    ----------
+    payload : AxisPayload
+        The axis payload to hash.
+
+    Returns
+    -------
+    str : 64-character lowercase hex SHA-256 digest.
+    """
+    return compute_payload_hash(payload.model_dump())
