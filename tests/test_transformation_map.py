@@ -16,6 +16,7 @@ The tests verify:
 from __future__ import annotations
 
 from app.transformation_map import (
+    _extract_token_changes,
     _is_single_stopword,
     _merge_adjacent,
     _normalise_whitespace,
@@ -244,3 +245,61 @@ class TestComputeTransformationMap:
         result = compute_transformation_map(baseline, current, include_all=True)
         found = any(row["added"] == "" and "old sentence" in row["removed"] for row in result)
         assert found, f"Expected delete row in {result}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# _extract_token_changes  (token-level insert/delete branches)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestExtractTokenChanges:
+    """Tests for token-level insert/delete opcodes inside _extract_token_changes.
+
+    These cover the branches where SequenceMatcher produces pure insert or
+    delete opcodes at the token level within a sentence pair (as opposed to
+    sentence-level inserts/deletes tested in TestComputeTransformationMap).
+    """
+
+    def test_token_insert_included_with_include_all(self) -> None:
+        """When include_all=True, tokens present only in B appear as insert rows."""
+        # Same sentence structure but B has extra words at the end
+        result = _extract_token_changes(
+            ["The goblin stands."],
+            ["The goblin stands quietly nearby."],
+            include_all=True,
+        )
+        found = any(row["removed"] == "" and row["added"] != "" for row in result)
+        assert found, f"Expected a token-level insert row in {result}"
+
+    def test_token_delete_included_with_include_all(self) -> None:
+        """When include_all=True, tokens present only in A appear as delete rows."""
+        # A has extra words that B does not
+        result = _extract_token_changes(
+            ["The old weathered goblin stands."],
+            ["The goblin stands."],
+            include_all=True,
+        )
+        found = any(row["added"] == "" and row["removed"] != "" for row in result)
+        assert found, f"Expected a token-level delete row in {result}"
+
+    def test_token_insert_excluded_without_include_all(self) -> None:
+        """When include_all=False, pure token-level inserts are excluded."""
+        result = _extract_token_changes(
+            ["The goblin stands."],
+            ["The goblin stands quietly nearby."],
+            include_all=False,
+        )
+        # No row should have an empty removed side
+        for row in result:
+            assert row["removed"] != "", f"Insert row should be excluded: {row}"
+
+    def test_token_delete_excluded_without_include_all(self) -> None:
+        """When include_all=False, pure token-level deletes are excluded."""
+        result = _extract_token_changes(
+            ["The old weathered goblin stands."],
+            ["The goblin stands."],
+            include_all=False,
+        )
+        # No row should have an empty added side
+        for row in result:
+            assert row["added"] != "", f"Delete row should be excluded: {row}"
