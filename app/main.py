@@ -64,8 +64,12 @@ from app.schema import (
     LogEntry,
     SaveRequest,
     SaveResponse,
+    TransformationMapRequest,
+    TransformationMapResponse,
+    TransformationMapRow,
 )
 from app.signal_isolation import compute_delta
+from app.transformation_map import compute_transformation_map
 
 # -----------------------------------------------------------------------------
 # Bootstrap
@@ -648,6 +652,46 @@ def analyze_delta(req: DeltaRequest) -> DeltaResponse:
 
 
 # -----------------------------------------------------------------------------
+# POST /api/transformation-map
+# -----------------------------------------------------------------------------
+
+
+@app.post(
+    "/api/transformation-map",
+    response_model=TransformationMapResponse,
+    summary="Compute clause-level replacement pairs between baseline and current text",
+)
+def transformation_map(req: TransformationMapRequest) -> TransformationMapResponse:
+    """
+    Transformation Map endpoint.
+
+    Takes two text strings (baseline A and current B), runs sentence-aware
+    alignment followed by token-level diffing, and returns clause-level
+    replacement pairs.
+
+    This fills the gap between word-level diff (too granular) and
+    content-word delta (structure-blind) by showing *what chunk of text
+    was replaced by what chunk* at the clause scale.
+
+    The LLM is not involved — this is pure programmatic text analysis.
+
+    Parameters
+    ----------
+    req : TransformationMapRequest
+        Contains ``baseline_text`` and ``current_text``.
+
+    Returns
+    -------
+    TransformationMapResponse
+        Ordered list of ``TransformationMapRow`` replacement pairs.
+    """
+    rows = compute_transformation_map(
+        req.baseline_text, req.current_text, include_all=req.include_all
+    )
+    return TransformationMapResponse(rows=[TransformationMapRow(**row) for row in rows])
+
+
+# -----------------------------------------------------------------------------
 # Save helpers
 # -----------------------------------------------------------------------------
 
@@ -960,6 +1004,22 @@ def save_run(req: SaveRequest) -> SaveResponse:
                 encoding="utf-8",
             )
             files_written.append("delta.json")
+
+        # -- transformation_map.json (conditional) ---------------------- #
+        # Written when the frontend provides clause-level transformation
+        # map rows (computed client-side from the word-level LCS diff).
+        # Like delta.json, this is a derived analysis that does not affect
+        # IPC hashes or provenance computation.
+        if req.transformation_map is not None and len(req.transformation_map) > 0:
+            tmap_data = {
+                "rows": [row.model_dump() for row in req.transformation_map],
+                "row_count": len(req.transformation_map),
+            }
+            (save_dir / "transformation_map.json").write_text(
+                json.dumps(tmap_data, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            files_written.append("transformation_map.json")
 
     except OSError as exc:
         raise HTTPException(
