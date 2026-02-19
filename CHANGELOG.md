@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.10](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.9...axis-descriptor-lab-v0.1.10) (2026-02-19)
+
+
+### Features
+
+* **indicators:** Structural Learning Layer — 10 micro-indicator heuristics ([#31](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/31)) ([5b6bc09](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/5b6bc09d1c0fcf4281b74cab1974ce83b5e81ebb))
+* **ui:** add indicator tooltip and click-to-open modal ([#33](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/33)) ([2bbf775](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/2bbf775ead7bb1c389d20c33e2c4c3e7155055fc))
+
+
+### Documentation
+
+* update README project layout and test counts ([#34](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/34)) ([5e83b3f](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/5e83b3f027e20931170838ba17101d6e0dfab01f))
+
 ## [0.1.9](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.8...axis-descriptor-lab-v0.1.9) (2026-02-19)
 
 
