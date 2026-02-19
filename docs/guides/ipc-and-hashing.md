@@ -596,8 +596,8 @@ Schema: `app/schema.py`, `SaveRequest` and `SaveResponse` classes.*
 
 ### Frontend Display
 
-The frontend (`app/static/app.js`) displays IPC hashes in a
-three-line meta area below the generated output:
+The frontend (`app/static/mod-generate.js`) displays IPC hashes in a
+meta table below the generated output:
 
 ```text
 model: gemma2:2b  .  temp: 0.2  .  seed: 2954173979

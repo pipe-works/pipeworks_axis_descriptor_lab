@@ -8,7 +8,8 @@
     {{ default_model }}     – value of DEFAULT_MODEL env var
     {{ available_models }}  – Python list of locally-pulled Ollama model names
 
-  All interactive behaviour lives in static/app.js.
+  All interactive behaviour lives in static/mod-*.js (13 ES modules,
+  entry point: mod-init.js).
   All visual styles live in static/styles.css.
 
   Layout (three-column + footer)
@@ -136,7 +137,7 @@
   <section class="panel panel--centre" aria-label="Axis Controls">
     <h2 class="panel__heading">Axes</h2>
 
-    <!-- Dynamic slider area – populated by app.js buildSlidersFromJson() -->
+    <!-- Dynamic slider area – populated by mod-sync.js buildSlidersFromJson() -->
     <div id="slider-panel" class="slider-panel">
       <p class="placeholder-text">Load an example or paste JSON to see sliders.</p>
     </div>
@@ -242,7 +243,7 @@
          Stacked vertically below the Generate button so the centre column
          serves as the workspace for both axis editing AND diff review.
          A = stored baseline, B = latest generation.  Both are populated
-         by app.js when the user clicks "Set as A" and generates output. -->
+         by mod-generate.js when the user clicks "Set as A" and generates output. -->
     <hr class="divider" />
 
     <div class="diff-stack">
@@ -388,7 +389,7 @@
   <span id="spinner" class="spinner hidden" aria-label="Loading" role="status"></span>
 </footer>
 
-<!-- app.js loaded last so the DOM is fully available -->
-<script src="/static/app.js"></script>
+<!-- ES module entry point (type="module" is deferred by default) -->
+<script type="module" src="/static/mod-init.js"></script>
 </body>
 </html>

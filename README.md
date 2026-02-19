@@ -119,7 +119,19 @@ axis_descriptor_lab/
 │  │  └─ example_b.json
 │  ├─ static/
 │  │  ├─ styles.css
-│  │  └─ app.js
+│  │  ├─ mod-init.js           # ES module entry point
+│  │  ├─ mod-state.js          # state singleton + DOM refs
+│  │  ├─ mod-events.js         # event wiring coordinator
+│  │  ├─ mod-utils.js          # pure utility functions
+│  │  ├─ mod-status.js         # status bar
+│  │  ├─ mod-sync.js           # JSON / slider / badge sync
+│  │  ├─ mod-loaders.js        # example + prompt loading
+│  │  ├─ mod-generate.js       # LLM generation + meta table
+│  │  ├─ mod-diff.js           # word diff + signal isolation
+│  │  ├─ mod-axis-actions.js   # relabel + randomise
+│  │  ├─ mod-persistence.js    # save / export / import
+│  │  ├─ mod-tooltip.js        # tooltip system
+│  │  └─ mod-theme.js          # dark/light theme toggle
 │  └─ templates/
 │     └─ index.html
 ├─ docs/                     # Sphinx documentation (build with: make -C docs html)
@@ -127,12 +139,16 @@ axis_descriptor_lab/
 │  ├─ index.rst
 │  ├─ api/                   # autodoc API reference
 │  └─ guides/                # narrative guides (IPC, hashing)
-├─ tests/                    # pytest test suite (133 tests, 100% coverage)
+├─ tests/                    # pytest test suite (405 tests, 99% coverage)
 │  ├─ conftest.py
 │  ├─ test_hashing.py
 │  ├─ test_main.py
 │  ├─ test_ollama_client.py
-│  └─ test_schema.py
+│  ├─ test_save_package.py
+│  ├─ test_schema.py
+│  ├─ test_signal_isolation.py
+│  ├─ test_static_modules.py  # ES module structure verification
+│  └─ test_transformation_map.py
 ├─ data/                     # session saves (gitignored)
 └─ logs/
    └─ run_log.jsonl          # created automatically on first log call
@@ -162,8 +178,8 @@ Key documentation pages:
 pip install -e ".[dev]"
 
 # Run tests
-pytest                             # all 133 tests
-pytest -v --cov --cov-report=term  # with coverage (100%)
+pytest                             # all 405 tests
+pytest -v --cov --cov-report=term  # with coverage (99%)
 
 # Lint
 ruff check app/ tests/
