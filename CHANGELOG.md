@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.9](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.8...axis-descriptor-lab-v0.1.9) (2026-02-19)
+
+
+### Features
+
+* add save package manifest with SHA-256 checksums, zip export, and zip import ([06b5519](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/06b5519a04af9faa1d322b24098fa86996ce4d22))
+* save package manifest, zip export, and zip import ([ccc8891](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/ccc88919ea51e763736553d2b94d353852dee709))
+* **ui:** add Transformation Map clause-level alignment layer ([75d3897](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/75d38973dc1fc0af81ea694d7399979313e8ca14))
+* **ui:** add Transformation Map clause-level alignment layer ([ebd0900](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/ebd0900f8816f4ca8b8d12ca968af9661b4b5a80))
+* **ui:** move Set as A to diff panel, add dark/light README screenshots ([18f5001](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/18f50012a5b2bea3b888e0f1bbc733f1d5877f6d))
+* **ui:** move Set as A to diff panel, add dark/light README screenshots ([9ef12bb](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/9ef12bba3221d738ad11a689af1ec64cf0906ea2))
+* **ui:** scrollable panels, full-height JSON editor, and diff change % ([f256f11](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/f256f11cd8f310d641beb56146eb9352dad3da6e))
+* **ui:** scrollable panels, full-height JSON editor, and diff change % ([deb3057](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/deb30570f1d1591f5d69ae6ebed9d70d2ed19d12))
+
 ## [0.1.8](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.7...axis-descriptor-lab-v0.1.8) (2026-02-18)
 
 
