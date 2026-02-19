@@ -1070,6 +1070,18 @@ html, body {
   color: #fff;
 }
 
+/* Active badge (system prompt override): white text on deeper amber */
+[data-theme="light"] .badge--active {
+  background: #8b5e0a;
+  color: #fff;
+}
+
+/* Muted badge (diff % changed): darker text on visible background */
+[data-theme="light"] .badge--muted {
+  background: #d6d0c6;
+  color: #4a4640;
+}
+
 [data-theme="light"] .range-input::-webkit-slider-thumb {
   border-color: var(--col-surface);
 }
@@ -1088,6 +1100,18 @@ html, body {
 
 [data-theme="light"] .meta-copy-btn {
   border-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Light-mode indicator tags — darker amber text with visible background */
+[data-theme="light"] .tmap-indicator {
+  background: rgba(194, 123, 10, 0.10);
+  color: #8b5e0a;
+  border-color: rgba(194, 123, 10, 0.35);
+}
+
+[data-theme="light"] .tmap-indicator[data-indicator]:hover {
+  background: rgba(194, 123, 10, 0.20);
+  border-color: rgba(194, 123, 10, 0.55);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
