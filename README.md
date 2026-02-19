@@ -140,6 +140,7 @@ axis_descriptor_lab/
 │  │  ├─ mod-diff.js           # word diff + signal isolation
 │  │  ├─ mod-axis-actions.js   # relabel + randomise
 │  │  ├─ mod-persistence.js    # save / export / import
+│  │  ├─ mod-indicator-modal.js # indicator tooltip + click modal
 │  │  ├─ mod-tooltip.js        # tooltip system
 │  │  └─ mod-theme.js          # dark/light theme toggle
 │  └─ templates/
@@ -149,7 +150,7 @@ axis_descriptor_lab/
 │  ├─ index.rst
 │  ├─ api/                   # autodoc API reference
 │  └─ guides/                # narrative guides (IPC, hashing)
-├─ tests/                    # pytest test suite (554 tests, 99% coverage)
+├─ tests/                    # pytest test suite (561 tests, 99% coverage)
 │  ├─ conftest.py
 │  ├─ test_hashing.py
 │  ├─ test_main.py
@@ -162,7 +163,7 @@ axis_descriptor_lab/
 │  ├─ test_relabel_policy.py    # policy table + relabel logic
 │  ├─ test_save_formatting.py   # Markdown builders + folder names
 │  ├─ test_file_loaders.py      # file loading + listing
-   │  └─ test_micro_indicators.py  # heuristic classifier tests
+│  └─ test_micro_indicators.py  # heuristic classifier tests
 ├─ data/                     # session saves (gitignored)
 └─ logs/
    └─ run_log.jsonl          # created automatically on first log call
@@ -192,7 +193,7 @@ Key documentation pages:
 pip install -e ".[dev]"
 
 # Run tests
-pytest                             # all 554 tests
+pytest                             # all 561 tests
 pytest -v --cov --cov-report=term  # with coverage (99%)
 
 # Lint
