@@ -13,17 +13,18 @@
  *
  * Wiring sequence
  * ───────────────
- *   1. wireSyncEvents()        — JSON textarea, system prompt, temp slider
- *   2. wireLoaderEvents()      — example + prompt load buttons / dropdowns
- *   3. wireGenerateEvents()    — generate button, set-baseline button
- *   4. wireDiffEvents()        — tmap mode toggle, copy TSV, copy MD
- *   5. wireAxisEvents()        — relabel, randomise, auto-label, Ollama host
- *   6. wirePersistenceEvents() — save, export, import, clear output
+ *   1. wireSyncEvents()             — JSON textarea, system prompt, temp slider
+ *   2. wireLoaderEvents()           — example + prompt load buttons / dropdowns
+ *   3. wireGenerateEvents()         — generate button, set-baseline button
+ *   4. wireDiffEvents()             — tmap mode toggle, copy TSV, copy MD
+ *   5. wireAxisEvents()             — relabel, randomise, auto-label, Ollama host
+ *   6. wirePersistenceEvents()      — save, export, import, clear output
+ *   7. wireIndicatorModalEvents()   — indicator tag click → modal
  *
  * Called once during startup by `init()` in `mod-init.js`.
  *
  * Imports: mod-sync, mod-loaders, mod-generate, mod-diff,
- *          mod-axis-actions, mod-persistence
+ *          mod-axis-actions, mod-persistence, mod-indicator-modal
  */
 
 import { wireSyncEvents } from "./mod-sync.js";
@@ -32,6 +33,7 @@ import { wireGenerateEvents } from "./mod-generate.js";
 import { wireDiffEvents } from "./mod-diff.js";
 import { wireAxisEvents } from "./mod-axis-actions.js";
 import { wirePersistenceEvents } from "./mod-persistence.js";
+import { wireIndicatorModalEvents } from "./mod-indicator-modal.js";
 
 /**
  * Wire all interactive event listeners across the application.
@@ -50,4 +52,5 @@ export function wireEvents() {
   wireDiffEvents();
   wireAxisEvents();
   wirePersistenceEvents();
+  wireIndicatorModalEvents();
 }

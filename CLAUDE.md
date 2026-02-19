@@ -49,7 +49,7 @@ The app is a FastAPI backend serving a vanilla JS single-page frontend. There ar
 
 ### Frontend (Vanilla JS — ES Modules)
 
-The frontend is split into 13 browser-native ES modules (`app/static/mod-*.js`). No bundler — `<script type="module">` loads the entry point and the browser resolves all imports.
+The frontend is split into 14 browser-native ES modules (`app/static/mod-*.js`). No bundler — `<script type="module">` loads the entry point and the browser resolves all imports.
 
 - **`mod-init.js`** — Entry point; orchestrates startup (theme, tooltips, events, data loading).
 - **`mod-state.js`** — Singleton state object + cached DOM refs (`state`, `dom`).
@@ -62,6 +62,7 @@ The frontend is split into 13 browser-native ES modules (`app/static/mod-*.js`).
 - **`mod-diff.js`** — Word-level LCS diff, signal isolation (NLP), transformation map (server-side with micro-indicator tags, client-side fallback).
 - **`mod-axis-actions.js`** — Relabel (server policy), randomise, auto-label toggle.
 - **`mod-persistence.js`** — Save, export zip, import zip, restore session, log.
+- **`mod-indicator-modal.js`** — Indicator tooltip text + click-to-open modal with definitions, heuristics, examples, and docs link (standalone, no imports).
 - **`mod-tooltip.js`** — JS-positioned tooltip system (standalone, no imports).
 - **`mod-theme.js`** — Dark/light theme toggle with localStorage (standalone).
 

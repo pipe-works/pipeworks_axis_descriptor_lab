@@ -1,7 +1,7 @@
 """Tests for the ES module structure introduced by the app.js → mod-*.js refactor.
 
 Verifies that:
-  1. All 13 module files are served at /static/ with correct content type.
+  1. All 14 module files are served at /static/ with correct content type.
   2. The HTML template references the ES module entry point.
   3. The old monolithic app.js is no longer served.
   4. Each module contains its expected imports and exports.
@@ -82,7 +82,12 @@ MODULE_MANIFEST: dict[str, dict] = {
             "updateTransformationMap",
             "wireDiffEvents",
         ],
-        "imports_from": ["mod-state.js", "mod-utils.js", "mod-status.js"],
+        "imports_from": [
+            "mod-state.js",
+            "mod-utils.js",
+            "mod-status.js",
+            "mod-indicator-modal.js",
+        ],
     },
     "mod-axis-actions.js": {
         "exports": ["relabel", "randomiseAxes", "wireAxisEvents"],
@@ -110,6 +115,14 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-diff.js",
         ],
     },
+    "mod-indicator-modal.js": {
+        "exports": [
+            "getIndicatorTooltip",
+            "openIndicatorModal",
+            "wireIndicatorModalEvents",
+        ],
+        "imports_from": [],  # standalone leaf module
+    },
     "mod-tooltip.js": {
         "exports": ["wireTooltipToggle"],
         "imports_from": [],  # standalone
@@ -127,6 +140,7 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-diff.js",
             "mod-axis-actions.js",
             "mod-persistence.js",
+            "mod-indicator-modal.js",
         ],
     },
     "mod-init.js": {
@@ -158,7 +172,7 @@ def _read_module(name: str) -> str:
 
 
 class TestModuleServing:
-    """All 13 mod-*.js files are served via /static/ with correct content type."""
+    """All 14 mod-*.js files are served via /static/ with correct content type."""
 
     @pytest.mark.parametrize("module_name", ALL_MODULE_NAMES)
     def test_module_served_with_200(self, client: TestClient, module_name: str) -> None:
@@ -366,15 +380,15 @@ class TestModuleDocumentation:
 
 
 class TestModuleCount:
-    """The refactor produced exactly 13 module files."""
+    """The refactor produced exactly 14 module files."""
 
-    def test_exactly_13_modules_on_disk(self) -> None:
-        """The static directory contains exactly 13 mod-*.js files."""
+    def test_exactly_14_modules_on_disk(self) -> None:
+        """The static directory contains exactly 14 mod-*.js files."""
         static_dir = Path(__file__).resolve().parent.parent / "app" / "static"
         mod_files = sorted(p.name for p in static_dir.glob("mod-*.js"))
         assert (
-            len(mod_files) == 13
-        ), f"Expected 13 mod-*.js files, found {len(mod_files)}: {mod_files}"
+            len(mod_files) == 14
+        ), f"Expected 14 mod-*.js files, found {len(mod_files)}: {mod_files}"
 
     def test_manifest_matches_disk(self) -> None:
         """Every file in the manifest exists on disk, and vice versa."""

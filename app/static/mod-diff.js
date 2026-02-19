@@ -28,12 +28,13 @@
  *                                          ├─ updateSignalIsolation()
  *                                          └─ updateTransformationMap()
  *
- * Imports: mod-state, mod-utils, mod-status
+ * Imports: mod-state, mod-utils, mod-status, mod-indicator-modal
  */
 
 import { state, dom } from "./mod-state.js";
 import { tokenise, lcsWordDiff, extractTransformationRows, makePlaceholder } from "./mod-utils.js";
 import { setStatus } from "./mod-status.js";
+import { getIndicatorTooltip } from "./mod-indicator-modal.js";
 
 /**
  * Compute and render the word-level diff between `state.baseline` (A) and
@@ -395,6 +396,14 @@ function _renderTmapFromServer(allRows) {
           const tag = document.createElement("span");
           tag.className = "tmap-indicator";
           tag.textContent = ind;
+
+          // Set data-indicator for click-to-open modal delegation
+          tag.setAttribute("data-indicator", ind);
+
+          // Set data-tooltip for hover tooltip (handled by mod-tooltip.js)
+          const tip = getIndicatorTooltip(ind);
+          if (tip) tag.setAttribute("data-tooltip", tip);
+
           tdI.appendChild(tag);
         }
       } else {

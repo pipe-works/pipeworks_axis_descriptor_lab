@@ -1249,3 +1249,138 @@ html, body {
   color: var(--col-accent);
   background: var(--col-accent-glow);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INDICATOR MODAL
+   ─────────────────────────────────────────────────────────────────────────
+   Click-to-open modal for micro-indicator definitions.  Created
+   dynamically by mod-indicator-modal.js and appended to <body>.
+   Two-layer progressive disclosure: hover tooltip + click modal.
+════════════════════════════════════════════════════════════════════════════ */
+
+/* Make indicator tags look clickable when data-indicator is present */
+.tmap-indicator[data-indicator] {
+  cursor: pointer;
+}
+
+.tmap-indicator[data-indicator]:hover {
+  background: rgba(255, 191, 0, 0.18);
+  border-color: rgba(255, 191, 0, 0.40);
+}
+
+/* ── Overlay backdrop ──────────────────────────────────────────────────── */
+
+.indicator-modal-overlay {
+  display: none;                     /* hidden by default                 */
+  position: fixed;
+  inset: 0;
+  z-index: 11000;                    /* above tooltips (10001)            */
+  background: rgba(0, 0, 0, 0.60);
+  align-items: center;
+  justify-content: center;
+}
+
+.indicator-modal-overlay.is-visible {
+  display: flex;
+}
+
+/* ── Modal panel ───────────────────────────────────────────────────────── */
+
+.indicator-modal {
+  position: relative;
+  background: var(--col-surface);
+  border: 1px solid var(--col-border-hi);
+  border-radius: 6px;
+  padding: var(--sp-6);
+  max-width: 480px;
+  width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  color: var(--col-text);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.50);
+}
+
+/* ── Close button (top-right ×) ────────────────────────────────────────── */
+
+.indicator-modal__close {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  background: none;
+  border: none;
+  color: var(--col-text-muted);
+  font-size: 1.2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: var(--sp-1);
+}
+
+.indicator-modal__close:hover {
+  color: var(--col-text);
+}
+
+/* ── Title ─────────────────────────────────────────────────────────────── */
+
+.indicator-modal__title {
+  font-size: 1rem;
+  color: var(--col-accent);
+  margin-bottom: var(--sp-3);
+  padding-right: var(--sp-4);        /* space for close button            */
+}
+
+/* ── Definition list (dt/dd pairs in a CSS grid) ───────────────────────── */
+
+.indicator-modal__dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-1) var(--sp-3);
+  font-size: var(--text-sm);
+  margin-bottom: var(--sp-3);
+}
+
+.indicator-modal__dl dt {
+  color: var(--col-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: var(--text-xs);
+  align-self: start;
+  padding-top: 0.15em;
+}
+
+.indicator-modal__dl dd {
+  color: var(--col-text);
+  line-height: 1.5;
+}
+
+/* ── Example removed/added pair ────────────────────────────────────────── */
+
+.indicator-modal__example {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+  font-size: var(--text-xs);
+}
+
+.indicator-modal__example-removed {
+  color: var(--col-err);
+  opacity: 0.8;
+}
+
+.indicator-modal__example-added {
+  color: var(--col-ok);
+}
+
+/* ── Docs link ─────────────────────────────────────────────────────────── */
+
+.indicator-modal__docs-link {
+  display: inline-block;
+  font-size: var(--text-xs);
+  color: var(--col-accent);
+  text-decoration: none;
+  margin-top: var(--sp-2);
+}
+
+.indicator-modal__docs-link:hover {
+  text-decoration: underline;
+}
