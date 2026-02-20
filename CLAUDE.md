@@ -66,9 +66,18 @@ The frontend is split into 14 browser-native ES modules (`app/static/mod-*.js`).
 - **`mod-tooltip.js`** — JS-positioned tooltip system (standalone, no imports).
 - **`mod-theme.js`** — Dark/light theme toggle with localStorage (standalone).
 
+### CSS Architecture (Three-Layer System)
+
+The frontend loads three CSS files in order. No bundler — plain `<link>` tags.
+
+1. **`app/static/pipe-works-fonts.css`** — Self-hosted `@font-face` declarations for 6 OFL font families (16 woff2 files in `app/static/fonts/`). Cacheable, rarely changes.
+2. **`app/static/pipe-works-base.css`** — Shared Pipe-Works design system: design tokens (`--col-*`, `--font-*`, `--sp-*`, `--radius-*`), reset, and common components (`.btn`, `.input`, `.select`, `.code-editor`, `.badge`, `.panel`, `.card`, `.modal`, `.divider`, `.spinner`, `.tooltip-bubble`, `.output-box`, scrollbar, utilities). Dark theme is default; light theme activated by `data-theme="light"` on `<html>`. Canonical source: `pipe-works/styles/app/`.
+3. **`app/static/styles.css`** — App-specific styles only: three-column grid layout, panel variants, axis sliders, settings grid, output meta table, diff view, signal isolation, transformation map, collapsible sections, theme/tooltip toggles, indicator modal. Overrides `.app-header` and `.status-bar` with `position: fixed` (base uses `flex-shrink: 0`).
+
+**Token conventions**: All colours use `--col-*` prefix. Use `color-mix(in srgb, var(--col-token) N%, transparent)` for semi-transparent variants — never hardcoded `rgba()` with literal colours, as these break theme switching.
+
 Supporting files:
 
-- **`app/static/styles.css`** — Dark industrial theme with amber accents, CSS Grid 3-column layout.
 - **`app/templates/index.html`** — SPA shell rendered by Jinja2; injects `default_model` and `available_models` at load time.
 
 ### Data Flow
