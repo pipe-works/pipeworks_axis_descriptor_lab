@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.11](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.10...axis-descriptor-lab-v0.1.11) (2026-02-20)
+
+
+### Bug Fixes
+
+* **ui:** improve light-mode contrast for indicator tags and badges ([#35](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/35)) ([db0399a](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/db0399af4b561f8b4eed337c25d89cc0d0e46c22))
+
+
+### Documentation
+
+* document three-layer CSS architecture in CLAUDE.md ([#39](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/39)) ([7211e8f](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/7211e8f52da346b219d47b2cca717ec6f114701a))
+
 ## [0.1.10](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.9...axis-descriptor-lab-v0.1.10) (2026-02-19)
 
 
