@@ -103,12 +103,12 @@ function showTooltip(trigger) {
     // Position above the trigger
     bubbleTop = triggerRect.top - GAP - ARROW_SIZE - bubbleRect.height;
     arrowTop = triggerRect.top - GAP - ARROW_SIZE;
-    arrow.style.borderTopColor = "var(--tooltip-border)";
+    arrow.style.borderTopColor = "var(--col-tooltip-border)";
   } else {
     // Position below the trigger (default)
     arrowTop = triggerRect.bottom + GAP;
     bubbleTop = arrowTop + ARROW_SIZE;
-    arrow.style.borderBottomColor = "var(--tooltip-border)";
+    arrow.style.borderBottomColor = "var(--col-tooltip-border)";
   }
 
   // Centre horizontally on the trigger, clamped to viewport edges
