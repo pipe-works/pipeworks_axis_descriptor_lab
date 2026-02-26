@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.12...axis-descriptor-lab-v0.2.0) (2026-02-26)
+
+
+### Features
+
+* add live mode, in-game log, and copy/save actions to Chat Translation page ([60885bb](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/60885bb464ef4f3921af2e1901a7c6114a49e9c2))
+* add live mode, in-game log, and copy/save actions to Chat Translation page ([ea39da7](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/ea39da7c707e985dcaa559f3e43d26f9de99fa2e))
+
 ## [0.1.12](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.11...axis-descriptor-lab-v0.1.12) (2026-02-26)
 
 
