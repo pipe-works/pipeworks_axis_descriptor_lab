@@ -24,6 +24,9 @@ ollama pull gemma2:2b
 
 # 4. Start the server
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8242
+
+Or use the dev launcher (reads `.env` first):
+python tools/dev_server.py
 ```
 
 Then open **<http://127.0.0.1:8242>** in your browser.
