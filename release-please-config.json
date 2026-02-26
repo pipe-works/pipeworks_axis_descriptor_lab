@@ -5,7 +5,6 @@
       "release-type": "python",
       "package-name": "axis-descriptor-lab",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true,
       "changelog-sections": [
         {"type": "feat", "section": "Features", "hidden": false},
         {"type": "fix", "section": "Bug Fixes", "hidden": false},
