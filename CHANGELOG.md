@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.2.0...axis-descriptor-lab-v0.3.0) (2026-02-26)
+
+
+### Features
+
+* **chat:** OOC column in game log, IPC hash fixes, system_prompt.md always saved ([#46](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/46)) ([c50169c](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/c50169c2af990d74eadaa979b681cafee21686cd))
+
 ## [0.2.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.12...axis-descriptor-lab-v0.2.0) (2026-02-26)
 
 
