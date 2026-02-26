@@ -173,13 +173,22 @@ def build_game_log_md(
 
     Produces a Markdown table with one row per entry and an HTML-comment
     provenance header recording model and generation settings.  Pipe
-    characters inside IC text are backslash-escaped so they do not break
-    the table structure.
+    characters inside OOC and IC text are backslash-escaped so they do not
+    break the table structure.
+
+    Table columns
+    -------------
+    ``#``       — 1-based row index.
+    ``Char``    — Character key uppercased ("A" or "B").
+    ``OOC``     — Original out-of-character message (empty cell if absent).
+    ``Channel`` — Chat channel ("say", "yell", "whisper").
+    ``IC Text`` — Translated in-character dialogue.
 
     Parameters
     ----------
     entries     : Serialised ``ChatLogEntry`` dicts (keys: ch, channel,
-                  ic_text, model, ipc_id).
+                  ooc_message, ic_text, model, ipc_id).  ``ooc_message``
+                  may be absent or ``None`` for legacy entries.
     model       : Ollama model tag used during the session.
     temperature : Sampling temperature used.
     max_tokens  : Token budget used.
@@ -197,12 +206,18 @@ def build_game_log_md(
         f"<!-- saved: {timestamp.isoformat()} -->",
         f"<!-- model: {model} | temp: {temperature} | max_tokens: {max_tokens} | seed: {seed} -->",
         "",
-        "| # | Char | Channel | IC Text |",
-        "| --- | --- | --- | --- |",
+        "| # | Char | OOC | Channel | IC Text |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for i, entry in enumerate(entries, start=1):
+        # Escape pipe characters in both OOC and IC text to avoid breaking
+        # the Markdown table structure.
+        ooc_raw = entry.get("ooc_message") or ""
+        ooc_escaped = ooc_raw.replace("|", "\\|")
         ic_escaped = entry["ic_text"].replace("|", "\\|")
-        lines.append(f"| {i} | {entry['ch'].upper()} | {entry['channel']} | {ic_escaped} |")
+        lines.append(
+            f"| {i} | {entry['ch'].upper()} | {ooc_escaped} | {entry['channel']} | {ic_escaped} |"
+        )
     lines.append("")
     return "\n".join(lines)
 

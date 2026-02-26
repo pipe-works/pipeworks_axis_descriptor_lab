@@ -638,6 +638,12 @@
       <div class="ic-output-header">
         <span class="ic-output-label">&#9656; In-Game Output</span>
         <div class="game-log-actions">
+          <!-- OOC toggle: shows/hides the OOC message column in each log entry.
+               Starts active (is-active = OOC visible).  Clicking adds the
+               chat-game-output--hide-ooc class to the log container, which
+               hides every .game-entry__ooc span via CSS. -->
+          <button id="chat-toggle-ooc"   class="btn btn--secondary btn--sm is-active" type="button"
+                  title="Show or hide the original OOC message in each log entry">OOC</button>
           <button id="chat-copy-log-txt" class="btn btn--secondary btn--sm" type="button">Copy TXT</button>
           <button id="chat-copy-log-md"  class="btn btn--secondary btn--sm" type="button">Copy MD</button>
           <button id="chat-save-log"     class="btn btn--secondary btn--sm" type="button">Save all data</button>

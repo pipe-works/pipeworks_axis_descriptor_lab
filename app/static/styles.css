@@ -850,9 +850,55 @@
 
 /* ── Axis row with enable checkbox ────────────────────────────────────── */
 
-/* The chat axis row adds a checkbox column before the existing three columns */
+/*
+ * Two-row grid for the narrow chat character panels (fixed 384px width).
+ *
+ *   Row 1:  [checkbox spans] | axis-name            | axis-score
+ *   Row 2:  [checkbox spans] | range-input (slider) | label-input
+ *
+ * This replaces the old single-row layout where `minmax(70px, max-content)`
+ * on the label column would balloon to the input's natural width (~160px),
+ * leaving the `1fr` slider track crushed to near-zero (visible only as a dot).
+ * With this layout the slider gets the full 1fr column (~210px) on row 2.
+ */
 .chat-axis-row {
-  grid-template-columns: 20px 110px 1fr minmax(70px, max-content);
+  grid-template-columns: 20px 1fr 90px;
+  grid-template-rows: auto auto;
+  row-gap: 3px;
+}
+
+/* Checkbox: spans both rows so it is centred vertically beside the two text rows */
+.chat-axis-row .axis-enable-checkbox {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  align-self: center;
+}
+
+/* Row 1, col 2 — axis key name */
+.chat-axis-row .axis-name {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* Row 1, col 3 — numeric score display (right-aligned) */
+.chat-axis-row .axis-score {
+  grid-column: 3;
+  grid-row: 1;
+  text-align: right;
+  min-width: unset;
+}
+
+/* Row 2, col 2 — range slider; width:100% fills the 1fr column */
+.chat-axis-row .range-input {
+  grid-column: 2;
+  grid-row: 2;
+  width: 100%;
+}
+
+/* Row 2, col 3 — editable label input */
+.chat-axis-row .axis-label-input {
+  grid-column: 3;
+  grid-row: 2;
 }
 
 .axis-enable-checkbox {
@@ -943,6 +989,36 @@
   color: var(--col-text-muted);
   font-size: var(--text-xs);
   flex-shrink: 0;
+}
+
+/*
+ * OOC message column — displayed between the character letter and the channel
+ * tag.  Uses italic + muted colour to visually distinguish the raw player
+ * intent from the translated IC text.  Truncated with ellipsis so very long
+ * OOC messages do not push the channel and IC text off-screen.
+ *
+ * Visibility is toggled by the "OOC" button in the game log header, which
+ * adds/removes .chat-game-output--hide-ooc on the parent container.  The
+ * is-active pattern (amber border + glow) on the button mirrors the
+ * tooltip-toggle and btn--secondary.is-active conventions.
+ */
+.game-entry__ooc {
+  font-size: var(--text-xs);
+  color: var(--col-text-muted);
+  font-style: italic;
+  opacity: 0.75;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 16em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* When the OOC toggle is off, hide every OOC span without reflowing the
+   other columns (display:none removes it from the flex row cleanly). */
+.chat-game-output--hide-ooc .game-entry__ooc {
+  display: none;
 }
 
 .game-entry__text {

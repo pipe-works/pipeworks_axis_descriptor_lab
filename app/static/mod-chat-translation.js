@@ -28,9 +28,13 @@
  *                        live mode is active.
  *   • In-game log      — appendGameEntry() builds MUD-style entries; chatState.gameLog
  *                        tracks the full history so clipboard and save functions can
- *                        access it without scraping the DOM.
- *   • Copy TXT         — formats log as plain-text ``CH [channel]: text`` lines.
- *   • Copy MD          — formats log as a Markdown table; pipe chars are escaped.
+ *                        access it without scraping the DOM.  Each entry stores the
+ *                        original OOC message alongside the translated IC text.
+ *   • OOC toggle       — header button that shows/hides the OOC column in the log
+ *                        panel via .chat-game-output--hide-ooc + CSS display:none.
+ *                        is-active (amber) = OOC shown; inactive = hidden.
+ *   • Copy TXT         — formats log as ``CH | OOC | [channel]: IC text`` lines.
+ *   • Copy MD          — formats log as a 5-column Markdown table; pipe chars are escaped.
  *   • Save all data    — POSTs to /api/save_chat then GETs /api/save/{folder}/export
  *                        to write files server-side and trigger a browser zip download
  *                        in one click.
@@ -79,7 +83,7 @@ import { setStatus } from "./mod-status.js";
  *   busy:     boolean,
  *   liveMode: boolean,
  *   logSeq:   number,
- *   gameLog:  Array<{ch: string, channel: string, icText: string, model: string, ipcId: string|null}>
+ *   gameLog:  Array<{ch: string, channel: string, oocMessage: string, icText: string, model: string, ipcId: string|null, inputHash: string|null, systemPromptHash: string|null, outputHash: string|null}>
  * }}
  *
  * @property {Object|null}      [a|b].payload      - Parsed AxisPayload for the character,
@@ -99,11 +103,15 @@ import { setStatus } from "./mod-status.js";
  *                                                    Currently used for debugging; reserved for
  *                                                    future row-numbering UI.
  * @property {Array}            gameLog            - Ordered list of in-game log entries.  Each
- *                                                    entry is ``{ ch, channel, icText, model,
- *                                                    ipcId }``.  Populated by appendGameEntry()
- *                                                    and cleared by the Clear button handler.
- *                                                    Read by copyGameLogTxt(), copyGameLogMd(),
- *                                                    and saveChatLog() to avoid DOM scraping.
+ *                                                    entry is ``{ ch, channel, oocMessage,
+ *                                                    icText, model, ipcId, inputHash,
+ *                                                    systemPromptHash, outputHash }``.
+ *                                                    All four IPC hashes are stored so that
+ *                                                    clipboard copy and save include the full
+ *                                                    provenance record matching the in-browser
+ *                                                    IPC meta table.  Populated by
+ *                                                    appendGameEntry(), cleared by the Clear
+ *                                                    button handler.
  */
 const chatState = {
   a: { payload: null, originalAxes: null, activeAxes: null },
@@ -111,7 +119,19 @@ const chatState = {
   busy: false,
   liveMode: false,
   logSeq: 0,
-  /** @type {{ ch: string, channel: string, icText: string, model: string, ipcId: string|null }[]} */
+  /**
+   * @type {{
+   *   ch: string,
+   *   channel: string,
+   *   oocMessage: string,
+   *   icText: string,
+   *   model: string,
+   *   ipcId: string|null,
+   *   inputHash: string|null,
+   *   systemPromptHash: string|null,
+   *   outputHash: string|null
+   * }[]}
+   */
   gameLog: [],
 };
 
@@ -318,19 +338,9 @@ function buildChatSliders(ch) {
     nameEl.textContent = axisKey;
     nameEl.title = axisKey;
 
-    // ── Column 3: Slider + score display ──────────────────────────────── //
-    const sliderWrap = document.createElement("div");
-    sliderWrap.className = "axis-slider-row";
-
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.className = "range-input";
-    slider.min = "0";
-    slider.max = "1";
-    slider.step = "0.005";
-    slider.value = score.toFixed(3);
-    slider.setAttribute("aria-label", `${axisKey} score`);
-
+    // ── Row 1, col 3: Score display ────────────────────────────────────── //
+    // Placed as a direct grid child (col 3, row 1) so the slider below can
+    // occupy the full 1fr column without sharing it with the score span.
     const scoreDisplay = document.createElement("span");
     scoreDisplay.className = "axis-score";
     scoreDisplay.textContent = score.toFixed(3);
@@ -340,10 +350,19 @@ function buildChatSliders(ch) {
       scoreDisplay.classList.add("axis-modified");
     }
 
-    sliderWrap.appendChild(slider);
-    sliderWrap.appendChild(scoreDisplay);
+    // ── Row 2, col 2: Range slider ─────────────────────────────────────── //
+    // Direct grid child (no wrapper div) so CSS can place it at row 2, col 2
+    // and give it the full 1fr width (~210px on a 384px panel).
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.className = "range-input";
+    slider.min = "0";
+    slider.max = "1";
+    slider.step = "0.005";
+    slider.value = score.toFixed(3);
+    slider.setAttribute("aria-label", `${axisKey} score`);
 
-    // ── Column 4: Label input ──────────────────────────────────────────── //
+    // ── Row 2, col 3: Label input ──────────────────────────────────────── //
     const labelInput = document.createElement("input");
     labelInput.type = "text";
     labelInput.className = "axis-label-input";
@@ -379,9 +398,13 @@ function buildChatSliders(ch) {
       syncJsonTextarea(ch);
     });
 
+    // Grid children order: checkbox (r1-2/c1), nameEl (r1/c2), scoreDisplay (r1/c3),
+    // slider (r2/c2), labelInput (r2/c3). Explicit CSS grid-column/row on each class
+    // handles placement regardless of DOM order, but keep it logical here.
     row.appendChild(checkbox);
     row.appendChild(nameEl);
-    row.appendChild(sliderWrap);
+    row.appendChild(scoreDisplay);
+    row.appendChild(slider);
     row.appendChild(labelInput);
     fragment.appendChild(row);
   }
@@ -847,43 +870,76 @@ function updateLiveModeUI() {
  * Append a single in-game log entry to the game output panel.
  *
  * Removes the placeholder text on first call.  Each entry shows the
- * character letter, channel tag, and translated IC text.  The panel
- * auto-scrolls to the latest entry.
+ * character letter, the original OOC message, the channel tag, and the
+ * translated IC text in a flex row:
+ *
+ *   ``[A]  "she glances around cautiously"  [say]  She surveys the chamber…``
+ *
+ * The OOC span is toggled visible/hidden by the "OOC" button in the game
+ * log header (which adds/removes `.chat-game-output--hide-ooc` on the
+ * parent container).  The panel auto-scrolls to the latest entry.
  *
  * The entry is also pushed to `chatState.gameLog` so that clipboard copy
  * and save functions can access the full log without scraping the DOM.
  *
- * @param {"a"|"b"} ch           - Character identifier.
- * @param {string}  channel      - Channel name (e.g. "say", "yell", "whisper").
- * @param {string}  icText       - The translated IC text to display.
- * @param {string}  model        - Ollama model tag used for this translation
- *                                 (stored in chatState.gameLog for provenance).
- * @param {string|null} [ipcId]  - IPC ID from the translation result, or null
- *                                 if the translation failed or IPC was not computed.
+ * @param {"a"|"b"} ch                     - Character identifier.
+ * @param {string}  channel                - Channel name (e.g. "say", "yell", "whisper").
+ * @param {string}  oocMessage             - Original out-of-character text typed by the player.
+ *                                           Displayed in the OOC column; included in copy/save.
+ * @param {string}  icText                 - The translated IC text to display.
+ * @param {string}  model                  - Ollama model tag used for this translation.
+ * @param {string|null} [ipcId]            - IPC ID from the translation result (the 'ipc' row
+ *                                           in the in-browser IPC meta table), or null if not
+ *                                           available.
+ * @param {string|null} [inputHash]        - SHA-256 of the canonical input dict (the 'input'
+ *                                           row in the IPC meta table), or null if unavailable.
+ * @param {string|null} [systemPromptHash] - SHA-256 of the fully-rendered IC system prompt
+ *                                           (the 'prompt' row in the IPC meta table).
+ * @param {string|null} [outputHash]       - SHA-256 of the normalised IC output text (the
+ *                                           'output' row in the IPC meta table).
  * @returns {void}
  */
-function appendGameEntry(ch, channel, icText, model, ipcId = null) {
+function appendGameEntry(
+  ch, channel, oocMessage, icText, model,
+  ipcId = null, inputHash = null, systemPromptHash = null, outputHash = null,
+) {
   chatState.logSeq++;
-  chatState.gameLog.push({ ch, channel, icText, model, ipcId });
+  chatState.gameLog.push({
+    ch, channel, oocMessage, icText, model,
+    ipcId, inputHash, systemPromptHash, outputHash,
+  });
   const placeholder = dom.chatGameOutput.querySelector(".placeholder-text");
   if (placeholder) placeholder.remove();
 
   const entry = document.createElement("div");
   entry.className = `game-entry game-entry--${ch}`;
 
+  // ── Column 1: character letter (A / B) ─────────────────────────────── //
   const charEl = document.createElement("span");
   charEl.className = "game-entry__char";
   charEl.textContent = ch.toUpperCase();
 
+  // ── Column 2: original OOC message ─────────────────────────────────── //
+  // Visibility controlled by the "OOC" toggle button via the
+  // .chat-game-output--hide-ooc class on the parent container.
+  const oocEl = document.createElement("span");
+  oocEl.className = "game-entry__ooc";
+  // Display in quotes so it reads as a citation of the player's words.
+  oocEl.textContent = `"${oocMessage}"`;
+  oocEl.title = oocMessage; // full text on hover in case it's truncated
+
+  // ── Column 3: channel tag ([say] / [yell] / [whisper]) ─────────────── //
   const channelEl = document.createElement("span");
   channelEl.className = "game-entry__channel";
   channelEl.textContent = `[${channel}]`;
 
+  // ── Column 4: translated IC text ───────────────────────────────────── //
   const textEl = document.createElement("span");
   textEl.className = "game-entry__text";
   textEl.textContent = icText;
 
   entry.appendChild(charEl);
+  entry.appendChild(oocEl);
   entry.appendChild(channelEl);
   entry.appendChild(textEl);
   dom.chatGameOutput.appendChild(entry);
@@ -958,7 +1014,16 @@ async function sendForChar(ch) {
     renderTranslationResult(outputBox, metaDiv, badge, result);
 
     if (result && result.status === "success" && result.ic_text) {
-      appendGameEntry(ch, channel, result.ic_text, model, result.ipc_id ?? null);
+      // Pass all four IPC provenance hashes from the translation result so they
+      // are stored in chatState.gameLog and included in copy/save output.
+      // These match the four rows shown in the in-browser IPC meta table.
+      appendGameEntry(
+        ch, channel, ooc, result.ic_text, model,
+        result.ipc_id            ?? null,
+        result.input_hash        ?? null,
+        result.system_prompt_hash ?? null,
+        result.output_hash        ?? null,
+      );
     }
     setStatus(`${ch.toUpperCase()} sent (${model}) — ${result ? result.status : "no result"}.`);
   } catch (err) {
@@ -1123,15 +1188,23 @@ export async function translate() {
 /**
  * Copy the in-game log to the clipboard as plain text.
  *
- * Each entry is formatted as ``CH [channel]: IC text``.  Updates the button
- * label to "Copied!" for 1200 ms to provide tactile feedback.
+ * Each entry is formatted as:
+ *
+ *   ``CH | OOC message | [channel]: IC text``
+ *
+ * where ``CH`` is the character letter (A or B).  The pipe-separated OOC
+ * field is always included so the plain-text output mirrors the MD table
+ * column order (Char | OOC | Channel | IC Text).
+ *
+ * Updates the button label to "Copied!" for 1200 ms to provide tactile
+ * feedback.
  *
  * @returns {void}
  */
 function copyGameLogTxt() {
   if (chatState.gameLog.length === 0) { setStatus("No entries to copy."); return; }
   const text = chatState.gameLog
-    .map(e => `${e.ch.toUpperCase()} [${e.channel}]: ${e.icText}`)
+    .map(e => `${e.ch.toUpperCase()} | ${e.oocMessage} | [${e.channel}]: ${e.icText}`)
     .join("\n");
   navigator.clipboard.writeText(text).then(() => {
     dom.chatCopyLogTxt.textContent = "Copied!";
@@ -1142,18 +1215,27 @@ function copyGameLogTxt() {
 /**
  * Copy the in-game log to the clipboard as a Markdown table.
  *
- * Produces a four-column table (index, char, channel, IC text).  Pipe
- * characters in IC text are backslash-escaped.  Updates the button label
- * to "Copied!" for 1200 ms.
+ * Produces a five-column table:
+ *
+ *   | # | Char | OOC | Channel | IC Text |
+ *
+ * Pipe characters in both OOC and IC text are backslash-escaped so they
+ * do not break the table structure.  Updates the button label to "Copied!"
+ * for 1200 ms to provide tactile feedback.
  *
  * @returns {void}
  */
 function copyGameLogMd() {
   if (chatState.gameLog.length === 0) { setStatus("No entries to copy."); return; }
-  const lines = ["| # | Char | Channel | IC Text |", "| --- | --- | --- | --- |"];
+  const lines = [
+    "| # | Char | OOC | Channel | IC Text |",
+    "| --- | --- | --- | --- | --- |",
+  ];
   chatState.gameLog.forEach((e, i) => {
-    const escaped = e.icText.replace(/\|/g, "\\|");
-    lines.push(`| ${i + 1} | ${e.ch.toUpperCase()} | ${e.channel} | ${escaped} |`);
+    // Escape pipe characters in both fields so the MD table stays well-formed.
+    const oocEscaped = e.oocMessage.replace(/\|/g, "\\|");
+    const icEscaped  = e.icText.replace(/\|/g, "\\|");
+    lines.push(`| ${i + 1} | ${e.ch.toUpperCase()} | ${oocEscaped} | ${e.channel} | ${icEscaped} |`);
   });
   navigator.clipboard.writeText(lines.join("\n")).then(() => {
     dom.chatCopyLogMd.textContent = "Copied!";
@@ -1181,9 +1263,17 @@ async function saveChatLog() {
     entries: chatState.gameLog.map(e => ({
       ch: e.ch,
       channel: e.channel,
+      // ooc_message serialises to the ChatLogEntry schema field of the same name.
+      ooc_message: e.oocMessage ?? "",
       ic_text: e.icText,
       model: e.model,
-      ipc_id: e.ipcId ?? null,
+      // All four IPC provenance hashes are included so the server can write a
+      // complete provenance record to metadata.json without re-computing them.
+      // These match the four rows displayed in the in-browser IPC meta table.
+      ipc_id:             e.ipcId            ?? null,
+      input_hash:         e.inputHash        ?? null,
+      system_prompt_hash: e.systemPromptHash ?? null,
+      output_hash:        e.outputHash       ?? null,
     })),
     character_a: chatState.a.payload ? chatState.a.payload.axes : null,
     character_b: chatState.b.payload ? chatState.b.payload.axes : null,
@@ -1276,9 +1366,11 @@ export async function initChatTranslation() {
  * - Live toggle → `updateLiveModeUI()` (shows Send buttons + game section)
  * - Per-character Send buttons (A and B) → `sendForChar(ch)` in live mode
  * - Clear log button → empties game output panel and resets `chatState.gameLog`
- * - Copy TXT button → `copyGameLogTxt()` (plain-text clipboard)
- * - Copy MD button  → `copyGameLogMd()` (Markdown table clipboard)
- * - Save all data button → `saveChatLog()` (server write + zip download)
+ * - OOC toggle button → toggles `.chat-game-output--hide-ooc` on the game output
+ *                       container; shows/hides every `.game-entry__ooc` span via CSS
+ * - Copy TXT button → `copyGameLogTxt()` (plain-text clipboard; includes OOC)
+ * - Copy MD button  → `copyGameLogMd()` (5-column Markdown table; includes OOC)
+ * - Save all data button → `saveChatLog()` (server write + zip download; includes OOC)
  *
  * Called once during startup by the mod-events coordinator
  * ({@link module:mod-events~wireEvents}).
@@ -1380,6 +1472,19 @@ export function wireChatTranslationEvents() {
     dom.chatGameOutput.innerHTML = '<span class="placeholder-text">Send a message to see in-game output.</span>';
     chatState.logSeq = 0;
     chatState.gameLog = [];
+  });
+
+  // ── OOC visibility toggle ────────────────────────────────────────── //
+  // Toggles the .chat-game-output--hide-ooc modifier class on the game
+  // output container.  When the class is present, CSS hides every
+  // .game-entry__ooc span without reflowing the other columns.
+  // The button itself uses is-active (amber border/glow) to reflect the
+  // current state: is-active = OOC visible, no is-active = OOC hidden.
+  dom.chatToggleOoc.addEventListener("click", () => {
+    const nowVisible = dom.chatGameOutput.classList.toggle("chat-game-output--hide-ooc");
+    // classList.toggle returns true when the class was ADDED (i.e. OOC is now HIDDEN).
+    // is-active should be present when OOC is VISIBLE (class absent), so invert.
+    dom.chatToggleOoc.classList.toggle("is-active", !nowVisible);
   });
 
   // ── Game log copy + save ──────────────────────────────────────────── //

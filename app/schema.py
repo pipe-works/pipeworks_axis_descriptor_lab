@@ -841,6 +841,11 @@ class ChatLogEntry(BaseModel):
 
     Captured when a per-character Send succeeds.  Stored in chatState.gameLog
     on the frontend and serialised here for server-side persistence.
+
+    ``ooc_message`` records the original out-of-character text the player
+    typed, which is useful for comparing the raw intent to the translated IC
+    output.  It is optional (default ``None``) for backward compatibility with
+    save packages created before this field was introduced.
     """
 
     ch: str = Field(
@@ -850,6 +855,13 @@ class ChatLogEntry(BaseModel):
     channel: str = Field(
         ...,
         description="Chat channel used: 'say', 'yell', or 'whisper'.",
+    )
+    ooc_message: str | None = Field(
+        default=None,
+        description=(
+            "Original out-of-character message typed by the player before translation.  "
+            "None for entries created before this field was added."
+        ),
     )
     ic_text: str = Field(
         ...,
@@ -862,6 +874,35 @@ class ChatLogEntry(BaseModel):
     ipc_id: str | None = Field(
         default=None,
         description="IPC identifier from the translation result.  None when unavailable.",
+    )
+    # ── IPC provenance hashes ────────────────────────────────────────────────
+    # These three fields mirror the hashes computed in _translate_one() and
+    # displayed in the browser's IPC meta table.  All are optional (default
+    # None) for backward compatibility with entries created before they were
+    # added.  When populated they allow save packages to be fully self-contained
+    # provenance records without needing to re-run the translation.
+    input_hash: str | None = Field(
+        default=None,
+        description=(
+            "SHA-256 of the canonical input dict (active axes + OOC message + channel) "
+            "passed to the translation pipeline.  Matches the 'input' row in the "
+            "in-browser IPC meta table."
+        ),
+    )
+    system_prompt_hash: str | None = Field(
+        default=None,
+        description=(
+            "SHA-256 of the fully-rendered IC system prompt (after template variable "
+            "substitution with the character's profile summary and OOC message).  "
+            "Matches the 'prompt' row in the in-browser IPC meta table."
+        ),
+    )
+    output_hash: str | None = Field(
+        default=None,
+        description=(
+            "SHA-256 of the normalised translated IC text.  "
+            "Matches the 'output' row in the in-browser IPC meta table."
+        ),
     )
 
 
