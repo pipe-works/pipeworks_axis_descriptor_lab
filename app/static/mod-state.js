@@ -229,4 +229,17 @@ export const dom = {
   chatBOutput:          $("chat-b-output"),
   chatBMeta:            $("chat-b-meta"),
   chatBStatusBadge:     $("chat-b-status-badge"),
+
+  // ── Chat Translation — Live mode ──────────────────────────────────── //
+  chatLiveToggle:       $("chat-live-toggle"),
+  chatABtnSend:         $("chat-a-btn-send"),
+  chatBBtnSend:         $("chat-b-btn-send"),
+  chatGameSection:      $("chat-game-section"),
+  chatGameOutput:       $("chat-game-output"),
+  chatClearLog:         $("chat-clear-log"),
+
+  // ── Chat Translation — Game log actions ───────────────────────────── //
+  chatCopyLogTxt:       $("chat-copy-log-txt"),
+  chatCopyLogMd:        $("chat-copy-log-md"),
+  chatSaveLog:          $("chat-save-log"),
 };

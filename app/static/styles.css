@@ -873,6 +873,91 @@
   pointer-events: none;
 }
 
+/* ── Translate button + Live toggle ────────────────────────────────────── */
+
+.translate-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.translate-bar .btn--full {
+  flex: 1;
+}
+.translate-live-label {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Side-by-side IC output grid ────────────────────────────────────────── */
+
+.ic-output-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+  margin-top: 0.75rem;
+}
+
+/* ── In-game output section (live mode) ─────────────────────────────────── */
+
+.chat-game-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.chat-game-section.hidden { display: none; }
+
+.chat-game-output {
+  background: var(--col-code-bg);
+  border: 1px solid var(--col-border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  padding: var(--sp-3);
+  min-height: 10rem;
+  max-height: 30vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.game-entry {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: baseline;
+  padding: 3px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--col-border) 40%, transparent);
+  line-height: 1.5;
+}
+.game-entry:last-child { border-bottom: none; }
+
+.game-entry__char {
+  font-weight: 700;
+  min-width: 1.2em;
+  flex-shrink: 0;
+}
+.game-entry--a .game-entry__char { color: var(--col-accent); }
+.game-entry--b .game-entry__char { color: var(--col-primary); }
+
+.game-entry__channel {
+  color: var(--col-text-muted);
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+}
+
+.game-entry__text {
+  color: var(--col-text);
+  word-break: break-word;
+  flex: 1;
+}
+
+/* Action buttons in the game log header — pushed to the right */
+.game-log-actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-left: auto;
+}
+
 /* ── IC output section (right panel) ───────────────────────────────────── */
 
 .ic-output-section {

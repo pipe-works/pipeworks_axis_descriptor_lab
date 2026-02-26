@@ -23,6 +23,17 @@
  *   • IC prompt loader — filters /api/prompts to names starting with "ic_"
  *   • Translate        — POST /api/translate_chat → renders IC text + IPC meta
  *   • Model refresh    — pulls model list from /api/models at the chat Ollama host
+ *   • Live mode        — toggle that reveals per-character Send buttons and the
+ *                        in-game output panel; batch Translate is disabled while
+ *                        live mode is active.
+ *   • In-game log      — appendGameEntry() builds MUD-style entries; chatState.gameLog
+ *                        tracks the full history so clipboard and save functions can
+ *                        access it without scraping the DOM.
+ *   • Copy TXT         — formats log as plain-text ``CH [channel]: text`` lines.
+ *   • Copy MD          — formats log as a Markdown table; pipe chars are escaped.
+ *   • Save all data    — POSTs to /api/save_chat then GETs /api/save/{folder}/export
+ *                        to write files server-side and trigger a browser zip download
+ *                        in one click.
  *
  * Data flow
  * ─────────
@@ -65,7 +76,10 @@ import { setStatus } from "./mod-status.js";
  *     originalAxes: Object|null,
  *     activeAxes: Set<string>|null
  *   },
- *   busy: boolean
+ *   busy:     boolean,
+ *   liveMode: boolean,
+ *   logSeq:   number,
+ *   gameLog:  Array<{ch: string, channel: string, icText: string, model: string, ipcId: string|null}>
  * }}
  *
  * @property {Object|null}      [a|b].payload      - Parsed AxisPayload for the character,
@@ -77,11 +91,28 @@ import { setStatus } from "./mod-status.js";
  *                                                    (resolved lazily on first slider build).
  * @property {boolean}          busy               - True while a /api/translate_chat request
  *                                                    is in-flight; prevents double-submission.
+ * @property {boolean}          liveMode           - True when the Live toggle is checked;
+ *                                                    controls visibility of Send buttons and
+ *                                                    the in-game output section.
+ * @property {number}           logSeq             - Monotonically increasing counter, incremented
+ *                                                    by appendGameEntry() on each new entry.
+ *                                                    Currently used for debugging; reserved for
+ *                                                    future row-numbering UI.
+ * @property {Array}            gameLog            - Ordered list of in-game log entries.  Each
+ *                                                    entry is ``{ ch, channel, icText, model,
+ *                                                    ipcId }``.  Populated by appendGameEntry()
+ *                                                    and cleared by the Clear button handler.
+ *                                                    Read by copyGameLogTxt(), copyGameLogMd(),
+ *                                                    and saveChatLog() to avoid DOM scraping.
  */
 const chatState = {
   a: { payload: null, originalAxes: null, activeAxes: null },
   b: { payload: null, originalAxes: null, activeAxes: null },
   busy: false,
+  liveMode: false,
+  logSeq: 0,
+  /** @type {{ ch: string, channel: string, icText: string, model: string, ipcId: string|null }[]} */
+  gameLog: [],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,7 +137,8 @@ const chatState = {
  *   autoLabel:      HTMLInputElement,
  *   btnRelabel:     HTMLButtonElement,
  *   oocTextarea:    HTMLTextAreaElement,
- *   channelSelect:  HTMLSelectElement
+ *   channelSelect:  HTMLSelectElement,
+ *   btnSend:        HTMLButtonElement
  * }} The DOM refs for the requested character panel.
  */
 function charDom(ch) {
@@ -122,6 +154,7 @@ function charDom(ch) {
         btnRelabel:     dom.chatABtnRelabel,
         oocTextarea:    dom.chatAOoc,
         channelSelect:  dom.chatAChannel,
+        btnSend:        dom.chatABtnSend,
       }
     : {
         exampleSelect:  dom.chatBExampleSelect,
@@ -134,6 +167,7 @@ function charDom(ch) {
         btnRelabel:     dom.chatBBtnRelabel,
         oocTextarea:    dom.chatBOoc,
         channelSelect:  dom.chatBChannel,
+        btnSend:        dom.chatBBtnSend,
       };
 }
 
@@ -782,6 +816,162 @@ function renderTranslationResult(outputBox, metaDiv, statusBadge, result) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Live mode
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Sync UI elements to the current `chatState.liveMode` value.
+ *
+ * When live mode is on:
+ * - Per-character Send buttons become visible.
+ * - The batch Translate button is disabled (only individual sends work).
+ * - The in-game output section is revealed.
+ *
+ * When live mode is off:
+ * - Send buttons are hidden.
+ * - Translate button is re-enabled.
+ * - Game section is hidden.
+ *
+ * @returns {void}
+ */
+function updateLiveModeUI() {
+  const live = chatState.liveMode;
+  for (const ch of ["a", "b"]) {
+    charDom(ch).btnSend.classList.toggle("hidden", !live);
+  }
+  dom.btnTranslate.disabled = live;
+  dom.chatGameSection.classList.toggle("hidden", !live);
+}
+
+/**
+ * Append a single in-game log entry to the game output panel.
+ *
+ * Removes the placeholder text on first call.  Each entry shows the
+ * character letter, channel tag, and translated IC text.  The panel
+ * auto-scrolls to the latest entry.
+ *
+ * The entry is also pushed to `chatState.gameLog` so that clipboard copy
+ * and save functions can access the full log without scraping the DOM.
+ *
+ * @param {"a"|"b"} ch           - Character identifier.
+ * @param {string}  channel      - Channel name (e.g. "say", "yell", "whisper").
+ * @param {string}  icText       - The translated IC text to display.
+ * @param {string}  model        - Ollama model tag used for this translation
+ *                                 (stored in chatState.gameLog for provenance).
+ * @param {string|null} [ipcId]  - IPC ID from the translation result, or null
+ *                                 if the translation failed or IPC was not computed.
+ * @returns {void}
+ */
+function appendGameEntry(ch, channel, icText, model, ipcId = null) {
+  chatState.logSeq++;
+  chatState.gameLog.push({ ch, channel, icText, model, ipcId });
+  const placeholder = dom.chatGameOutput.querySelector(".placeholder-text");
+  if (placeholder) placeholder.remove();
+
+  const entry = document.createElement("div");
+  entry.className = `game-entry game-entry--${ch}`;
+
+  const charEl = document.createElement("span");
+  charEl.className = "game-entry__char";
+  charEl.textContent = ch.toUpperCase();
+
+  const channelEl = document.createElement("span");
+  channelEl.className = "game-entry__channel";
+  channelEl.textContent = `[${channel}]`;
+
+  const textEl = document.createElement("span");
+  textEl.className = "game-entry__text";
+  textEl.textContent = icText;
+
+  entry.appendChild(charEl);
+  entry.appendChild(channelEl);
+  entry.appendChild(textEl);
+  dom.chatGameOutput.appendChild(entry);
+  dom.chatGameOutput.scrollTop = dom.chatGameOutput.scrollHeight;
+}
+
+/**
+ * Translate a single character's OOC message in live mode.
+ *
+ * Builds a minimal `ChatTranslationRequest` with only the specified
+ * character set (the other is explicitly null), POSTs to
+ * `/api/translate_chat`, renders the result into the character's output
+ * box, and on success appends an entry to the in-game log.
+ *
+ * @param {"a"|"b"} ch - Character identifier.
+ * @returns {Promise<void>}
+ */
+async function sendForChar(ch) {
+  if (chatState.busy) return;
+  const model = getChatModelName();
+  if (!model) { setStatus("No model specified."); return; }
+
+  const axes = buildAxesForRequest(ch);
+  if (!axes || Object.keys(axes).length === 0) {
+    setStatus(`Load an example for Character ${ch.toUpperCase()} before sending.`);
+    return;
+  }
+  const ooc = charDom(ch).oocTextarea.value.trim();
+  if (!ooc) { setStatus(`Enter an OOC message for Character ${ch.toUpperCase()}.`); return; }
+
+  const channel = charDom(ch).channelSelect.value;
+  const charInput = {
+    axes,
+    ooc_message: ooc,
+    channel,
+    active_axes: chatState[ch].activeAxes ? [...chatState[ch].activeAxes] : null,
+  };
+
+  const reqBody = {
+    character_a: ch === "a" ? charInput : null,
+    character_b: ch === "b" ? charInput : null,
+    model,
+    temperature: parseFloat(dom.chatTempInput.value),
+    max_tokens: parseInt(dom.chatTokensInput.value, 10),
+    seed: resolveChatSeed(),
+    strict_mode: dom.chatStrictMode.checked,
+    max_output_chars: parseInt(dom.chatMaxChars.value, 10),
+    system_prompt: dom.chatSystemPrompt.value.trim() || null,
+  };
+
+  chatState.busy = true;
+  charDom(ch).btnSend.disabled = true;
+  setStatus(`Sending ${ch.toUpperCase()} via ${model}…`, true);
+
+  const outputBox   = ch === "a" ? dom.chatAOutput : dom.chatBOutput;
+  const metaDiv     = ch === "a" ? dom.chatAMeta   : dom.chatBMeta;
+  const badge       = ch === "a" ? dom.chatAStatusBadge : dom.chatBStatusBadge;
+  outputBox.innerHTML = '<span class="placeholder-text">Translating…</span>';
+
+  try {
+    const res = await fetch("/api/translate_chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reqBody),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const result = ch === "a" ? data.character_a : data.character_b;
+    renderTranslationResult(outputBox, metaDiv, badge, result);
+
+    if (result && result.status === "success" && result.ic_text) {
+      appendGameEntry(ch, channel, result.ic_text, model, result.ipc_id ?? null);
+    }
+    setStatus(`${ch.toUpperCase()} sent (${model}) — ${result ? result.status : "no result"}.`);
+  } catch (err) {
+    outputBox.innerHTML = `<span style="color:var(--col-err)">Error: ${err.message}</span>`;
+    setStatus(`Send error (${ch.toUpperCase()}): ${err.message}`);
+  } finally {
+    chatState.busy = false;
+    charDom(ch).btnSend.disabled = false;
+    dom.spinner.classList.add("hidden");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Translate (main action)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -927,6 +1117,123 @@ export async function translate() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Game log clipboard + save
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Copy the in-game log to the clipboard as plain text.
+ *
+ * Each entry is formatted as ``CH [channel]: IC text``.  Updates the button
+ * label to "Copied!" for 1200 ms to provide tactile feedback.
+ *
+ * @returns {void}
+ */
+function copyGameLogTxt() {
+  if (chatState.gameLog.length === 0) { setStatus("No entries to copy."); return; }
+  const text = chatState.gameLog
+    .map(e => `${e.ch.toUpperCase()} [${e.channel}]: ${e.icText}`)
+    .join("\n");
+  navigator.clipboard.writeText(text).then(() => {
+    dom.chatCopyLogTxt.textContent = "Copied!";
+    setTimeout(() => { dom.chatCopyLogTxt.textContent = "Copy TXT"; }, 1200);
+  });
+}
+
+/**
+ * Copy the in-game log to the clipboard as a Markdown table.
+ *
+ * Produces a four-column table (index, char, channel, IC text).  Pipe
+ * characters in IC text are backslash-escaped.  Updates the button label
+ * to "Copied!" for 1200 ms.
+ *
+ * @returns {void}
+ */
+function copyGameLogMd() {
+  if (chatState.gameLog.length === 0) { setStatus("No entries to copy."); return; }
+  const lines = ["| # | Char | Channel | IC Text |", "| --- | --- | --- | --- |"];
+  chatState.gameLog.forEach((e, i) => {
+    const escaped = e.icText.replace(/\|/g, "\\|");
+    lines.push(`| ${i + 1} | ${e.ch.toUpperCase()} | ${e.channel} | ${escaped} |`);
+  });
+  navigator.clipboard.writeText(lines.join("\n")).then(() => {
+    dom.chatCopyLogMd.textContent = "Copied!";
+    setTimeout(() => { dom.chatCopyLogMd.textContent = "Copy MD"; }, 1200);
+  });
+}
+
+/**
+ * Save the in-game log to disk and immediately download it as a zip.
+ *
+ * Two-step flow:
+ * 1. POST ``/api/save_chat`` → server writes files, returns ``folder_name``.
+ * 2. GET ``/api/save/{folder}/export`` → server streams zip → browser download.
+ *
+ * Includes the currently loaded character payloads and system prompt so the
+ * save package is self-contained.
+ *
+ * @returns {Promise<void>}
+ */
+async function saveChatLog() {
+  if (chatState.gameLog.length === 0) { setStatus("No game log entries to save."); return; }
+
+  const model = getChatModelName();
+  const reqBody = {
+    entries: chatState.gameLog.map(e => ({
+      ch: e.ch,
+      channel: e.channel,
+      ic_text: e.icText,
+      model: e.model,
+      ipc_id: e.ipcId ?? null,
+    })),
+    character_a: chatState.a.payload ? chatState.a.payload.axes : null,
+    character_b: chatState.b.payload ? chatState.b.payload.axes : null,
+    model,
+    temperature: parseFloat(dom.chatTempInput.value),
+    max_tokens: parseInt(dom.chatTokensInput.value, 10),
+    seed: resolveChatSeed(),
+    system_prompt: dom.chatSystemPrompt.value.trim() || null,
+  };
+
+  dom.chatSaveLog.disabled = true;
+  setStatus("Saving game log…", true);
+
+  try {
+    // Step 1: POST save
+    const saveRes = await fetch("/api/save_chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reqBody),
+    });
+    if (!saveRes.ok) {
+      const errData = await saveRes.json().catch(() => ({ detail: saveRes.statusText }));
+      throw new Error(errData.detail || `HTTP ${saveRes.status}`);
+    }
+    const saveData = await saveRes.json();
+
+    // Step 2: GET zip → trigger browser download
+    const exportRes = await fetch(
+      `/api/save/${encodeURIComponent(saveData.folder_name)}/export`
+    );
+    if (!exportRes.ok) throw new Error(`Export HTTP ${exportRes.status}`);
+    const blob = await exportRes.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${saveData.folder_name}_chat.zip`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+
+    setStatus(`Chat log saved — ${saveData.files.length} files in ${saveData.folder_name}.`);
+  } catch (err) {
+    setStatus(`Save error: ${err.message}`);
+  } finally {
+    dom.chatSaveLog.disabled = false;
+    dom.spinner.classList.add("hidden");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Initialisation
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -966,6 +1273,12 @@ export async function initChatTranslation() {
  * - IC prompt load button → fetch and populate the system prompt textarea
  * - System prompt textarea → update the prompt badge
  * - Translate button → `translate()`
+ * - Live toggle → `updateLiveModeUI()` (shows Send buttons + game section)
+ * - Per-character Send buttons (A and B) → `sendForChar(ch)` in live mode
+ * - Clear log button → empties game output panel and resets `chatState.gameLog`
+ * - Copy TXT button → `copyGameLogTxt()` (plain-text clipboard)
+ * - Copy MD button  → `copyGameLogMd()` (Markdown table clipboard)
+ * - Save all data button → `saveChatLog()` (server write + zip download)
  *
  * Called once during startup by the mod-events coordinator
  * ({@link module:mod-events~wireEvents}).
@@ -1050,4 +1363,27 @@ export function wireChatTranslationEvents() {
 
   // ── Translate button ──────────────────────────────────────────────── //
   dom.btnTranslate.addEventListener("click", () => translate());
+
+  // ── Live toggle ───────────────────────────────────────────────────── //
+  dom.chatLiveToggle.addEventListener("change", () => {
+    chatState.liveMode = dom.chatLiveToggle.checked;
+    updateLiveModeUI();
+  });
+
+  // ── Per-character Send buttons ────────────────────────────────────── //
+  for (const ch of ["a", "b"]) {
+    charDom(ch).btnSend.addEventListener("click", () => sendForChar(ch));
+  }
+
+  // ── Clear game log ────────────────────────────────────────────────── //
+  dom.chatClearLog.addEventListener("click", () => {
+    dom.chatGameOutput.innerHTML = '<span class="placeholder-text">Send a message to see in-game output.</span>';
+    chatState.logSeq = 0;
+    chatState.gameLog = [];
+  });
+
+  // ── Game log copy + save ──────────────────────────────────────────── //
+  dom.chatCopyLogTxt.addEventListener("click", () => copyGameLogTxt());
+  dom.chatCopyLogMd.addEventListener("click",  () => copyGameLogMd());
+  dom.chatSaveLog.addEventListener("click",    () => saveChatLog());
 }
