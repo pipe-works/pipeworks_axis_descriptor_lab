@@ -175,4 +175,58 @@ export const dom = {
   // ── Status bar ────────────────────────────────────────────────────── //
   statusText:           $("status-text"),
   spinner:              $("spinner"),
+
+  // ── Page navigation ───────────────────────────────────────────────── //
+  navCharDesc:          $("nav-char-desc"),
+  navChatTrans:         $("nav-chat-trans"),
+  pageCharDescription:  $("page-char-description"),
+  pageChatTranslation:  $("page-chat-translation"),
+
+  // ── Chat Translation — Character A ───────────────────────────────── //
+  chatAExampleSelect:   $("chat-a-example-select"),
+  chatABtnLoadExample:  $("chat-a-btn-load-example"),
+  chatAJson:            $("chat-a-json"),
+  chatAJsonBadge:       $("chat-a-json-badge"),
+  chatASliderPanel:     $("chat-a-slider-panel"),
+  chatABtnRandomise:    $("chat-a-btn-randomise"),
+  chatAAutoLabel:       $("chat-a-auto-label"),
+  chatABtnRelabel:      $("chat-a-btn-relabel"),
+  chatAOoc:             $("chat-a-ooc"),
+  chatAChannel:         $("chat-a-channel"),
+
+  // ── Chat Translation — Character B ───────────────────────────────── //
+  chatBExampleSelect:   $("chat-b-example-select"),
+  chatBBtnLoadExample:  $("chat-b-btn-load-example"),
+  chatBJson:            $("chat-b-json"),
+  chatBJsonBadge:       $("chat-b-json-badge"),
+  chatBSliderPanel:     $("chat-b-slider-panel"),
+  chatBBtnRandomise:    $("chat-b-btn-randomise"),
+  chatBAutoLabel:       $("chat-b-auto-label"),
+  chatBBtnRelabel:      $("chat-b-btn-relabel"),
+  chatBOoc:             $("chat-b-ooc"),
+  chatBChannel:         $("chat-b-channel"),
+
+  // ── Chat Translation — Controls ───────────────────────────────────── //
+  chatOllamaHost:       $("chat-ollama-host"),
+  chatModelSelect:      $("chat-model-select"),
+  chatModelInput:       $("chat-model-input"),
+  chatTempRange:        $("chat-temp-range"),
+  chatTempInput:        $("chat-temp-input"),
+  chatTokensInput:      $("chat-tokens-input"),
+  chatSeedInput:        $("chat-seed-input"),
+  chatStrictMode:       $("chat-strict-mode"),
+  chatMaxChars:         $("chat-max-chars"),
+  chatPromptSelect:     $("chat-prompt-select"),
+  chatBtnLoadPrompt:    $("chat-btn-load-prompt"),
+  chatSystemPrompt:     $("chat-system-prompt"),
+  chatPromptBadge:      $("chat-prompt-badge"),
+  btnTranslate:         $("btn-translate"),
+
+  // ── Chat Translation — Output ─────────────────────────────────────── //
+  chatAOutput:          $("chat-a-output"),
+  chatAMeta:            $("chat-a-meta"),
+  chatAStatusBadge:     $("chat-a-status-badge"),
+  chatBOutput:          $("chat-b-output"),
+  chatBMeta:            $("chat-b-meta"),
+  chatBStatusBadge:     $("chat-b-status-badge"),
 };

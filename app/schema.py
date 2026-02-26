@@ -641,6 +641,185 @@ class DeltaResponse(BaseModel):
 
 
 # -----------------------------------------------------------------------------
+# /api/translate_chat  request / response
+# -----------------------------------------------------------------------------
+
+
+class ChatCharacterInput(BaseModel):
+    """
+    Axis profile and OOC message for a single character in a chat translation
+    request.
+
+    Fields
+    ------
+    axes         – The character's current axis state (same AxisValue format
+                   as AxisPayload.axes).
+    ooc_message  – The raw out-of-character message to translate.
+    channel      – Chat delivery mode: "say" (default), "yell", or "whisper".
+    active_axes  – Explicit allow-list of axis names to include in the
+                   rendered profile.  None (default) includes all axes.
+                   Pass a list to omit specific axes from the LLM context.
+    """
+
+    axes: dict[str, AxisValue] = Field(
+        ...,
+        description="Map of axis name → AxisValue for this character.",
+    )
+    ooc_message: str = Field(
+        ...,
+        min_length=1,
+        description="Raw out-of-character message text to translate.",
+    )
+    channel: str = Field(
+        default="say",
+        description=(
+            "Chat delivery mode injected into the profile as {{channel}}.  "
+            "One of 'say', 'yell', or 'whisper'."
+        ),
+    )
+    active_axes: list[str] | None = Field(
+        default=None,
+        description=(
+            "Axis names to include in the rendered profile.  "
+            "None means all axes are active.  An empty list disables all axes."
+        ),
+    )
+
+
+class ChatTranslationRequest(BaseModel):
+    """
+    Request body for POST /api/translate_chat.
+
+    Translates OOC messages for one or two characters using the
+    OOC→IC translation pipeline.  Each character's profile is built
+    from its axes, filtered by active_axes, and rendered into the
+    system prompt template before calling Ollama /api/chat.
+    """
+
+    character_a: ChatCharacterInput = Field(
+        ...,
+        description="Profile and OOC message for Character A (required).",
+    )
+    character_b: ChatCharacterInput | None = Field(
+        default=None,
+        description=(
+            "Profile and OOC message for Character B.  " "When None only Character A is translated."
+        ),
+    )
+    model: str = Field(
+        ...,
+        description="Ollama model tag (e.g. 'gemma2:2b').",
+        examples=["gemma2:2b", "llama3.2:1b"],
+    )
+    temperature: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature.  0.7 is the production default.",
+    )
+    max_tokens: int = Field(
+        default=128,
+        ge=10,
+        le=512,
+        description="Maximum tokens to generate (num_predict).",
+    )
+    seed: int = Field(
+        ...,
+        description=(
+            "Integer seed forwarded to Ollama options.seed.  "
+            "Also used as the seed component of the IPC ID."
+        ),
+    )
+    prompt_name: str | None = Field(
+        default=None,
+        description=(
+            "Name of a server-side prompt file to load from app/prompts/.  "
+            "When None and system_prompt is also None, the server loads "
+            "ic_v01_undertaking.txt as the default."
+        ),
+    )
+    system_prompt: str | None = Field(
+        default=None,
+        description=(
+            "Inline system prompt override.  Takes precedence over "
+            "prompt_name when both are provided."
+        ),
+    )
+    ollama_host: str | None = Field(
+        default=None,
+        description=(
+            "Optional Ollama server URL override.  "
+            "When None the server uses OLLAMA_HOST env var."
+        ),
+        examples=["http://localhost:11434"],
+    )
+    strict_mode: bool = Field(
+        default=True,
+        description=(
+            "When True, any output constraint violation returns None "
+            "(fallback to OOC).  When False, minor violations are cleaned up."
+        ),
+    )
+    max_output_chars: int = Field(
+        default=280,
+        ge=50,
+        le=2000,
+        description="Maximum character count for IC output.",
+    )
+
+
+class ChatTranslationResult(BaseModel):
+    """
+    Result for a single character's OOC→IC translation attempt.
+
+    ic_text is None when translation failed (status explains why).
+    The IPC fields form the provenance chain for this translation.
+    """
+
+    ic_text: str | None = Field(
+        ...,
+        description="Translated IC dialogue, or None on failure.",
+    )
+    status: str = Field(
+        ...,
+        description=("One of 'success', 'fallback.api_error', or " "'fallback.validation_failed'."),
+    )
+    input_hash: str | None = Field(
+        default=None,
+        description="SHA-256 of the active axis state + OOC message + channel.",
+    )
+    system_prompt_hash: str | None = Field(
+        default=None,
+        description="SHA-256 of the normalised rendered system prompt.",
+    )
+    output_hash: str | None = Field(
+        default=None,
+        description="SHA-256 of the normalised IC output.  None on failure.",
+    )
+    ipc_id: str | None = Field(
+        default=None,
+        description="IPC identifier (input:prompt:model:temp:tokens:seed).  None on failure.",
+    )
+
+
+class ChatTranslationResponse(BaseModel):
+    """
+    Response body for POST /api/translate_chat.
+
+    Contains results for Character A and optionally Character B.
+    """
+
+    character_a: ChatTranslationResult = Field(
+        ...,
+        description="Translation result for Character A.",
+    )
+    character_b: ChatTranslationResult | None = Field(
+        default=None,
+        description="Translation result for Character B, or None if not requested.",
+    )
+
+
+# -----------------------------------------------------------------------------
 # Manifest
 # -----------------------------------------------------------------------------
 

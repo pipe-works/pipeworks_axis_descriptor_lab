@@ -131,6 +131,14 @@ MODULE_MANIFEST: dict[str, dict] = {
         "exports": ["wireThemeToggle"],
         "imports_from": [],  # standalone
     },
+    "mod-navigation.js": {
+        "exports": ["wireNavigationEvents"],
+        "imports_from": ["mod-state.js"],
+    },
+    "mod-chat-translation.js": {
+        "exports": ["translate", "initChatTranslation", "wireChatTranslationEvents"],
+        "imports_from": ["mod-state.js", "mod-utils.js", "mod-status.js"],
+    },
     "mod-events.js": {
         "exports": ["wireEvents"],
         "imports_from": [
@@ -141,6 +149,8 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-axis-actions.js",
             "mod-persistence.js",
             "mod-indicator-modal.js",
+            "mod-navigation.js",
+            "mod-chat-translation.js",
         ],
     },
     "mod-init.js": {
@@ -152,6 +162,7 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-tooltip.js",
             "mod-events.js",
             "mod-loaders.js",
+            "mod-chat-translation.js",
         ],
     },
 }
@@ -380,15 +391,15 @@ class TestModuleDocumentation:
 
 
 class TestModuleCount:
-    """The refactor produced exactly 14 module files."""
+    """The application has exactly 16 module files (14 original + navigation + chat-translation)."""
 
-    def test_exactly_14_modules_on_disk(self) -> None:
-        """The static directory contains exactly 14 mod-*.js files."""
+    def test_exactly_16_modules_on_disk(self) -> None:
+        """The static directory contains exactly 16 mod-*.js files."""
         static_dir = Path(__file__).resolve().parent.parent / "app" / "static"
         mod_files = sorted(p.name for p in static_dir.glob("mod-*.js"))
         assert (
-            len(mod_files) == 14
-        ), f"Expected 14 mod-*.js files, found {len(mod_files)}: {mod_files}"
+            len(mod_files) == 16
+        ), f"Expected 16 mod-*.js files, found {len(mod_files)}: {mod_files}"
 
     def test_manifest_matches_disk(self) -> None:
         """Every file in the manifest exists on disk, and vice versa."""

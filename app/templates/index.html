@@ -53,8 +53,17 @@
 </header>
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
-     MAIN GRID
+     PAGE NAVIGATION
 ════════════════════════════════════════════════════════════════════════════ -->
+<nav class="app-nav" aria-label="Page navigation">
+  <button id="nav-char-desc" class="btn btn--nav is-active" type="button">Character Description</button>
+  <button id="nav-chat-trans" class="btn btn--nav" type="button">Chat Translation</button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PAGE: CHARACTER DESCRIPTION (existing content)
+════════════════════════════════════════════════════════════════════════════ -->
+<div id="page-char-description">
 <main class="app-grid">
 
   <!-- ── LEFT PANEL: JSON editor + example selector + system prompt ───────── -->
@@ -382,6 +391,244 @@
   </section>
 
 </main>
+</div><!-- #page-char-description -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PAGE: CHAT TRANSLATION
+════════════════════════════════════════════════════════════════════════════ -->
+<div id="page-chat-translation" class="hidden">
+<main class="chat-grid">
+
+  <!-- ── CHARACTER A PANEL ─────────────────────────────────────────────────── -->
+  <section class="panel panel--left chat-char-panel" aria-label="Character A">
+    <h2 class="panel__heading">Character A</h2>
+
+    <div class="control-row">
+      <label for="chat-a-example-select" class="control-label">Example</label>
+      <select id="chat-a-example-select" class="select">
+        <option value="">— choose —</option>
+      </select>
+      <button id="chat-a-btn-load-example" class="btn btn--secondary" type="button">Load</button>
+    </div>
+
+    <details class="collapsible">
+      <summary class="collapsible__summary">
+        Axis JSON <span class="badge" id="chat-a-json-badge">OK</span>
+      </summary>
+      <textarea
+        id="chat-a-json"
+        class="code-editor code-editor--sm"
+        rows="6"
+        spellcheck="false"
+        autocomplete="off"
+        placeholder='{"axes": {...}, "policy_hash": "...", "seed": 0, "world_id": "lab"}'
+      ></textarea>
+    </details>
+
+    <div id="chat-a-slider-panel" class="slider-panel chat-slider-panel">
+      <p class="placeholder-text">Load an example to see sliders.</p>
+    </div>
+
+    <div class="control-row" style="margin-top:0.25rem;">
+      <button id="chat-a-btn-randomise" class="btn btn--secondary" type="button">Randomise</button>
+      <label class="toggle-label">
+        <input type="checkbox" id="chat-a-auto-label" role="switch" />
+        <span class="toggle-text">Auto labels</span>
+      </label>
+      <button id="chat-a-btn-relabel" class="btn btn--secondary" type="button">Recompute</button>
+    </div>
+
+    <hr class="divider" />
+
+    <label for="chat-a-ooc" class="control-label">OOC Message</label>
+    <textarea
+      id="chat-a-ooc"
+      class="code-editor code-editor--sm"
+      rows="3"
+      placeholder="Enter out-of-character message for Character A…"
+    ></textarea>
+
+    <div class="control-row" style="margin-top:0.5rem;">
+      <label for="chat-a-channel" class="control-label">Channel</label>
+      <select id="chat-a-channel" class="select select--sm">
+        <option value="say">say</option>
+        <option value="yell">yell</option>
+        <option value="whisper">whisper</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- ── CHARACTER B PANEL ─────────────────────────────────────────────────── -->
+  <section class="panel panel--centre chat-char-panel" aria-label="Character B">
+    <h2 class="panel__heading">Character B</h2>
+
+    <div class="control-row">
+      <label for="chat-b-example-select" class="control-label">Example</label>
+      <select id="chat-b-example-select" class="select">
+        <option value="">— choose —</option>
+      </select>
+      <button id="chat-b-btn-load-example" class="btn btn--secondary" type="button">Load</button>
+    </div>
+
+    <details class="collapsible">
+      <summary class="collapsible__summary">
+        Axis JSON <span class="badge" id="chat-b-json-badge">OK</span>
+      </summary>
+      <textarea
+        id="chat-b-json"
+        class="code-editor code-editor--sm"
+        rows="6"
+        spellcheck="false"
+        autocomplete="off"
+        placeholder='{"axes": {...}, "policy_hash": "...", "seed": 0, "world_id": "lab"}'
+      ></textarea>
+    </details>
+
+    <div id="chat-b-slider-panel" class="slider-panel chat-slider-panel">
+      <p class="placeholder-text">Load an example to see sliders.</p>
+    </div>
+
+    <div class="control-row" style="margin-top:0.25rem;">
+      <button id="chat-b-btn-randomise" class="btn btn--secondary" type="button">Randomise</button>
+      <label class="toggle-label">
+        <input type="checkbox" id="chat-b-auto-label" role="switch" />
+        <span class="toggle-text">Auto labels</span>
+      </label>
+      <button id="chat-b-btn-relabel" class="btn btn--secondary" type="button">Recompute</button>
+    </div>
+
+    <hr class="divider" />
+
+    <label for="chat-b-ooc" class="control-label">OOC Message</label>
+    <textarea
+      id="chat-b-ooc"
+      class="code-editor code-editor--sm"
+      rows="3"
+      placeholder="Enter out-of-character message for Character B…"
+    ></textarea>
+
+    <div class="control-row" style="margin-top:0.5rem;">
+      <label for="chat-b-channel" class="control-label">Channel</label>
+      <select id="chat-b-channel" class="select select--sm">
+        <option value="say">say</option>
+        <option value="yell">yell</option>
+        <option value="whisper">whisper</option>
+      </select>
+    </div>
+  </section>
+
+  <!-- ── CONTROLS + OUTPUT PANEL ───────────────────────────────────────────── -->
+  <section class="panel panel--right" aria-label="Translation Controls and Output">
+    <h2 class="panel__heading">Translation</h2>
+
+    <!-- Generation settings -->
+    <div class="settings-grid">
+      <label for="chat-ollama-host" class="control-label">Ollama</label>
+      <div class="model-row">
+        <input
+          id="chat-ollama-host"
+          class="input input--url"
+          type="url"
+          value="{{ ollama_host }}"
+          placeholder="http://localhost:11434"
+          aria-label="Ollama server URL"
+        />
+        <select id="chat-model-select" class="select">
+          {% if available_models %}
+            {% for m in available_models %}
+              <option value="{{ m }}" {% if m == default_model %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+          {% else %}
+            <option value="{{ default_model }}">{{ default_model }}</option>
+          {% endif %}
+        </select>
+        <input
+          id="chat-model-input"
+          class="input {% if available_models %}hidden{% endif %}"
+          type="text"
+          value="{{ default_model }}"
+          placeholder="e.g. gemma2:2b"
+          aria-label="Model name"
+        />
+      </div>
+
+      <label for="chat-temp-input" class="control-label">Temperature</label>
+      <div class="range-row">
+        <input type="range" id="chat-temp-range" min="0" max="2" step="0.05" value="0.7" class="range-input" />
+        <input type="number" id="chat-temp-input" min="0" max="2" step="0.05" value="0.7" class="input input--sm" />
+      </div>
+
+      <label for="chat-tokens-input" class="control-label">Max tokens</label>
+      <input type="number" id="chat-tokens-input" min="10" max="512" value="128" class="input input--sm" />
+
+      <label for="chat-seed-input" class="control-label">Seed</label>
+      <input type="number" id="chat-seed-input" value="-1" class="input input--sm" />
+
+      <label for="chat-strict-mode" class="control-label">Strict</label>
+      <label class="toggle-label">
+        <input type="checkbox" id="chat-strict-mode" role="switch" checked />
+        <span class="toggle-text">Strict validation</span>
+      </label>
+
+      <label for="chat-max-chars" class="control-label">Max chars</label>
+      <input type="number" id="chat-max-chars" min="50" max="2000" value="280" class="input input--sm" />
+    </div>
+
+    <!-- IC Prompt -->
+    <details class="collapsible" style="margin-top:0.75rem;">
+      <summary class="collapsible__summary">IC Prompt Template
+        <span class="badge badge--muted" id="chat-prompt-badge">default</span>
+      </summary>
+      <div class="control-row" style="margin-top:0.5rem;">
+        <label for="chat-prompt-select" class="control-label">Prompt</label>
+        <select id="chat-prompt-select" class="select">
+          <option value="">— choose —</option>
+        </select>
+        <button id="chat-btn-load-prompt" class="btn btn--secondary" type="button">Load</button>
+      </div>
+      <textarea
+        id="chat-system-prompt"
+        class="code-editor code-editor--sm"
+        rows="8"
+        spellcheck="false"
+        placeholder="(server default: ic_v01_undertaking.txt)"
+      ></textarea>
+    </details>
+
+    <!-- Translate button -->
+    <button id="btn-translate" class="btn btn--primary btn--full" type="button" style="margin-top:0.75rem;">
+      ▶ Translate
+    </button>
+
+    <hr class="divider" />
+
+    <!-- IC Output A -->
+    <div class="ic-output-section">
+      <div class="ic-output-header">
+        <span class="ic-output-label">Character A — IC</span>
+        <span class="badge badge--muted" id="chat-a-status-badge">—</span>
+      </div>
+      <div id="chat-a-output" class="output-box output-box--sm" aria-live="polite">
+        <span class="placeholder-text">Translate to see IC output.</span>
+      </div>
+      <div id="chat-a-meta" class="output-meta hidden"></div>
+    </div>
+
+    <!-- IC Output B -->
+    <div class="ic-output-section" style="margin-top:0.75rem;">
+      <div class="ic-output-header">
+        <span class="ic-output-label">Character B — IC</span>
+        <span class="badge badge--muted" id="chat-b-status-badge">—</span>
+      </div>
+      <div id="chat-b-output" class="output-box output-box--sm" aria-live="polite">
+        <span class="placeholder-text">Translate to see IC output.</span>
+      </div>
+      <div id="chat-b-meta" class="output-meta hidden"></div>
+    </div>
+  </section>
+
+</main>
+</div><!-- #page-chat-translation -->
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      STATUS BAR

@@ -38,6 +38,7 @@ import { wireThemeToggle } from "./mod-theme.js";
 import { wireTooltipToggle } from "./mod-tooltip.js";
 import { wireEvents } from "./mod-events.js";
 import { loadExampleList, loadPromptList, loadExample } from "./mod-loaders.js";
+import { initChatTranslation } from "./mod-chat-translation.js";
 
 /**
  * Application entry point.  Runs once the DOM is ready.
@@ -61,6 +62,7 @@ async function init() {
   // Phase 3: Populate dropdowns from server
   await loadExampleList();
   await loadPromptList();
+  await initChatTranslation();
 
   // Phase 4: Auto-load the first example if any exist
   // options[0] is the "— choose —" placeholder; options[1] is the first real example
