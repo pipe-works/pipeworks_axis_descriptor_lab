@@ -239,6 +239,9 @@ export const dom = {
   chatClearLog:         $("chat-clear-log"),
 
   // ── Chat Translation — Game log actions ───────────────────────────── //
+  // chatToggleOoc: toggles visibility of the OOC message column in each
+  // .game-entry row.  is-active = OOC shown; no is-active = OOC hidden.
+  chatToggleOoc:        $("chat-toggle-ooc"),
   chatCopyLogTxt:       $("chat-copy-log-txt"),
   chatCopyLogMd:        $("chat-copy-log-md"),
   chatSaveLog:          $("chat-save-log"),

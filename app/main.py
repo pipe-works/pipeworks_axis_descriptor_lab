@@ -1112,7 +1112,13 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
             "channel": char.channel,
         }
         input_hash = compute_payload_hash(input_dict)
-        sp_hash = compute_system_prompt_hash(rendered)
+        # Hash the raw template (before per-character substitution) so that
+        # both characters using the same prompt file share the same
+        # system_prompt_hash.  The per-character context (axes, OOC, channel)
+        # is already captured in input_hash above, so hashing the rendered
+        # prompt would duplicate that information and make the hashes differ
+        # between characters for no diagnostic benefit.
+        sp_hash = compute_system_prompt_hash(template)
 
         # ── Call Ollama /api/chat ─────────────────────────────────────────────
         renderer = ChatRenderer(
@@ -1181,14 +1187,29 @@ def save_chat(req: ChatSaveRequest) -> ChatSaveResponse:
     Save an in-game chat log session to a timestamped folder under ``data/``.
 
     Writes:
-    - ``game_log.md``         — Markdown table of all log entries.
+    - ``game_log.md``         — Markdown table of all log entries (OOC + IC).
     - ``char_a_payload.json`` — Character A axes (when provided).
     - ``char_b_payload.json`` — Character B axes (when provided).
-    - ``system_prompt.md``    — IC system prompt (when provided).
-    - ``metadata.json``       — Provenance header with model, settings, hashes.
+    - ``system_prompt.md``    — IC system prompt (from request or loaded from
+                                the server default ``ic_v01_undertaking.txt``).
+    - ``metadata.json``       — Provenance header including all four IPC hashes
+                                (system_prompt_hash, per_entry_hashes with
+                                input_hash / system_prompt_hash / output_hash /
+                                ipc_id for every log entry).
+
+    Hash notes
+    ----------
+    ``system_prompt_hash`` in metadata.json is set from:
+    1. ``compute_system_prompt_hash(req.system_prompt)`` when an explicit prompt
+       was provided — this hashes the raw template string.
+    2. The ``system_prompt_hash`` stored in the first log entry when no prompt
+       override was given — after the template-hash fix in ``_translate_one``
+       this is the hash of the raw template (not the rendered prompt), so it
+       matches what ``compute_system_prompt_hash`` would produce on the same
+       template text.
 
     The folder naming convention is identical to ``POST /api/save`` so the
-    existing ``GET /api/save/{folder}/export`` endpoint can serve the zip
+    existing ``GET /api/save/{folder}/export`` endpoint serves the zip
     without any modification.
     """
     timestamp = datetime.now(timezone.utc)
@@ -1223,16 +1244,60 @@ def save_chat(req: ChatSaveRequest) -> ChatSaveResponse:
             )
             files_written.append(f"char_{ch}_payload.json")
 
-    # system_prompt.md — conditional
-    if req.system_prompt:
+    # system_prompt.md — written from the request body when provided, or by
+    # loading the server default IC prompt file when none was sent.  This
+    # ensures the save package always documents the prompt that was actually
+    # used during translation, even when the user left the prompt textarea
+    # empty and the server fell back to ic_v01_undertaking.txt.
+    prompt_to_save = req.system_prompt
+    if not prompt_to_save:
+        ic_default_path = _HERE / "prompts" / "ic_v01_undertaking.txt"
+        if ic_default_path.exists():
+            prompt_to_save = ic_default_path.read_text(encoding="utf-8").strip()
+
+    if prompt_to_save:
         (save_dir / "system_prompt.md").write_text(
-            build_system_prompt_md(req.system_prompt, folder_name),
+            build_system_prompt_md(prompt_to_save, folder_name),
             encoding="utf-8",
         )
         files_written.append("system_prompt.md")
 
     # metadata.json — always written
-    sp_hash = compute_output_hash(req.system_prompt) if req.system_prompt else None
+    #
+    # system_prompt_hash: two sources, preferred in order:
+    #   1. req.system_prompt provided → hash the raw template with the correct
+    #      compute_system_prompt_hash() function (fix: was wrongly using
+    #      compute_output_hash which applies different normalisation rules).
+    #   2. req.system_prompt is None (server default used during translation) →
+    #      extract the rendered system_prompt_hash from the first entry that
+    #      carries it.  The entries store the hash of the *fully-rendered*
+    #      prompt (post-substitution) which matches the 'prompt' row shown in
+    #      the browser's IPC meta table.
+    sp_hash: str | None
+    if req.system_prompt:
+        sp_hash = compute_system_prompt_hash(req.system_prompt)
+    else:
+        sp_hash = next(
+            (e.get("system_prompt_hash") for e in entries_raw if e.get("system_prompt_hash")),
+            None,
+        )
+
+    # Per-entry IPC provenance hashes — one row per log entry with all four
+    # hash values that were computed during translation and displayed in the
+    # in-browser IPC meta table (input, prompt, output, ipc).
+    # Entries that predate this field will have None for the hash columns.
+    per_entry_hashes = [
+        {
+            "index": i + 1,
+            "ch": e["ch"],
+            "input_hash": e.get("input_hash"),
+            "system_prompt_hash": e.get("system_prompt_hash"),
+            "output_hash": e.get("output_hash"),
+            "ipc_id": e.get("ipc_id"),
+        }
+        for i, e in enumerate(entries_raw)
+    ]
+
     metadata = {
         "folder_name": folder_name,
         "timestamp": timestamp.isoformat(),
@@ -1245,6 +1310,7 @@ def save_chat(req: ChatSaveRequest) -> ChatSaveResponse:
         "has_character_b": req.character_b is not None,
         "system_prompt_hash": sp_hash,
         "log_hash": log_hash[:16],
+        "per_entry_hashes": per_entry_hashes,
     }
     (save_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     files_written.append("metadata.json")

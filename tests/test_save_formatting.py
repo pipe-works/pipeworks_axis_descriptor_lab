@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from app.save_formatting import (
     build_baseline_md,
+    build_game_log_md,
     build_output_md,
     build_system_prompt_md,
     save_folder_name,
@@ -142,3 +143,204 @@ class TestBuildSystemPromptMd:
         assert "```text" in md
         assert "You are a descriptive layer." in md
         assert "20260218_test" in md
+
+
+# ── build_game_log_md ────────────────────────────────────────────────────────
+
+
+class TestBuildGameLogMd:
+    """Tests for the build_game_log_md() Markdown builder.
+
+    Covers the five-column table format introduced when OOC message recording
+    was added (Char | OOC | Channel | IC Text).
+    """
+
+    # ── Fixtures ──────────────────────────────────────────────────────────── #
+
+    @staticmethod
+    def _ts() -> datetime:
+        return datetime(2026, 2, 26, 12, 0, 0, tzinfo=timezone.utc)
+
+    @staticmethod
+    def _entry(
+        ch: str = "a",
+        channel: str = "say",
+        ooc: str = "she looks around",
+        ic: str = "She surveys the chamber with wary eyes.",
+        model: str = "gemma2:2b",
+        ipc_id: str | None = None,
+    ) -> dict:
+        """Construct a minimal serialised ChatLogEntry dict for testing."""
+        return {
+            "ch": ch,
+            "channel": channel,
+            "ooc_message": ooc,
+            "ic_text": ic,
+            "model": model,
+            "ipc_id": ipc_id,
+        }
+
+    # ── Structure tests ───────────────────────────────────────────────────── #
+
+    def test_contains_heading_and_provenance(self) -> None:
+        """Output must have the # In-Game Log heading and a provenance comment."""
+        md = build_game_log_md(
+            entries=[self._entry()],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=42,
+            timestamp=self._ts(),
+        )
+
+        assert "# In-Game Log" in md
+        assert "<!-- Axis Descriptor Lab" in md
+        assert "gemma2:2b" in md
+        assert "2026-02-26" in md
+
+    def test_five_column_header_present(self) -> None:
+        """Table header must have five columns: #, Char, OOC, Channel, IC Text."""
+        md = build_game_log_md(
+            entries=[self._entry()],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=42,
+            timestamp=self._ts(),
+        )
+
+        assert "| # | Char | OOC | Channel | IC Text |" in md
+        assert "| --- | --- | --- | --- | --- |" in md
+
+    def test_entry_row_contains_all_five_columns(self) -> None:
+        """Each data row must carry index, char, OOC, channel, and IC text."""
+        ooc = "she glances toward the door"
+        ic = "Her eyes drift to the entrance."
+        md = build_game_log_md(
+            entries=[self._entry(ch="a", channel="whisper", ooc=ooc, ic=ic)],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=99,
+            timestamp=self._ts(),
+        )
+
+        # Verify all five values appear in the rendered table row.
+        assert "| 1 |" in md
+        assert "A" in md
+        assert ooc in md
+        assert "whisper" in md
+        assert ic in md
+
+    def test_character_uppercased_in_output(self) -> None:
+        """The 'ch' field ('a' / 'b') must be uppercased to 'A' / 'B'."""
+        md = build_game_log_md(
+            entries=[self._entry(ch="b")],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+
+        # 'B' should appear in the table; lowercase 'b' in the data row would
+        # indicate the uppercasing step was skipped.
+        assert "| B |" in md
+
+    # ── Pipe-escaping tests ────────────────────────────────────────────────── #
+
+    def test_pipe_in_ooc_is_escaped(self) -> None:
+        """Pipe characters in the OOC field must be backslash-escaped."""
+        md = build_game_log_md(
+            entries=[self._entry(ooc="A|B split")],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+
+        assert "A\\|B split" in md
+        # The raw unescaped pipe with surrounding spaces would break the table.
+        assert "A|B split" not in md.split("| --- |")[1]  # only check data rows
+
+    def test_pipe_in_ic_text_is_escaped(self) -> None:
+        """Pipe characters in the IC text field must be backslash-escaped."""
+        md = build_game_log_md(
+            entries=[self._entry(ic="left | right")],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+
+        assert "left \\| right" in md
+
+    # ── Legacy / backward-compat tests ───────────────────────────────────── #
+
+    def test_missing_ooc_message_renders_as_empty_cell(self) -> None:
+        """Entries without ooc_message (legacy) must render with an empty OOC cell."""
+        entry = {
+            "ch": "a",
+            "channel": "say",
+            # ooc_message deliberately omitted — simulates a legacy entry.
+            "ic_text": "She glances around.",
+            "model": "gemma2:2b",
+            "ipc_id": None,
+        }
+        md = build_game_log_md(
+            entries=[entry],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+
+        # The OOC cell should be empty (two consecutive pipes with only spaces).
+        assert "|  |" in md or "| |" in md
+
+    def test_none_ooc_message_renders_as_empty_cell(self) -> None:
+        """Entries with ooc_message=None must render with an empty OOC cell."""
+        entry = self._entry(ooc=None)  # type: ignore[arg-type]
+        # Manually override because _entry enforces a str default.
+        entry["ooc_message"] = None
+        md = build_game_log_md(
+            entries=[entry],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+
+        # The OOC cell should be empty string, resulting in two adjacent pipes.
+        assert "|  |" in md or "| |" in md
+
+    # ── Multi-entry test ──────────────────────────────────────────────────── #
+
+    def test_multiple_entries_indexed_correctly(self) -> None:
+        """Row indices must be 1-based and sequential across entries."""
+        entries = [
+            self._entry(ch="a", ooc="walks in", ic="She enters the room."),
+            self._entry(ch="b", ooc="nods at her", ic="He dips his head slightly."),
+            self._entry(ch="a", ooc="smiles back", ic="A faint smile crosses her lips."),
+        ]
+        md = build_game_log_md(
+            entries=entries,
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+
+        # All three row indices must appear.
+        assert "| 1 |" in md
+        assert "| 2 |" in md
+        assert "| 3 |" in md
+        # All three OOC messages must appear.
+        assert "walks in" in md
+        assert "nods at her" in md
+        assert "smiles back" in md
