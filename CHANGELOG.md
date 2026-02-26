@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.11...axis-descriptor-lab-v0.1.12) (2026-02-26)
+
+
+### Features
+
+* add Chat Translation page for OOC→IC pipeline testing ([#41](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/41)) ([4e811af](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/4e811af5e5e64d72ed1a8254b2129b0acecbe307))
+
 ## [0.1.11](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.1.10...axis-descriptor-lab-v0.1.11) (2026-02-26)
 
 
