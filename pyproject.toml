@@ -8,6 +8,8 @@ version = "0.2.0"
 description = "Tiny web tool for testing how small LLMs produce non-authoritative descriptive text from a deterministic axis payload (Pipe-Works project)."
 requires-python = ">=3.12"
 dependencies = [
+    # IPC normalisation and hash utilities (authoritative shared library)
+    "pipeworks-ipc @ git+https://github.com/pipe-works/pipeworks_ipc.git@pipeworks-ipc-v0.1.1",
     # Web framework – async-capable, auto-generates OpenAPI docs
     "fastapi>=0.111.0",
     # ASGI server to run FastAPI
