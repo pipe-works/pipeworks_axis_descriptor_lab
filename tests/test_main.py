@@ -5,16 +5,18 @@ from __future__ import annotations
 import io
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
+
+from app.chat_renderer import OLLAMA_HOST
 
 # ── API Routes ───────────────────────────────────────────────────────────────
 
 
 class TestIndexRoute:
     def test_returns_html(self, client: TestClient) -> None:
-        with patch("app.main.list_local_models", return_value=["gemma2:2b"]):
+        with patch("app.main.ChatRenderer.list_models", return_value=["gemma2:2b"]):
             resp = client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
@@ -95,26 +97,26 @@ class TestGetPrompt:
 
 class TestGetModels:
     def test_returns_models(self, client: TestClient) -> None:
-        with patch("app.main.list_local_models", return_value=["gemma2:2b", "llama3:8b"]):
+        with patch("app.main.ChatRenderer.list_models", return_value=["gemma2:2b", "llama3:8b"]):
             resp = client.get("/api/models")
         assert resp.status_code == 200
         assert resp.json() == ["gemma2:2b", "llama3:8b"]
 
     def test_empty_when_ollama_down(self, client: TestClient) -> None:
-        with patch("app.main.list_local_models", return_value=[]):
+        with patch("app.main.ChatRenderer.list_models", return_value=[]):
             resp = client.get("/api/models")
         assert resp.json() == []
 
     def test_custom_host_forwarded(self, client: TestClient) -> None:
-        """The host query param is forwarded to list_local_models."""
-        with patch("app.main.list_local_models", return_value=["gemma2:2b"]) as mock_list:
+        """The host query param is forwarded to ChatRenderer.list_models."""
+        with patch("app.main.ChatRenderer.list_models", return_value=["gemma2:2b"]) as mock_list:
             resp = client.get("/api/models?host=http://remote:11434")
         assert resp.status_code == 200
         mock_list.assert_called_once_with(host="http://remote:11434")
 
     def test_no_host_param_passes_none(self, client: TestClient) -> None:
-        """When host query param is omitted, None is passed to list_local_models."""
-        with patch("app.main.list_local_models", return_value=[]) as mock_list:
+        """When host query param is omitted, None is passed to ChatRenderer.list_models."""
+        with patch("app.main.ChatRenderer.list_models", return_value=[]) as mock_list:
             client.get("/api/models")
         mock_list.assert_called_once_with(host=None)
 
@@ -128,12 +130,17 @@ class TestGenerateEndpoint:
             "max_tokens": 120,
         }
 
+    def _mock_renderer(self, return_value=("A weathered figure.", {})):
+        """Patch app.main.ChatRenderer and configure generate() return value."""
+        mock_cls = MagicMock()
+        mock_cls.return_value.generate.return_value = return_value
+        return patch("app.main.ChatRenderer", mock_cls), mock_cls
+
     def test_successful_generate(self, client: TestClient, sample_payload_dict: dict) -> None:
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.return_value = (
-                "A weathered figure.",
-                {"prompt_eval_count": 50, "eval_count": 10},
-            )
+        patcher, mock_cls = self._mock_renderer(
+            ("A weathered figure.", {"prompt_eval_count": 50, "eval_count": 10})
+        )
+        with patcher:
             resp = client.post("/api/generate", json=self._req_body(sample_payload_dict))
 
         assert resp.status_code == 200
@@ -157,8 +164,8 @@ class TestGenerateEndpoint:
         body = self._req_body(sample_payload_dict)
         results = []
         for _ in range(2):
-            with patch("app.main.ollama_generate") as mock_gen:
-                mock_gen.return_value = ("Same output.", {})
+            patcher, mock_cls = self._mock_renderer(("Same output.", {}))
+            with patcher:
                 resp = client.post("/api/generate", json=body)
             results.append(resp.json())
 
@@ -169,11 +176,12 @@ class TestGenerateEndpoint:
         body = self._req_body(sample_payload_dict)
         body["system_prompt"] = "Custom prompt"
 
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.return_value = ("text", {})
+        patcher, mock_cls = self._mock_renderer(("text", {}))
+        with patcher:
             resp = client.post("/api/generate", json=body)
-            call_kwargs = mock_gen.call_args.kwargs
-            assert call_kwargs["system_prompt"] == "Custom prompt"
+        # generate(system_prompt, user_json_str) — system_prompt is first positional arg
+        gen_args = mock_cls.return_value.generate.call_args.args
+        assert gen_args[0] == "Custom prompt"
 
         assert resp.status_code == 200
 
@@ -182,12 +190,13 @@ class TestGenerateEndpoint:
     ) -> None:
         import httpx
 
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.side_effect = httpx.HTTPStatusError(
-                "error",
-                request=httpx.Request("POST", "http://test"),
-                response=httpx.Response(404, text="model not found"),
-            )
+        patcher, mock_cls = self._mock_renderer()
+        mock_cls.return_value.generate.side_effect = httpx.HTTPStatusError(
+            "error",
+            request=httpx.Request("POST", "http://test"),
+            response=httpx.Response(404, text="model not found"),
+        )
+        with patcher:
             resp = client.post("/api/generate", json=self._req_body(sample_payload_dict))
 
         assert resp.status_code == 502
@@ -197,8 +206,9 @@ class TestGenerateEndpoint:
     ) -> None:
         import httpx
 
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.side_effect = httpx.ReadTimeout("timeout")
+        patcher, mock_cls = self._mock_renderer()
+        mock_cls.return_value.generate.side_effect = httpx.ReadTimeout("timeout")
+        with patcher:
             resp = client.post("/api/generate", json=self._req_body(sample_payload_dict))
 
         assert resp.status_code == 504
@@ -206,8 +216,9 @@ class TestGenerateEndpoint:
     def test_ollama_value_error_returns_502(
         self, client: TestClient, sample_payload_dict: dict
     ) -> None:
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.side_effect = ValueError("missing response key")
+        patcher, mock_cls = self._mock_renderer()
+        mock_cls.return_value.generate.side_effect = ValueError("missing response key")
+        with patcher:
             resp = client.post("/api/generate", json=self._req_body(sample_payload_dict))
 
         assert resp.status_code == 502
@@ -215,8 +226,9 @@ class TestGenerateEndpoint:
     def test_unexpected_error_returns_500(
         self, client: TestClient, sample_payload_dict: dict
     ) -> None:
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.side_effect = RuntimeError("something broke")
+        patcher, mock_cls = self._mock_renderer()
+        mock_cls.return_value.generate.side_effect = RuntimeError("something broke")
+        with patcher:
             resp = client.post("/api/generate", json=self._req_body(sample_payload_dict))
 
         assert resp.status_code == 500
@@ -229,14 +241,14 @@ class TestGenerateEndpoint:
             "seed": 4294967295,
             "world_id": "w",
         }
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.return_value = ("text", {})
+        patcher, mock_cls = self._mock_renderer(("text", {}))
+        with patcher:
             resp = client.post("/api/generate", json=self._req_body(payload))
 
         assert resp.status_code == 200
-        # Verify the large seed is forwarded to Ollama for deterministic sampling.
-        call_kwargs = mock_gen.call_args.kwargs
-        assert call_kwargs["seed"] == 4294967295
+        # Verify the large seed is forwarded to ChatRenderer constructor.
+        init_kwargs = mock_cls.call_args.kwargs
+        assert init_kwargs["seed"] == 4294967295
 
     def test_generate_with_zero_seed(self, client: TestClient) -> None:
         """Seed 0 is a valid deterministic seed (not random)."""
@@ -246,59 +258,59 @@ class TestGenerateEndpoint:
             "seed": 0,
             "world_id": "w",
         }
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.return_value = ("text", {})
+        patcher, mock_cls = self._mock_renderer(("text", {}))
+        with patcher:
             resp = client.post("/api/generate", json=self._req_body(payload))
 
         assert resp.status_code == 200
         # Verify seed 0 is explicitly forwarded (not treated as "no seed").
-        call_kwargs = mock_gen.call_args.kwargs
-        assert call_kwargs["seed"] == 0
+        init_kwargs = mock_cls.call_args.kwargs
+        assert init_kwargs["seed"] == 0
 
     def test_seed_forwarded_to_ollama(self, client: TestClient, sample_payload_dict: dict) -> None:
-        """The payload's seed must be passed to ollama_generate() as options.seed.
+        """The payload's seed must be passed to ChatRenderer as options.seed.
 
         This is the critical integration test for the seed fix: the seed was
         previously only used in the IPC hash but never forwarded to Ollama for
         deterministic token sampling.  Without this, identical IPC inputs
         could still produce different outputs.
         """
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.return_value = ("deterministic text", {})
+        patcher, mock_cls = self._mock_renderer(("deterministic text", {}))
+        with patcher:
             resp = client.post("/api/generate", json=self._req_body(sample_payload_dict))
 
         assert resp.status_code == 200
-        # The seed from the payload must appear in the ollama_generate kwargs.
-        call_kwargs = mock_gen.call_args.kwargs
-        assert "seed" in call_kwargs, "seed not forwarded to ollama_generate()"
-        assert call_kwargs["seed"] == sample_payload_dict["seed"]
+        # The seed from the payload must appear in the ChatRenderer constructor kwargs.
+        init_kwargs = mock_cls.call_args.kwargs
+        assert "seed" in init_kwargs, "seed not forwarded to ChatRenderer()"
+        assert init_kwargs["seed"] == sample_payload_dict["seed"]
 
     def test_ollama_host_forwarded_to_ollama(
         self, client: TestClient, sample_payload_dict: dict
     ) -> None:
-        """When ollama_host is provided, it is forwarded to ollama_generate()."""
+        """When ollama_host is provided, it is forwarded to ChatRenderer."""
         body = self._req_body(sample_payload_dict)
         body["ollama_host"] = "http://remote:11434"
 
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.return_value = ("text", {})
+        patcher, mock_cls = self._mock_renderer(("text", {}))
+        with patcher:
             resp = client.post("/api/generate", json=body)
 
         assert resp.status_code == 200
-        call_kwargs = mock_gen.call_args.kwargs
-        assert call_kwargs["host"] == "http://remote:11434"
+        init_kwargs = mock_cls.call_args.kwargs
+        assert init_kwargs["host"] == "http://remote:11434"
 
-    def test_ollama_host_defaults_to_none(
+    def test_ollama_host_defaults_to_ollama_host(
         self, client: TestClient, sample_payload_dict: dict
     ) -> None:
-        """When ollama_host is omitted, host=None is passed to ollama_generate()."""
-        with patch("app.main.ollama_generate") as mock_gen:
-            mock_gen.return_value = ("text", {})
+        """When ollama_host is omitted, the module OLLAMA_HOST default is used."""
+        patcher, mock_cls = self._mock_renderer(("text", {}))
+        with patcher:
             resp = client.post("/api/generate", json=self._req_body(sample_payload_dict))
 
         assert resp.status_code == 200
-        call_kwargs = mock_gen.call_args.kwargs
-        assert call_kwargs["host"] is None
+        init_kwargs = mock_cls.call_args.kwargs
+        assert init_kwargs["host"] == OLLAMA_HOST
 
 
 class TestLogEndpoint:
