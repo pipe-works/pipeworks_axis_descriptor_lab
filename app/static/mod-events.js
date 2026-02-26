@@ -34,6 +34,8 @@ import { wireDiffEvents } from "./mod-diff.js";
 import { wireAxisEvents } from "./mod-axis-actions.js";
 import { wirePersistenceEvents } from "./mod-persistence.js";
 import { wireIndicatorModalEvents } from "./mod-indicator-modal.js";
+import { wireNavigationEvents } from "./mod-navigation.js";
+import { wireChatTranslationEvents } from "./mod-chat-translation.js";
 
 /**
  * Wire all interactive event listeners across the application.
@@ -46,6 +48,7 @@ import { wireIndicatorModalEvents } from "./mod-indicator-modal.js";
  * one import and one function call here.
  */
 export function wireEvents() {
+  wireNavigationEvents();
   wireSyncEvents();
   wireLoaderEvents();
   wireGenerateEvents();
@@ -53,4 +56,5 @@ export function wireEvents() {
   wireAxisEvents();
   wirePersistenceEvents();
   wireIndicatorModalEvents();
+  wireChatTranslationEvents();
 }

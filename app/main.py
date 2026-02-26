@@ -73,6 +73,7 @@ from starlette.requests import Request
 from app.hashing import (
     compute_ipc_id,
     compute_output_hash,
+    compute_payload_hash,
     compute_system_prompt_hash,
     payload_hash,
 )
@@ -101,6 +102,9 @@ from app.save_package import (
 )
 from app.schema import (
     AxisPayload,
+    ChatTranslationRequest,
+    ChatTranslationResponse,
+    ChatTranslationResult,
     DeltaRequest,
     DeltaResponse,
     GenerateRequest,
@@ -988,3 +992,175 @@ async def import_save(file: UploadFile) -> ImportResponse:
         files=sorted(extracted.keys()),
         warnings=warnings,
     )
+
+
+# -----------------------------------------------------------------------------
+# POST /api/translate_chat
+# -----------------------------------------------------------------------------
+
+
+@app.post(
+    "/api/translate_chat",
+    response_model=ChatTranslationResponse,
+    summary="OOC→IC translation for one or two characters",
+)
+def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
+    """
+    Simulate the MUD server's OOC→IC translation layer for one or two
+    characters.
+
+    For each character supplied the endpoint:
+
+    1.  Builds a flat profile dict from the character's axes, filtered by
+        ``active_axes`` if provided.  A ``profile_summary`` placeholder is
+        generated from the active axes and injected alongside per-axis
+        ``{{name_label}}`` / ``{{name_score}}`` placeholders.
+    2.  Renders the system prompt template (``{{key}}`` substitution,
+        same pattern as mud_server renderer.py).
+    3.  Calls ``ChatRenderer`` → Ollama ``/api/chat``.
+    4.  Runs ``OutputValidator`` (strict or lenient, configurable).
+    5.  Computes IPC hashes (input, system prompt, output, IPC ID) via
+        ``pipeworks_ipc``.
+
+    The ``status`` field in each result is one of:
+    - ``"success"`` — IC text returned.
+    - ``"fallback.api_error"`` — Ollama unreachable / timed out.
+    - ``"fallback.validation_failed"`` — Output rejected by the validator.
+
+    Parameters
+    ----------
+    req : ChatTranslationRequest
+
+    Returns
+    -------
+    ChatTranslationResponse with results for A and optionally B.
+    """
+    from app.chat_renderer import ChatRenderer
+    from app.output_validator import OutputValidator
+
+    ollama_base = (
+        req.ollama_host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    ).rstrip("/")
+    api_endpoint = f"{ollama_base}/api/chat"
+
+    # ── Resolve system prompt template ────────────────────────────────────────
+    if req.system_prompt:
+        template = req.system_prompt
+    elif req.prompt_name:
+        # load_prompt raises HTTPException(404) if missing — propagates naturally
+        template = load_prompt(req.prompt_name)
+    else:
+        # Default IC prompt: fall back to empty-string if file missing rather than
+        # crashing, so the endpoint stays usable even without the prompt file.
+        ic_default_path = _HERE / "prompts" / "ic_v01_undertaking.txt"
+        template = (
+            ic_default_path.read_text(encoding="utf-8").strip()
+            if ic_default_path.exists()
+            else (
+                "You are a narrative rendering engine. Translate the player's "
+                "OOC message into one line of IC dialogue.\n\n"
+                "CHARACTER PROFILE:\n{{profile_summary}}\nChannel: {{channel}}\n\n"
+                "RULES:\n1. One line of dialogue only.\n"
+                "2. If untranslatable, output: PASSTHROUGH\n\n"
+                "OOC: {{ooc_message}}"
+            )
+        )
+
+    validator = OutputValidator(
+        strict_mode=req.strict_mode,
+        max_output_chars=req.max_output_chars,
+    )
+
+    def _translate_one(char) -> ChatTranslationResult:
+        # ── Build active axis set ─────────────────────────────────────────────
+        active: set[str] = (
+            set(char.active_axes)
+            if char.active_axes is not None
+            else set(char.axes.keys())
+        )
+
+        # ── Build flat profile dict ───────────────────────────────────────────
+        profile: dict[str, str | float] = {}
+        summary_lines: list[str] = []
+
+        for axis_name, axis_val in char.axes.items():
+            if axis_name not in active:
+                continue
+            profile[f"{axis_name}_label"] = axis_val.label
+            profile[f"{axis_name}_score"] = round(axis_val.score, 3)
+            summary_lines.append(
+                f"  {axis_name}: {axis_val.label} (score: {round(axis_val.score, 3)})"
+            )
+
+        profile["channel"] = char.channel
+        profile["profile_summary"] = "\n".join(summary_lines) if summary_lines else "  (no axes active)"
+
+        # ── Render system prompt ──────────────────────────────────────────────
+        rendered = template
+        for key, value in profile.items():
+            rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
+        rendered = rendered.replace("{{ooc_message}}", char.ooc_message)
+
+        # ── Compute input + system prompt hashes ──────────────────────────────
+        input_dict = {
+            "axes": {k: v.model_dump() for k, v in char.axes.items() if k in active},
+            "ooc_message": char.ooc_message,
+            "channel": char.channel,
+        }
+        input_hash = compute_payload_hash(input_dict)
+        sp_hash = compute_system_prompt_hash(rendered)
+
+        # ── Call Ollama /api/chat ─────────────────────────────────────────────
+        renderer = ChatRenderer(
+            api_endpoint=api_endpoint,
+            model=req.model,
+            timeout_seconds=120.0,
+            temperature=req.temperature,
+            seed=req.seed,
+            max_tokens=req.max_tokens,
+        )
+        ic_raw = renderer.render(rendered, char.ooc_message)
+
+        if ic_raw is None:
+            return ChatTranslationResult(
+                ic_text=None,
+                status="fallback.api_error",
+                input_hash=input_hash,
+                system_prompt_hash=sp_hash,
+            )
+
+        # ── Validate output ───────────────────────────────────────────────────
+        ic_text = validator.validate(ic_raw)
+
+        if ic_text is None:
+            return ChatTranslationResult(
+                ic_text=None,
+                status="fallback.validation_failed",
+                input_hash=input_hash,
+                system_prompt_hash=sp_hash,
+            )
+
+        # ── Compute output hash + IPC ID ──────────────────────────────────────
+        out_hash = compute_output_hash(ic_text)
+        ipc_id = compute_ipc_id(
+            input_hash=input_hash,
+            system_prompt_hash=sp_hash,
+            model=req.model,
+            temperature=req.temperature,
+            max_tokens=req.max_tokens,
+            seed=req.seed,
+        )
+
+        return ChatTranslationResult(
+            ic_text=ic_text,
+            status="success",
+            input_hash=input_hash,
+            system_prompt_hash=sp_hash,
+            output_hash=out_hash,
+            ipc_id=ipc_id,
+        )
+
+    result_a = _translate_one(req.character_a)
+    result_b = _translate_one(req.character_b) if req.character_b is not None else None
+
+    return ChatTranslationResponse(character_a=result_a, character_b=result_b)
