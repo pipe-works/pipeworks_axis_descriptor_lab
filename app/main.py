@@ -9,7 +9,7 @@ in dedicated modules:
 
 Domain modules
 ~~~~~~~~~~~~~~
-- ``app.hashing``          – IPC normalisation and SHA-256 hash functions.
+- ``pipeworks_ipc``        – IPC normalisation and SHA-256 hash functions (shared library).
 - ``app.schema``           – Pydantic v2 request / response models.
 - ``app.ollama_client``    – Synchronous HTTP wrapper around Ollama.
 - ``app.signal_isolation`` – NLP pipeline for content-word delta.
@@ -71,7 +71,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from app.hashing import (
+from pipeworks_ipc import (
     compute_ipc_id,
     compute_output_hash,
     compute_payload_hash,
@@ -85,7 +85,7 @@ from app.file_loaders import (
     load_example,
     load_prompt,
 )
-from app.ollama_client import OLLAMA_HOST, list_local_models, ollama_generate
+from app.chat_renderer import OLLAMA_HOST, ChatRenderer
 from app.relabel_policy import apply_relabel_policy
 from app.save_formatting import (
     build_baseline_md,
@@ -188,7 +188,7 @@ def index(request: Request) -> HTMLResponse:
     models into the Jinja2 template so the frontend can pre-populate its
     model selector without an extra API round-trip.
     """
-    available_models = list_local_models()
+    available_models = ChatRenderer.list_models()
     return templates.TemplateResponse(
         "index.html",
         {
@@ -279,7 +279,7 @@ def get_models(host: str | None = None) -> list[str]:
     Returns an empty list if Ollama is unreachable, allowing the frontend to
     fall back to a manual text input.
     """
-    return list_local_models(host=host)
+    return ChatRenderer.list_models(host=host)
 
 
 @app.post(
@@ -323,15 +323,13 @@ def generate(req: GenerateRequest) -> GenerateResponse:
         # deterministic: identical IPC inputs → identical output text.
         # The optional ollama_host allows the frontend to target a different
         # Ollama instance without changing the server's environment variable.
-        text, usage = ollama_generate(
+        text, usage = ChatRenderer(
+            host=req.ollama_host or OLLAMA_HOST,
             model=req.model,
-            system_prompt=system_prompt,
-            user_json_str=user_json_str,
             temperature=req.temperature,
-            max_tokens=req.max_tokens,
             seed=req.payload.seed,
-            host=req.ollama_host,
-        )
+            max_tokens=req.max_tokens,
+        ).generate(system_prompt, user_json_str)
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
             status_code=502,
@@ -1039,13 +1037,9 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
     -------
     ChatTranslationResponse with results for A and optionally B.
     """
-    from app.chat_renderer import ChatRenderer
     from app.output_validator import OutputValidator
 
-    ollama_base = (
-        req.ollama_host or os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-    ).rstrip("/")
-    api_endpoint = f"{ollama_base}/api/chat"
+    ollama_base = (req.ollama_host or OLLAMA_HOST).rstrip("/")
 
     # ── Resolve system prompt template ────────────────────────────────────────
     if req.system_prompt:
@@ -1122,7 +1116,7 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
 
         # ── Call Ollama /api/chat ─────────────────────────────────────────────
         renderer = ChatRenderer(
-            api_endpoint=api_endpoint,
+            host=ollama_base,
             model=req.model,
             timeout_seconds=120.0,
             temperature=req.temperature,

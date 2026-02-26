@@ -416,7 +416,7 @@ class TestHashesInMetadata:
         We craft a prompt that exercises this difference so the test can
         distinguish between the two functions.
         """
-        from app.hashing import compute_output_hash, compute_system_prompt_hash
+        from pipeworks_ipc import compute_output_hash, compute_system_prompt_hash
 
         # Multi-line prompt with per-line leading indentation.
         # compute_system_prompt_hash produces "Line A\nLine B" (strips each line).
