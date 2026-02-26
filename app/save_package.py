@@ -48,6 +48,10 @@ _FILE_ROLES: dict[str, str] = {
     "baseline.md": "baseline",
     "delta.json": "delta",
     "transformation_map.json": "transformation_map",
+    # Chat save files (game log sessions)
+    "game_log.md": "game_log",
+    "char_a_payload.json": "char_a_payload",
+    "char_b_payload.json": "char_b_payload",
 }
 
 # Security limits for zip import.  These prevent zip bombs and excessively

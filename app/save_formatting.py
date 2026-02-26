@@ -21,6 +21,10 @@ build_output_md(text, model, temperature, max_tokens, seed, timestamp,
 build_baseline_md(text, folder_name) -> str
     Format the stored baseline text as a Markdown document.
 
+build_game_log_md(entries, model, temperature, max_tokens, seed, timestamp) -> str
+    Format the in-game chat log as a Markdown table with a provenance header.
+    Used by ``POST /api/save_chat`` to write ``game_log.md``.
+
 build_system_prompt_md(prompt_text, folder_name) -> str
     Format the system prompt as a Markdown document with a fenced code block.
 
@@ -153,6 +157,53 @@ def build_baseline_md(text: str, folder_name: str) -> str:
         text,
         "",
     ]
+    return "\n".join(lines)
+
+
+def build_game_log_md(
+    entries: list[dict],
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    seed: int,
+    timestamp: datetime,
+) -> str:
+    """
+    Format the in-game chat log as a Markdown document.
+
+    Produces a Markdown table with one row per entry and an HTML-comment
+    provenance header recording model and generation settings.  Pipe
+    characters inside IC text are backslash-escaped so they do not break
+    the table structure.
+
+    Parameters
+    ----------
+    entries     : Serialised ``ChatLogEntry`` dicts (keys: ch, channel,
+                  ic_text, model, ipc_id).
+    model       : Ollama model tag used during the session.
+    temperature : Sampling temperature used.
+    max_tokens  : Token budget used.
+    seed        : Seed value used.
+    timestamp   : UTC datetime of the save (for the provenance header).
+
+    Returns
+    -------
+    str : Markdown string ready to write to disk.
+    """
+    lines = [
+        "# In-Game Log",
+        "",
+        "<!-- Axis Descriptor Lab – chat translation log -->",
+        f"<!-- saved: {timestamp.isoformat()} -->",
+        f"<!-- model: {model} | temp: {temperature} | max_tokens: {max_tokens} | seed: {seed} -->",
+        "",
+        "| # | Char | Channel | IC Text |",
+        "| --- | --- | --- | --- |",
+    ]
+    for i, entry in enumerate(entries, start=1):
+        ic_escaped = entry["ic_text"].replace("|", "\\|")
+        lines.append(f"| {i} | {entry['ch'].upper()} | {entry['channel']} | {ic_escaped} |")
+    lines.append("")
     return "\n".join(lines)
 
 

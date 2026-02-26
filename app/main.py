@@ -54,6 +54,7 @@ Architecture notes
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -88,6 +89,7 @@ from app.ollama_client import OLLAMA_HOST, list_local_models, ollama_generate
 from app.relabel_policy import apply_relabel_policy
 from app.save_formatting import (
     build_baseline_md,
+    build_game_log_md,
     build_output_md,
     build_system_prompt_md,
     save_folder_name,
@@ -102,6 +104,8 @@ from app.save_package import (
 )
 from app.schema import (
     AxisPayload,
+    ChatSaveRequest,
+    ChatSaveResponse,
     ChatTranslationRequest,
     ChatTranslationResponse,
     ChatTranslationResult,
@@ -1160,7 +1164,93 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
             ipc_id=ipc_id,
         )
 
-    result_a = _translate_one(req.character_a)
+    result_a = _translate_one(req.character_a) if req.character_a is not None else None
     result_b = _translate_one(req.character_b) if req.character_b is not None else None
 
     return ChatTranslationResponse(character_a=result_a, character_b=result_b)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/save_chat
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@app.post("/api/save_chat", response_model=ChatSaveResponse)
+def save_chat(req: ChatSaveRequest) -> ChatSaveResponse:
+    """
+    Save an in-game chat log session to a timestamped folder under ``data/``.
+
+    Writes:
+    - ``game_log.md``         — Markdown table of all log entries.
+    - ``char_a_payload.json`` — Character A axes (when provided).
+    - ``char_b_payload.json`` — Character B axes (when provided).
+    - ``system_prompt.md``    — IC system prompt (when provided).
+    - ``metadata.json``       — Provenance header with model, settings, hashes.
+
+    The folder naming convention is identical to ``POST /api/save`` so the
+    existing ``GET /api/save/{folder}/export`` endpoint can serve the zip
+    without any modification.
+    """
+    timestamp = datetime.now(timezone.utc)
+    entries_raw = [e.model_dump() for e in req.entries]
+    log_hash = hashlib.sha256(json.dumps(entries_raw, sort_keys=True).encode()).hexdigest()
+
+    folder_name = save_folder_name(timestamp, log_hash)
+    save_dir = _DATA_DIR / folder_name
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    files_written: list[str] = []
+
+    # game_log.md — always written
+    (save_dir / "game_log.md").write_text(
+        build_game_log_md(
+            entries_raw,
+            req.model,
+            req.temperature,
+            req.max_tokens,
+            req.seed,
+            timestamp,
+        ),
+        encoding="utf-8",
+    )
+    files_written.append("game_log.md")
+
+    # char_a_payload.json / char_b_payload.json — conditional
+    for ch, axes in (("a", req.character_a), ("b", req.character_b)):
+        if axes:
+            (save_dir / f"char_{ch}_payload.json").write_text(
+                json.dumps(axes, indent=2), encoding="utf-8"
+            )
+            files_written.append(f"char_{ch}_payload.json")
+
+    # system_prompt.md — conditional
+    if req.system_prompt:
+        (save_dir / "system_prompt.md").write_text(
+            build_system_prompt_md(req.system_prompt, folder_name),
+            encoding="utf-8",
+        )
+        files_written.append("system_prompt.md")
+
+    # metadata.json — always written
+    sp_hash = compute_output_hash(req.system_prompt) if req.system_prompt else None
+    metadata = {
+        "folder_name": folder_name,
+        "timestamp": timestamp.isoformat(),
+        "model": req.model,
+        "temperature": req.temperature,
+        "max_tokens": req.max_tokens,
+        "seed": req.seed,
+        "entry_count": len(req.entries),
+        "has_character_a": req.character_a is not None,
+        "has_character_b": req.character_b is not None,
+        "system_prompt_hash": sp_hash,
+        "log_hash": log_hash[:16],
+    }
+    (save_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    files_written.append("metadata.json")
+
+    return ChatSaveResponse(
+        folder_name=folder_name,
+        files=sorted(files_written),
+        timestamp=timestamp.isoformat(),
+    )

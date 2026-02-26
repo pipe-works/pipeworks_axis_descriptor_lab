@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # -----------------------------------------------------------------------------
 # Axis primitives
@@ -696,9 +696,12 @@ class ChatTranslationRequest(BaseModel):
     system prompt template before calling Ollama /api/chat.
     """
 
-    character_a: ChatCharacterInput = Field(
-        ...,
-        description="Profile and OOC message for Character A (required).",
+    character_a: ChatCharacterInput | None = Field(
+        default=None,
+        description=(
+            "Profile and OOC message for Character A.  "
+            "When None, only Character B is translated."
+        ),
     )
     character_b: ChatCharacterInput | None = Field(
         default=None,
@@ -706,6 +709,14 @@ class ChatTranslationRequest(BaseModel):
             "Profile and OOC message for Character B.  " "When None only Character A is translated."
         ),
     )
+
+    @model_validator(mode="after")
+    def at_least_one_character(self) -> "ChatTranslationRequest":
+        """Require at least one of character_a or character_b."""
+        if self.character_a is None and self.character_b is None:
+            raise ValueError("At least one of character_a or character_b must be provided.")
+        return self
+
     model: str = Field(
         ...,
         description="Ollama model tag (e.g. 'gemma2:2b').",
@@ -809,13 +820,119 @@ class ChatTranslationResponse(BaseModel):
     Contains results for Character A and optionally Character B.
     """
 
-    character_a: ChatTranslationResult = Field(
-        ...,
-        description="Translation result for Character A.",
+    character_a: ChatTranslationResult | None = Field(
+        default=None,
+        description="Translation result for Character A, or None if not requested.",
     )
     character_b: ChatTranslationResult | None = Field(
         default=None,
         description="Translation result for Character B, or None if not requested.",
+    )
+
+
+# -----------------------------------------------------------------------------
+# /api/save_chat  request / response
+# -----------------------------------------------------------------------------
+
+
+class ChatLogEntry(BaseModel):
+    """
+    A single entry in the in-game chat log produced during live mode.
+
+    Captured when a per-character Send succeeds.  Stored in chatState.gameLog
+    on the frontend and serialised here for server-side persistence.
+    """
+
+    ch: str = Field(
+        ...,
+        description="Character key: 'a' or 'b'.",
+    )
+    channel: str = Field(
+        ...,
+        description="Chat channel used: 'say', 'yell', or 'whisper'.",
+    )
+    ic_text: str = Field(
+        ...,
+        description="Translated IC dialogue text produced by the translation pipeline.",
+    )
+    model: str = Field(
+        ...,
+        description="Ollama model tag used for this entry.",
+    )
+    ipc_id: str | None = Field(
+        default=None,
+        description="IPC identifier from the translation result.  None when unavailable.",
+    )
+
+
+class ChatSaveRequest(BaseModel):
+    """
+    Request body for POST /api/save_chat.
+
+    Saves a complete in-game chat log session to a timestamped folder under
+    ``data/``, including optional character payloads and the system prompt.
+    """
+
+    entries: list[ChatLogEntry] = Field(
+        ...,
+        min_length=1,
+        description="In-game log entries to save.  At least one entry required.",
+    )
+    character_a: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Character A axes dict (axis name → AxisValue-shaped object), "
+            "or None if Character A was not used."
+        ),
+    )
+    character_b: dict[str, Any] | None = Field(
+        default=None,
+        description="Character B axes dict, or None if not used.",
+    )
+    model: str = Field(
+        ...,
+        description="Ollama model tag used during this session.",
+    )
+    temperature: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature used during the session.",
+    )
+    max_tokens: int = Field(
+        default=128,
+        ge=10,
+        le=512,
+        description="Token budget used during the session.",
+    )
+    seed: int = Field(
+        ...,
+        description="Seed value used during the session.",
+    )
+    system_prompt: str | None = Field(
+        default=None,
+        description="IC system prompt used, or None if the server default was in effect.",
+    )
+
+
+class ChatSaveResponse(BaseModel):
+    """
+    Response body for POST /api/save_chat.
+
+    Returns the save folder name and the list of files written.
+    """
+
+    folder_name: str = Field(
+        ...,
+        description="Save folder name under data/ (e.g. '20260227_103022_abc1def2').",
+    )
+    files: list[str] = Field(
+        ...,
+        description="Sorted list of filenames written inside the folder.",
+    )
+    timestamp: str = Field(
+        ...,
+        description="ISO-8601 UTC timestamp of the save operation.",
     )
 
 

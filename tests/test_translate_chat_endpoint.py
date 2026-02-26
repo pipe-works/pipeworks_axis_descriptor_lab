@@ -497,3 +497,48 @@ class TestResponseStructure:
         with _patch_renderer("ok"):
             data = client.post("/api/translate_chat", json=base_request).json()
         assert data["character_a"]["status"] in valid_statuses
+
+
+# ---------------------------------------------------------------------------
+# Optional character_a (live mode support)
+# ---------------------------------------------------------------------------
+
+
+class TestOptionalCharacterA:
+    """character_a is now optional when character_b is provided."""
+
+    def test_character_a_optional_with_b_only(self, client: TestClient, axes_b: dict) -> None:
+        """POST with character_a=None returns character_b result and character_a=None."""
+        req = {
+            "character_a": None,
+            "character_b": {
+                "axes": axes_b,
+                "ooc_message": "I scan the horizon.",
+                "channel": "say",
+            },
+            "model": "gemma2:2b",
+            "temperature": 0.7,
+            "max_tokens": 128,
+            "seed": 99,
+        }
+        with _patch_renderer("Scanning the horizon intently."):
+            resp = client.post("/api/translate_chat", json=req)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["character_a"] is None
+        assert data["character_b"] is not None
+        assert data["character_b"]["status"] == "success"
+        assert data["character_b"]["ic_text"] == "Scanning the horizon intently."
+
+    def test_neither_character_raises_422(self, client: TestClient) -> None:
+        """POST with both character_a and character_b as None returns 422."""
+        req = {
+            "character_a": None,
+            "character_b": None,
+            "model": "gemma2:2b",
+            "temperature": 0.7,
+            "max_tokens": 128,
+            "seed": 0,
+        }
+        resp = client.post("/api/translate_chat", json=req)
+        assert resp.status_code == 422

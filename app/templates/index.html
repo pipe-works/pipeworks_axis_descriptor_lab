@@ -455,6 +455,7 @@
         <option value="yell">yell</option>
         <option value="whisper">whisper</option>
       </select>
+      <button id="chat-a-btn-send" class="btn btn--primary btn--sm hidden" type="button">Send</button>
     </div>
   </section>
 
@@ -514,6 +515,7 @@
         <option value="yell">yell</option>
         <option value="whisper">whisper</option>
       </select>
+      <button id="chat-b-btn-send" class="btn btn--primary btn--sm hidden" type="button">Send</button>
     </div>
   </section>
 
@@ -595,35 +597,56 @@
       ></textarea>
     </details>
 
-    <!-- Translate button -->
-    <button id="btn-translate" class="btn btn--primary btn--full" type="button" style="margin-top:0.75rem;">
-      ▶ Translate
-    </button>
+    <!-- Translate button + Live toggle -->
+    <div class="translate-bar" style="margin-top:0.75rem;">
+      <button id="btn-translate" class="btn btn--primary btn--full" type="button">▶ Translate</button>
+      <label class="toggle-label translate-live-label" title="Live mode: send A and B individually">
+        <input type="checkbox" id="chat-live-toggle" role="switch" />
+        <span class="toggle-text">Live</span>
+      </label>
+    </div>
 
     <hr class="divider" />
 
-    <!-- IC Output A -->
-    <div class="ic-output-section">
-      <div class="ic-output-header">
-        <span class="ic-output-label">Character A — IC</span>
-        <span class="badge badge--muted" id="chat-a-status-badge">—</span>
+    <!-- IC Output A + B side by side -->
+    <div class="ic-output-grid">
+      <div class="ic-output-section">
+        <div class="ic-output-header">
+          <span class="ic-output-label">Char A — IC</span>
+          <span class="badge badge--muted" id="chat-a-status-badge">—</span>
+        </div>
+        <div id="chat-a-output" class="output-box output-box--sm" aria-live="polite">
+          <span class="placeholder-text">Translate to see IC output.</span>
+        </div>
+        <div id="chat-a-meta" class="output-meta hidden"></div>
       </div>
-      <div id="chat-a-output" class="output-box output-box--sm" aria-live="polite">
-        <span class="placeholder-text">Translate to see IC output.</span>
+      <div class="ic-output-section">
+        <div class="ic-output-header">
+          <span class="ic-output-label">Char B — IC</span>
+          <span class="badge badge--muted" id="chat-b-status-badge">—</span>
+        </div>
+        <div id="chat-b-output" class="output-box output-box--sm" aria-live="polite">
+          <span class="placeholder-text">Translate to see IC output.</span>
+        </div>
+        <div id="chat-b-meta" class="output-meta hidden"></div>
       </div>
-      <div id="chat-a-meta" class="output-meta hidden"></div>
     </div>
 
-    <!-- IC Output B -->
-    <div class="ic-output-section" style="margin-top:0.75rem;">
+    <!-- In-game output (live mode only) -->
+    <div id="chat-game-section" class="chat-game-section hidden">
+      <hr class="divider" />
       <div class="ic-output-header">
-        <span class="ic-output-label">Character B — IC</span>
-        <span class="badge badge--muted" id="chat-b-status-badge">—</span>
+        <span class="ic-output-label">&#9656; In-Game Output</span>
+        <div class="game-log-actions">
+          <button id="chat-copy-log-txt" class="btn btn--secondary btn--sm" type="button">Copy TXT</button>
+          <button id="chat-copy-log-md"  class="btn btn--secondary btn--sm" type="button">Copy MD</button>
+          <button id="chat-save-log"     class="btn btn--secondary btn--sm" type="button">Save all data</button>
+          <button id="chat-clear-log"    class="btn btn--ghost btn--sm"     type="button">Clear</button>
+        </div>
       </div>
-      <div id="chat-b-output" class="output-box output-box--sm" aria-live="polite">
-        <span class="placeholder-text">Translate to see IC output.</span>
+      <div id="chat-game-output" class="chat-game-output" aria-live="polite" aria-label="Simulated in-game output">
+        <span class="placeholder-text">Send a message to see in-game output.</span>
       </div>
-      <div id="chat-b-meta" class="output-meta hidden"></div>
     </div>
   </section>
 
