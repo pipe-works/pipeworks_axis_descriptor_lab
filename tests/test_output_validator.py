@@ -17,7 +17,6 @@ import pytest
 
 from app.output_validator import PASSTHROUGH_SENTINEL, OutputValidator
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
@@ -214,9 +213,7 @@ class TestMaxLengthEnforcement:
         validator = OutputValidator(strict_mode=True, max_output_chars=20)
         assert validator.validate("A" * 21) is None
 
-    def test_strict_over_limit_logs_warning(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_strict_over_limit_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         validator = OutputValidator(strict_mode=True, max_output_chars=10)
         with caplog.at_level(logging.WARNING, logger="app.output_validator"):
             validator.validate("A" * 15)
@@ -326,9 +323,7 @@ class TestLogging:
             strict.validate("*emote*")
         assert any(r.levelno == logging.WARNING for r in caplog.records)
 
-    def test_strict_over_length_logs_warning(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_strict_over_length_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         v = OutputValidator(strict_mode=True, max_output_chars=5)
         with caplog.at_level(logging.WARNING, logger="app.output_validator"):
             v.validate("A" * 10)

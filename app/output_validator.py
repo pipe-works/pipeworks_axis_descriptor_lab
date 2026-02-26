@@ -72,9 +72,9 @@ PASSTHROUGH_SENTINEL = "PASSTHROUGH"
 #:   - ``\[.*\]``    — any ``[bracketed]`` text anywhere in the line
 #:   - ``^\(.*\)$``  — lines that are entirely wrapped in parentheses
 _FORBIDDEN_PATTERNS: list[re.Pattern] = [
-    re.compile(r"^\*.*\*$"),   # *emote lines*
-    re.compile(r"\[.*\]"),     # [stage directions]
-    re.compile(r"^\(.*\)$"),   # (parenthetical narration)
+    re.compile(r"^\*.*\*$"),  # *emote lines*
+    re.compile(r"\[.*\]"),  # [stage directions]
+    re.compile(r"^\(.*\)$"),  # (parenthetical narration)
 ]
 
 
@@ -153,9 +153,7 @@ class OutputValidator:
                 logger.warning("OutputValidator: strict_mode rejected multi-line output.")
                 return None
             # Lenient path: take the first non-empty line.
-            first_line = next(
-                (line.strip() for line in text.splitlines() if line.strip()), ""
-            )
+            first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
             if not first_line:
                 return None
             text = first_line

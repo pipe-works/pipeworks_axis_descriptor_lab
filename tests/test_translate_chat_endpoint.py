@@ -44,7 +44,7 @@ def axes_a() -> dict:
     """Minimal axes dict for Character A suitable for a translate request."""
     return {
         "health": {"label": "weary", "score": 0.3},
-        "age":    {"label": "old",   "score": 0.75},
+        "age": {"label": "old", "score": 0.75},
     }
 
 
@@ -52,8 +52,8 @@ def axes_a() -> dict:
 def axes_b() -> dict:
     """Minimal axes dict for Character B."""
     return {
-        "health":  {"label": "vigorous", "score": 0.8},
-        "age":     {"label": "young",    "score": 0.25},
+        "health": {"label": "vigorous", "score": 0.8},
+        "age": {"label": "young", "score": 0.25},
     }
 
 
@@ -96,9 +96,7 @@ def _patch_renderer(return_value: str | None):
 class TestTranslateChatSuccess:
     """Successful translation scenarios."""
 
-    def test_single_character_returns_200(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_single_character_returns_200(self, client: TestClient, base_request: dict) -> None:
         with _patch_renderer("She peers cautiously about the chamber."):
             resp = client.post("/api/translate_chat", json=base_request)
         assert resp.status_code == 200
@@ -143,9 +141,7 @@ class TestTranslateChatSuccess:
         assert data["character_b"]["status"] == "success"
         assert data["character_b"]["ic_text"] is not None
 
-    def test_ipc_hashes_present_on_success(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_ipc_hashes_present_on_success(self, client: TestClient, base_request: dict) -> None:
         """All four IPC fields must be non-null on a successful translation."""
         with _patch_renderer("A weathered figure nods."):
             data = client.post("/api/translate_chat", json=base_request).json()
@@ -155,9 +151,7 @@ class TestTranslateChatSuccess:
         assert result["output_hash"] is not None
         assert result["ipc_id"] is not None
 
-    def test_ipc_hashes_are_hex_strings(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_ipc_hashes_are_hex_strings(self, client: TestClient, base_request: dict) -> None:
         """IPC hash fields are hex-encoded SHA-256 strings (64 chars)."""
         with _patch_renderer("She nods gravely."):
             data = client.post("/api/translate_chat", json=base_request).json()
@@ -183,16 +177,12 @@ class TestTranslateChatFailures:
             data = client.post("/api/translate_chat", json=base_request).json()
         assert data["character_a"]["status"] == "fallback.api_error"
 
-    def test_api_error_ic_text_is_none(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_api_error_ic_text_is_none(self, client: TestClient, base_request: dict) -> None:
         with _patch_renderer(None):
             data = client.post("/api/translate_chat", json=base_request).json()
         assert data["character_a"]["ic_text"] is None
 
-    def test_api_error_output_hash_is_none(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_api_error_output_hash_is_none(self, client: TestClient, base_request: dict) -> None:
         """output_hash and ipc_id are absent when there is no IC output."""
         with _patch_renderer(None):
             data = client.post("/api/translate_chat", json=base_request).json()
@@ -229,9 +219,7 @@ class TestTranslateChatFailures:
             data = client.post("/api/translate_chat", json=req).json()
         assert data["character_a"]["status"] == "fallback.validation_failed"
 
-    def test_lenient_mode_recovers_multi_line(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_lenient_mode_recovers_multi_line(self, client: TestClient, base_request: dict) -> None:
         """Multi-line output in lenient mode → first line extracted → success."""
         req = {**base_request, "strict_mode": False}
         with _patch_renderer("First line of dialogue.\nSome explanation."):
@@ -269,16 +257,14 @@ class TestActiveAxesFiltering:
         # Verify render was called (i.e. no early rejection)
         mock_render.assert_called_once()
 
-    def test_single_active_axis_only_that_axis_in_profile(
-        self, client: TestClient
-    ) -> None:
+    def test_single_active_axis_only_that_axis_in_profile(self, client: TestClient) -> None:
         """With active_axes=['health'], the 'age' axis is excluded from the
         rendered profile summary injected into the system prompt."""
         req = {
             "character_a": {
                 "axes": {
-                    "health": {"label": "weary",  "score": 0.3},
-                    "age":    {"label": "old",     "score": 0.75},
+                    "health": {"label": "weary", "score": 0.3},
+                    "age": {"label": "old", "score": 0.75},
                 },
                 "ooc_message": "test",
                 "channel": "say",
@@ -310,9 +296,7 @@ class TestActiveAxesFiltering:
         # anywhere in the static template text.
         assert "age: old (score:" not in sp
 
-    def test_empty_active_axes_produces_no_profile(
-        self, client: TestClient
-    ) -> None:
+    def test_empty_active_axes_produces_no_profile(self, client: TestClient) -> None:
         """active_axes=[] disables all axes; profile_summary says no axes active."""
         req = {
             "character_a": {
@@ -350,9 +334,7 @@ class TestActiveAxesFiltering:
 class TestSystemPromptHandling:
     """Inline system_prompt, prompt_name, and default fallback."""
 
-    def test_inline_system_prompt_used(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_inline_system_prompt_used(self, client: TestClient, base_request: dict) -> None:
         """When system_prompt is provided inline, it is used as the template."""
         req = {
             **base_request,
@@ -372,18 +354,14 @@ class TestSystemPromptHandling:
         # ooc_message placeholder should be substituted with the actual message
         assert "I look around the room." in captured[0]
 
-    def test_prompt_name_404_raises_error(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_prompt_name_404_raises_error(self, client: TestClient, base_request: dict) -> None:
         """A non-existent prompt_name returns a 404 from the endpoint."""
         req = {**base_request, "prompt_name": "does_not_exist_at_all"}
         with _patch_renderer("ok"):
             resp = client.post("/api/translate_chat", json=req)
         assert resp.status_code == 404
 
-    def test_prompt_name_ic_v01_loads(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_prompt_name_ic_v01_loads(self, client: TestClient, base_request: dict) -> None:
         """prompt_name='ic_v01_undertaking' loads and substitutes placeholders."""
         req = {**base_request, "prompt_name": "ic_v01_undertaking"}
         with _patch_renderer("ok") as mock_render:
@@ -412,9 +390,7 @@ class TestRequestValidation:
         resp = client.post("/api/translate_chat", json=req)
         assert resp.status_code == 422
 
-    def test_missing_seed_returns_422(
-        self, client: TestClient, axes_a: dict
-    ) -> None:
+    def test_missing_seed_returns_422(self, client: TestClient, axes_a: dict) -> None:
         req = {
             "character_a": {"axes": axes_a, "ooc_message": "test"},
             "model": "gemma2:2b",
@@ -428,9 +404,7 @@ class TestRequestValidation:
         resp = client.post("/api/translate_chat", json=req)
         assert resp.status_code == 422
 
-    def test_empty_ooc_message_returns_422(
-        self, client: TestClient, axes_a: dict
-    ) -> None:
+    def test_empty_ooc_message_returns_422(self, client: TestClient, axes_a: dict) -> None:
         """ooc_message has min_length=1; empty string → 422."""
         req = {
             "character_a": {"axes": axes_a, "ooc_message": ""},
@@ -465,14 +439,14 @@ class TestRequestValidation:
 class TestSeedForwarding:
     """The seed in the request body is forwarded to ChatRenderer."""
 
-    def test_seed_forwarded_to_renderer(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_seed_forwarded_to_renderer(self, client: TestClient, base_request: dict) -> None:
         """ChatRenderer is constructed with the seed from the request."""
         req = {**base_request, "seed": 99999}
         renderer_seeds: list[int | None] = []
 
-        original_init = __import__("app.chat_renderer", fromlist=["ChatRenderer"]).ChatRenderer.__init__
+        original_init = __import__(
+            "app.chat_renderer", fromlist=["ChatRenderer"]
+        ).ChatRenderer.__init__
 
         def capture_init(self_inner, *, seed, **kwargs):
             renderer_seeds.append(seed)
@@ -493,34 +467,32 @@ class TestSeedForwarding:
 class TestResponseStructure:
     """Verify the top-level structure and field names of the response."""
 
-    def test_response_has_character_a_key(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_response_has_character_a_key(self, client: TestClient, base_request: dict) -> None:
         with _patch_renderer("ok"):
             data = client.post("/api/translate_chat", json=base_request).json()
         assert "character_a" in data
 
-    def test_response_has_character_b_key(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_response_has_character_b_key(self, client: TestClient, base_request: dict) -> None:
         with _patch_renderer("ok"):
             data = client.post("/api/translate_chat", json=base_request).json()
         assert "character_b" in data  # present but null when B not requested
 
-    def test_result_has_required_fields(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_result_has_required_fields(self, client: TestClient, base_request: dict) -> None:
         """Each ChatTranslationResult must have all defined fields."""
         with _patch_renderer("ok"):
             data = client.post("/api/translate_chat", json=base_request).json()
         result = data["character_a"]
-        for field in ("ic_text", "status", "input_hash", "system_prompt_hash",
-                      "output_hash", "ipc_id"):
+        for field in (
+            "ic_text",
+            "status",
+            "input_hash",
+            "system_prompt_hash",
+            "output_hash",
+            "ipc_id",
+        ):
             assert field in result, f"Missing field: {field}"
 
-    def test_status_is_one_of_three_values(
-        self, client: TestClient, base_request: dict
-    ) -> None:
+    def test_status_is_one_of_three_values(self, client: TestClient, base_request: dict) -> None:
         valid_statuses = {"success", "fallback.api_error", "fallback.validation_failed"}
         with _patch_renderer("ok"):
             data = client.post("/api/translate_chat", json=base_request).json()

@@ -1074,9 +1074,7 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
     def _translate_one(char) -> ChatTranslationResult:
         # ── Build active axis set ─────────────────────────────────────────────
         active: set[str] = (
-            set(char.active_axes)
-            if char.active_axes is not None
-            else set(char.axes.keys())
+            set(char.active_axes) if char.active_axes is not None else set(char.axes.keys())
         )
 
         # ── Build flat profile dict ───────────────────────────────────────────
@@ -1093,7 +1091,9 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
             )
 
         profile["channel"] = char.channel
-        profile["profile_summary"] = "\n".join(summary_lines) if summary_lines else "  (no axes active)"
+        profile["profile_summary"] = (
+            "\n".join(summary_lines) if summary_lines else "  (no axes active)"
+        )
 
         # ── Render system prompt ──────────────────────────────────────────────
         rendered = template

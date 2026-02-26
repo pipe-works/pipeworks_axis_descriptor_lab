@@ -703,8 +703,7 @@ class ChatTranslationRequest(BaseModel):
     character_b: ChatCharacterInput | None = Field(
         default=None,
         description=(
-            "Profile and OOC message for Character B.  "
-            "When None only Character A is translated."
+            "Profile and OOC message for Character B.  " "When None only Character A is translated."
         ),
     )
     model: str = Field(
@@ -783,10 +782,7 @@ class ChatTranslationResult(BaseModel):
     )
     status: str = Field(
         ...,
-        description=(
-            "One of 'success', 'fallback.api_error', or "
-            "'fallback.validation_failed'."
-        ),
+        description=("One of 'success', 'fallback.api_error', or " "'fallback.validation_failed'."),
     )
     input_hash: str | None = Field(
         default=None,

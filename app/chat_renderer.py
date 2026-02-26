@@ -181,9 +181,7 @@ class ChatRenderer:
             )
             return None
         except httpx.ConnectError:
-            logger.warning(
-                "ChatRenderer: cannot connect to Ollama at %s", self._api_endpoint
-            )
+            logger.warning("ChatRenderer: cannot connect to Ollama at %s", self._api_endpoint)
             return None
         except Exception as exc:
             logger.error("ChatRenderer: request failed: %s", exc)

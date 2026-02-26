@@ -24,7 +24,6 @@ import pytest
 
 from app.chat_renderer import ChatRenderer
 
-
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
 
