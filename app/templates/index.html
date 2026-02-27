@@ -12,16 +12,16 @@
   entry point: mod-init.js).
   All visual styles live in static/styles.css.
 
-  Layout (three-column + footer)
+  Layout (four-column + footer)
   ───────────────────────────────
   ┌──────────────────────────────────────────────────────────────────────────┐
   │ header                                                                   │
-  ├────────────────┬──────────────────────────┬─────────────────────────────┤
-  │ LEFT PANEL     │ CENTRE PANEL             │ RIGHT PANEL                 │
-  │ JSON editor    │ Axis sliders             │ Output                      │
-  │ Example loader │ + metadata controls      │ Δ word-level diff           │
-  │ System prompt  │ A/B comparison boxes     │                             │
-  ├────────────────┴──────────────────────────┴─────────────────────────────┤
+  ├────────────────┬──────────────┬───────────────────┬─────────────────────┤
+  │ LEFT PANEL     │ AXES PANEL   │ CENTRE PANEL       │ RIGHT PANEL         │
+  │ JSON editor    │ Axis sliders │ Model settings     │ Output              │
+  │ Example loader │ Randomise    │ Generate button    │ Δ word-level diff   │
+  │ System prompt  │ Label mode   │ A/B comparison     │                     │
+  ├────────────────┴──────────────┴───────────────────┴─────────────────────┤
   │ status bar                                                               │
   └──────────────────────────────────────────────────────────────────────────┘
 -->
@@ -144,8 +144,8 @@
     </details>
   </section>
 
-  <!-- ── CENTRE PANEL: Sliders + run controls ─────────────────────────────── -->
-  <section class="panel panel--centre" aria-label="Axis Controls">
+  <!-- ── AXES PANEL: Sliders + label controls ─────────────────────────────── -->
+  <section class="panel panel--axes" aria-label="Axis Sliders">
     <h2 class="panel__heading">Axes</h2>
 
     <!-- Dynamic slider area – populated by mod-sync.js buildSlidersFromJson() -->
@@ -186,75 +186,71 @@
         Recompute
       </button>
     </div>
+  </section>
 
-    <!-- Model + generation settings grid.
-         These controls configure the LLM request parameters sent to Ollama.
-         data-tooltip attributes explain each setting's purpose and range. -->
-    <div class="settings-grid">
-      <label for="ollama-host-input" class="control-label">Ollama</label>
-      <div class="model-row"
-           data-tooltip="Configure the Ollama server URL and model. The URL field targets a specific Ollama instance (local or remote). The dropdown lists all locally-pulled models; changing the URL refreshes the model list."
-           >
-        <!-- Ollama server URL input — defaults to the server-configured host.
-             Changing this refreshes the model dropdown from the new instance. -->
-        <input
-          id="ollama-host-input"
-          class="input input--url"
-          type="url"
-          value="{{ ollama_host }}"
-          placeholder="http://localhost:11434"
-          aria-label="Ollama server URL"
-        />
-        <select id="model-select" class="select">
-          {% if available_models %}
-            {% for m in available_models %}
-              <option value="{{ m }}" {% if m == default_model %}selected{% endif %}>{{ m }}</option>
-            {% endfor %}
-          {% else %}
-            <option value="{{ default_model }}">{{ default_model }}</option>
-          {% endif %}
-        </select>
-        <!-- Manual model name input (shown when no models are found) -->
-        <input
-          id="model-input"
-          class="input {% if available_models %}hidden{% endif %}"
-          type="text"
-          value="{{ default_model }}"
-          placeholder="e.g. gemma2:2b"
-          aria-label="Model name"
-        />
+  <!-- ── CENTRE PANEL: Run controls + A/B diff ─────────────────────────────── -->
+  <section class="panel panel--centre" aria-label="Run Controls">
+
+    <!-- Model + generation settings grid — collapsible so it can be hidden
+         once the user has configured their model and parameters. -->
+    <details class="collapsible" id="llm-settings-details" open>
+      <summary class="collapsible__summary">LLM</summary>
+      <div class="settings-grid" style="margin-top:var(--sp-2);">
+        <label for="ollama-host-input" class="control-label">Ollama</label>
+        <div class="model-row"
+             data-tooltip="Configure the Ollama server URL and model. The URL field targets a specific Ollama instance (local or remote). The dropdown lists all locally-pulled models; changing the URL refreshes the model list."
+             >
+          <!-- Ollama server URL input — defaults to the server-configured host.
+               Changing this refreshes the model dropdown from the new instance. -->
+          <input
+            id="ollama-host-input"
+            class="input input--url"
+            type="url"
+            value="{{ ollama_host }}"
+            placeholder="http://localhost:11434"
+            aria-label="Ollama server URL"
+          />
+          <select id="model-select" class="select">
+            {% if available_models %}
+              {% for m in available_models %}
+                <option value="{{ m }}" {% if m == default_model %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            {% else %}
+              <option value="{{ default_model }}">{{ default_model }}</option>
+            {% endif %}
+          </select>
+          <!-- Manual model name input (shown when no models are found) -->
+          <input
+            id="model-input"
+            class="input {% if available_models %}hidden{% endif %}"
+            type="text"
+            value="{{ default_model }}"
+            placeholder="e.g. gemma2:2b"
+            aria-label="Model name"
+          />
+        </div>
+
+        <label for="temp-input" class="control-label">Temperature</label>
+        <div class="range-row"
+             data-tooltip="Controls the randomness of the LLM output. 0.0 = fully deterministic (same input always gives same output). 0.2 = low variation (recommended for testing drift). 1.0+ = highly creative and unpredictable. Range: 0.0 – 2.0."
+             >
+          <input type="range" id="temp-range" min="0" max="2" step="0.05" value="0.2" class="range-input" />
+          <input type="number" id="temp-input" min="0" max="2" step="0.05" value="0.2" class="input input--sm" />
+        </div>
+
+        <label for="tokens-input" class="control-label">Max tokens</label>
+        <input type="number" id="tokens-input" min="10" max="2048" value="120" class="input input--sm"
+               data-tooltip="Maximum number of tokens the LLM may generate. Lower values produce shorter, more focused descriptions. Higher values allow more elaborate text. Range: 10 – 2048." />
+
+        <label for="seed-input" class="control-label">Seed</label>
+        <input type="number" id="seed-input" value="-1" class="input input--sm"
+               data-tooltip="Seed value written into the payload for reproducibility. Use -1 for a random seed (a new 32-bit integer is generated each time). Use a fixed positive number to get deterministic, reproducible results across runs." />
       </div>
-
-      <label for="temp-input" class="control-label">Temperature</label>
-      <div class="range-row"
-           data-tooltip="Controls the randomness of the LLM output. 0.0 = fully deterministic (same input always gives same output). 0.2 = low variation (recommended for testing drift). 1.0+ = highly creative and unpredictable. Range: 0.0 – 2.0."
-           >
-        <input type="range" id="temp-range" min="0" max="2" step="0.05" value="0.2" class="range-input" />
-        <input type="number" id="temp-input" min="0" max="2" step="0.05" value="0.2" class="input input--sm" />
-      </div>
-
-      <label for="tokens-input" class="control-label">Max tokens</label>
-      <input type="number" id="tokens-input" min="10" max="2048" value="120" class="input input--sm"
-             data-tooltip="Maximum number of tokens the LLM may generate. Lower values produce shorter, more focused descriptions. Higher values allow more elaborate text. Range: 10 – 2048." />
-
-      <label for="seed-input" class="control-label">Seed</label>
-      <input type="number" id="seed-input" value="-1" class="input input--sm"
-             data-tooltip="Seed value written into the payload for reproducibility. Use -1 for a random seed (a new 32-bit integer is generated each time). Use a fixed positive number to get deterministic, reproducible results across runs." />
-    </div>
-
-    <!-- Generate button – sends the current payload + settings to Ollama
-         via POST /api/generate and displays the response. -->
-    <button id="btn-generate" class="btn btn--primary btn--full" type="button"
-            data-tooltip="Send the current axis payload to the selected Ollama model with the configured temperature and token limit. The LLM produces a non-authoritative description based on the axis values. Results appear in the Output panel to the right."
-            >
-      ▶ Generate
-    </button>
+    </details>
 
     <!-- ── A / B comparison boxes ────────────────────────────────────────────
-         Stacked vertically below the Generate button so the centre column
-         serves as the workspace for both axis editing AND diff review.
-         A = stored baseline, B = latest generation.  Both are populated
-         by mod-generate.js when the user clicks "Set as A" and generates output. -->
+         A = stored baseline, B = latest generation.  The Generate button sits
+         below B so the action is spatially tied to the content it produces. -->
     <hr class="divider" />
 
     <div class="diff-stack">
@@ -281,6 +277,14 @@
         </div>
       </div>
     </div>
+
+    <!-- Generate button – sits below B · Current so it's spatially tied to
+         the output it will overwrite on the next run. -->
+    <button id="btn-generate" class="btn btn--primary btn--full" type="button"
+            data-tooltip="Send the current axis payload to the selected Ollama model with the configured temperature and token limit. The LLM produces a non-authoritative description based on the axis values. Results appear in the Output panel to the right."
+            >
+      ▶ Generate
+    </button>
 
     <!-- Transformation Map – clause-level replacement pairs extracted by
          sentence-aware alignment and token-level diffing.  Shows what
