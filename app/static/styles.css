@@ -30,7 +30,7 @@
 
 .app-grid {
   display: grid;
-  grid-template-columns: 320px 1fr 380px;
+  grid-template-columns: 320px 470px 1fr 380px;
   gap: 1px;                          /* gap becomes the border between panels */
   background: var(--col-border);     /* the border colour shows through the gap */
 
@@ -54,6 +54,11 @@
 .panel--left .code-editor {
   flex: 1 1 0;
   min-height: 8rem;
+}
+
+/* ─── Axes panel: dedicated slider column ──────────────────────────────── */
+.panel--axes {
+  background: var(--col-surface);
 }
 
 /* ─── Centre panel: default surface ───────────────────────────────────── */
@@ -81,7 +86,7 @@
 /* Each axis row */
 .axis-row {
   display: grid;
-  grid-template-columns: 110px 1fr minmax(70px, max-content);
+  grid-template-columns: 110px 1fr 80px;
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-1) 0;
@@ -109,6 +114,15 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* Let the range track fill all remaining space in the slider row.
+   Overrides width:100% from base CSS (fragile in flex) with flex:1. */
+.axis-slider-row .range-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
 }
 
 /* Modified indicator — amber accent when a score or label differs from the
@@ -528,6 +542,19 @@
 }
 
 .collapsible__summary::-webkit-details-marker { display: none; }
+
+/* LLM settings collapsible — heading style matches panel__heading (PAYLOAD/AXES) */
+#llm-settings-details > .collapsible__summary {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--col-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+#llm-settings-details > .collapsible__summary:hover {
+  color: var(--col-accent);
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    STATUS BAR — position override
