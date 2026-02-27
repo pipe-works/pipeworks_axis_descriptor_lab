@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import zipfile
 from pathlib import Path
 
@@ -433,3 +434,61 @@ def extract_fenced_code(content: str) -> str:
 
     # Fallback: no fenced code block found — try body text extraction.
     return extract_body_text(content)
+
+
+def parse_game_log_md(content: str) -> list[dict[str, str]]:
+    """
+    Parse a ``game_log.md`` file back into a list of entry dicts.
+
+    Reads the Markdown table produced by
+    :func:`app.save_formatting.build_game_log_md` and reconstructs each
+    log row as a plain dict.  The table format is::
+
+        | # | Char | OOC | Channel | IC Text |
+        | --- | --- | --- | --- | --- |
+        | 1 | A | OOC text | say | IC text |
+
+    Pipe characters inside OOC and IC text cells were escaped as ``\\|``
+    when the file was written; this function reverses that escaping.
+
+    Parameters
+    ----------
+    content : The full text of a ``game_log.md`` file.
+
+    Returns
+    -------
+    list[dict[str, str]] : One dict per data row with keys
+        ``ch`` (lowercase "a"/"b"), ``channel``, ``ooc_message``,
+        ``ic_text``.  Header and separator rows are skipped.
+        Returns an empty list if no data rows are found.
+    """
+    entries: list[dict[str, str]] = []
+    for line in content.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        # Split on unescaped pipes only (pipe preceded by backslash is not a separator).
+        cells = re.split(r"(?<!\\)\|", line)
+        # Remove the empty strings produced by the leading and trailing |.
+        cells = [c.strip() for c in cells[1:-1]]
+        if len(cells) < 5:
+            continue
+        idx_str, char, ooc, channel, ic_text = cells[0], cells[1], cells[2], cells[3], cells[4]
+        # Skip the header row (# | Char | OOC | Channel | IC Text).
+        if idx_str == "#":
+            continue
+        # Skip the separator row (--- | --- | ...).
+        if idx_str.startswith("---"):
+            continue
+        # Only process rows whose first cell is a positive integer.
+        if not idx_str.isdigit():
+            continue
+        entries.append(
+            {
+                "ch": char.lower(),
+                "channel": channel,
+                "ooc_message": ooc.replace("\\|", "|"),
+                "ic_text": ic_text.replace("\\|", "|"),
+            }
+        )
+    return entries

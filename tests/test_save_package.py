@@ -30,6 +30,7 @@ from app.save_package import (
     create_zip_archive,
     extract_body_text,
     extract_fenced_code,
+    parse_game_log_md,
     validate_and_extract_zip,
 )
 
@@ -535,3 +536,134 @@ class TestExtractFencedCode:
         content = "Just raw prompt text."
         result = extract_fenced_code(content)
         assert result == "Just raw prompt text."
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# parse_game_log_md
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestParseGameLogMd:
+    """Verify parse_game_log_md reconstructs game log entries from Markdown."""
+
+    def test_empty_content_returns_empty_list(self) -> None:
+        """Empty string yields no entries."""
+        assert parse_game_log_md("") == []
+
+    def test_header_and_separator_rows_skipped(self) -> None:
+        """The header (# | Char | ...) and separator (--- | ...) rows are not entries."""
+        content = "| # | Char | OOC | Channel | IC Text |\n| --- | --- | --- | --- | --- |\n"
+        assert parse_game_log_md(content) == []
+
+    def test_non_pipe_lines_ignored(self) -> None:
+        """Comment lines and prose are silently skipped."""
+        content = (
+            "# In-Game Log\n"
+            "\n"
+            "<!-- saved: 2026-02-27 -->\n"
+            "| # | Char | OOC | Channel | IC Text |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| 1 | A | Hello | say | Good day. |\n"
+        )
+        result = parse_game_log_md(content)
+        assert len(result) == 1
+
+    def test_parses_single_row(self) -> None:
+        """A single data row is extracted with correct field values."""
+        content = (
+            "| # | Char | OOC | Channel | IC Text |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| 1 | A | Hello there | say | Good day to you. |\n"
+        )
+        result = parse_game_log_md(content)
+        assert len(result) == 1
+        assert result[0] == {
+            "ch": "a",
+            "channel": "say",
+            "ooc_message": "Hello there",
+            "ic_text": "Good day to you.",
+        }
+
+    def test_char_lowercased(self) -> None:
+        """Character letter is always lowercased in the output dict."""
+        content = (
+            "| # | Char | OOC | Channel | IC Text |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| 1 | B | msg | whisper | reply |\n"
+        )
+        assert parse_game_log_md(content)[0]["ch"] == "b"
+
+    def test_parses_multiple_rows(self) -> None:
+        """Multiple data rows are all extracted in order."""
+        content = (
+            "| # | Char | OOC | Channel | IC Text |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| 1 | A | first | say | one |\n"
+            "| 2 | B | second | yell | two |\n"
+            "| 3 | A | third | whisper | three |\n"
+        )
+        result = parse_game_log_md(content)
+        assert len(result) == 3
+        assert result[1]["ch"] == "b"
+        assert result[2]["ic_text"] == "three"
+
+    def test_unescapes_pipe_in_ooc(self) -> None:
+        r"""\\| inside the OOC column is unescaped to a literal |."""
+        content = (
+            "| # | Char | OOC | Channel | IC Text |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            r"| 1 | A | With \| pipe | say | Clean. |" + "\n"
+        )
+        result = parse_game_log_md(content)
+        assert result[0]["ooc_message"] == "With | pipe"
+
+    def test_unescapes_pipe_in_ic_text(self) -> None:
+        r"""\\| inside the IC Text column is unescaped to a literal |."""
+        content = (
+            "| # | Char | OOC | Channel | IC Text |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            r"| 1 | A | Clean. | say | IC with \| pipe |" + "\n"
+        )
+        result = parse_game_log_md(content)
+        assert result[0]["ic_text"] == "IC with | pipe"
+
+    def test_round_trip_with_build_game_log_md(self) -> None:
+        """parse_game_log_md is the inverse of build_game_log_md."""
+        from datetime import datetime, timezone
+
+        from app.save_formatting import build_game_log_md
+
+        entries = [
+            {
+                "ch": "a",
+                "channel": "say",
+                "ooc_message": "Hello | world",
+                "ic_text": "Greetings.",
+                "model": "gemma2:2b",
+                "ipc_id": None,
+            },
+            {
+                "ch": "b",
+                "channel": "whisper",
+                "ooc_message": "Reply",
+                "ic_text": "Indeed | so.",
+                "model": "gemma2:2b",
+                "ipc_id": None,
+            },
+        ]
+        md = build_game_log_md(entries, "gemma2:2b", 0.0, 128, 42, datetime.now(timezone.utc))
+        result = parse_game_log_md(md)
+
+        assert len(result) == 2
+        assert result[0]["ooc_message"] == "Hello | world"
+        assert result[1]["ic_text"] == "Indeed | so."
+
+    def test_rows_with_too_few_cells_skipped(self) -> None:
+        """Malformed rows with fewer than 5 cells are silently ignored."""
+        content = "| only | two |\n| 1 | A | say | IC |\n"
+        assert parse_game_log_md(content) == []
+
+    def test_non_digit_index_skipped(self) -> None:
+        """Rows whose first cell is not a digit (e.g. text) are skipped."""
+        content = "| x | A | msg | say | IC |\n"
+        assert parse_game_log_md(content) == []

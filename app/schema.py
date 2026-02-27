@@ -1114,3 +1114,77 @@ class ImportResponse(BaseModel):
             "is clean."
         ),
     )
+
+
+class ChatImportResponse(BaseModel):
+    """
+    Response body for ``POST /api/import_chat``.
+
+    Contains everything the frontend needs to restore a chat translation
+    session from an uploaded chat save-package zip.  The backend parses the
+    zip, validates manifest checksums (if present), and returns structured
+    data so the frontend can rebuild character sliders, model settings,
+    system prompt, and the historical game log.
+
+    Fields
+    ------
+    folder_name        – Original save folder name from metadata.json.
+    metadata           – The full metadata.json content as a dict.
+    character_a        – Parsed axes dict for Character A, or None.
+    character_b        – Parsed axes dict for Character B, or None.
+    system_prompt      – Plain text extracted from system_prompt.md.
+    game_log_entries   – Parsed game log rows (ch, channel, ooc_message,
+                         ic_text); empty list if game_log.md was absent.
+    model              – Model name from metadata.json.
+    temperature        – Sampling temperature from metadata.json.
+    max_tokens         – Token budget from metadata.json.
+    seed               – Seed value from metadata.json.
+    manifest_valid     – True if all checksums passed.
+    files              – Sorted list of filenames found in the zip.
+    warnings           – Non-fatal issues encountered during import.
+    """
+
+    folder_name: str = Field(
+        ...,
+        description="Original save folder name (e.g. '20260219_101437_5d628967').",
+    )
+    metadata: dict[str, Any] = Field(
+        ...,
+        description="The full metadata.json content as a dict.",
+    )
+    character_a: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Axes dict for Character A (axis name → {label, score}), or None.",
+    )
+    character_b: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Axes dict for Character B (axis name → {label, score}), or None.",
+    )
+    system_prompt: str = Field(
+        ...,
+        description="Plain text of the IC system prompt, fence-stripped from system_prompt.md.",
+    )
+    game_log_entries: list[dict[str, str]] = Field(
+        default_factory=list,
+        description=(
+            "Parsed rows from game_log.md.  Each entry has keys: "
+            "ch, channel, ooc_message, ic_text.  Empty when game_log.md "
+            "was not present in the zip."
+        ),
+    )
+    model: str = Field(..., description="Ollama model name from metadata.json.")
+    temperature: float = Field(..., description="Sampling temperature from metadata.json.")
+    max_tokens: int = Field(..., description="Token budget from metadata.json.")
+    seed: int = Field(..., description="Seed value from metadata.json (-1 = random).")
+    manifest_valid: bool = Field(
+        ...,
+        description="True if all manifest checksums passed verification.",
+    )
+    files: list[str] = Field(
+        ...,
+        description="Sorted list of filenames found in the uploaded zip.",
+    )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal issues encountered during import.",
+    )

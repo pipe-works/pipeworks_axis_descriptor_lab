@@ -245,4 +245,8 @@ export const dom = {
   chatCopyLogTxt:       $("chat-copy-log-txt"),
   chatCopyLogMd:        $("chat-copy-log-md"),
   chatSaveLog:          $("chat-save-log"),
+
+  // ── Chat Translation — Import ─────────────────────────────────────── //
+  chatImportLog:        $("chat-import-log"),
+  chatImportFileInput:  $("chat-import-file-input"),
 };
