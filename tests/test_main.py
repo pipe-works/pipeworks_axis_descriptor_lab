@@ -1722,3 +1722,242 @@ class TestTransformationMapSave:
 
         assert not (save_dir / "transformation_map.json").exists()
         assert "transformation_map.json" not in data["files"]
+
+
+class TestImportChatEndpoint:
+    """Tests for the POST /api/import_chat zip upload endpoint.
+
+    Builds in-memory chat save zips (char_a_payload.json, char_b_payload.json,
+    game_log.md, system_prompt.md, metadata.json) and verifies the endpoint
+    validates, extracts, and returns a correct ChatImportResponse.
+    """
+
+    # ── helpers ─────────────────────────────────────────────────────────── #
+
+    @staticmethod
+    def _make_chat_zip(files: dict[str, str]) -> bytes:
+        """Build an in-memory zip from a filename → content string dict."""
+        import zipfile as _zf
+
+        buf = io.BytesIO()
+        with _zf.ZipFile(buf, "w") as zf:
+            for name, content in files.items():
+                zf.writestr(name, content)
+        return buf.getvalue()
+
+    @staticmethod
+    def _minimal_metadata(**extra) -> str:
+        return json.dumps(
+            {
+                "folder_name": "20260227_120000_abcd1234",
+                "model": "gemma2:2b",
+                "temperature": 0.0,
+                "max_tokens": 128,
+                "seed": 42,
+                "entry_count": 0,
+                "per_entry_hashes": [],
+                **extra,
+            }
+        )
+
+    # ── happy path ──────────────────────────────────────────────────────── #
+
+    def test_happy_path_minimal(self, client: TestClient) -> None:
+        """Minimal chat zip (metadata + system prompt only) returns 200."""
+        zip_bytes = self._make_chat_zip(
+            {
+                "metadata.json": self._minimal_metadata(),
+                "system_prompt.md": "```text\nYou are an IC layer.\n```\n",
+            }
+        )
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["model"] == "gemma2:2b"
+        assert data["temperature"] == 0.0
+        assert data["max_tokens"] == 128
+        assert data["seed"] == 42
+        assert data["character_a"] is None
+        assert data["character_b"] is None
+        assert data["game_log_entries"] == []
+        assert data["manifest_valid"] is True
+
+    def test_happy_path_with_char_payloads(self, client: TestClient) -> None:
+        """Chat zip with both character payloads restores both axes dicts."""
+        char_axes = {"age": {"label": "young", "score": 0.2}}
+        zip_bytes = self._make_chat_zip(
+            {
+                "metadata.json": self._minimal_metadata(),
+                "system_prompt.md": "```text\nIC prompt.\n```\n",
+                "char_a_payload.json": json.dumps(char_axes),
+                "char_b_payload.json": json.dumps({"demeanor": {"label": "guarded", "score": 0.4}}),
+            }
+        )
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["character_a"] == char_axes
+        assert "demeanor" in data["character_b"]
+
+    def test_happy_path_with_game_log(self, client: TestClient) -> None:
+        """Game log entries are parsed and returned in order."""
+        game_log_md = (
+            "# In-Game Log\n\n"
+            "| # | Char | OOC | Channel | IC Text |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| 1 | A | Hello | say | Good day. |\n"
+            "| 2 | B | Reply | whisper | Indeed. |\n"
+        )
+        zip_bytes = self._make_chat_zip(
+            {
+                "metadata.json": self._minimal_metadata(entry_count=2),
+                "system_prompt.md": "```text\nIC prompt.\n```\n",
+                "game_log.md": game_log_md,
+            }
+        )
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 200
+        entries = resp.json()["game_log_entries"]
+        assert len(entries) == 2
+        assert entries[0] == {
+            "ch": "a",
+            "channel": "say",
+            "ooc_message": "Hello",
+            "ic_text": "Good day.",
+        }
+        assert entries[1]["ch"] == "b"
+
+    def test_system_prompt_extracted_from_fence(self, client: TestClient) -> None:
+        """system_prompt.md fenced code block is stripped and returned as plain text."""
+        zip_bytes = self._make_chat_zip(
+            {
+                "metadata.json": self._minimal_metadata(),
+                "system_prompt.md": "# System Prompt\n\n```text\nYou are an IC layer.\n```\n",
+            }
+        )
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.json()["system_prompt"] == "You are an IC layer."
+
+    def test_missing_system_prompt_warns(self, client: TestClient) -> None:
+        """A zip without system_prompt.md succeeds with a warning and empty prompt."""
+        zip_bytes = self._make_chat_zip({"metadata.json": self._minimal_metadata()})
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["system_prompt"] == ""
+        assert any("system_prompt.md" in w for w in data["warnings"])
+
+    def test_corrupt_char_a_payload_warns(self, client: TestClient) -> None:
+        """Invalid JSON in char_a_payload.json produces a warning, not a 400."""
+        zip_bytes = self._make_chat_zip(
+            {
+                "metadata.json": self._minimal_metadata(),
+                "system_prompt.md": "```text\nIC.\n```\n",
+                "char_a_payload.json": "NOT JSON {{{",
+            }
+        )
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["character_a"] is None
+        assert any("char_a_payload.json" in w for w in data["warnings"])
+
+    def test_corrupt_char_b_payload_warns(self, client: TestClient) -> None:
+        """Invalid JSON in char_b_payload.json produces a warning, not a 400."""
+        zip_bytes = self._make_chat_zip(
+            {
+                "metadata.json": self._minimal_metadata(),
+                "system_prompt.md": "```text\nIC.\n```\n",
+                "char_b_payload.json": "NOT JSON {{{",
+            }
+        )
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["character_b"] is None
+        assert any("char_b_payload.json" in w for w in data["warnings"])
+
+    def test_files_list_is_sorted(self, client: TestClient) -> None:
+        """The files field must be a sorted list of extracted filenames."""
+        zip_bytes = self._make_chat_zip(
+            {
+                "metadata.json": self._minimal_metadata(),
+                "system_prompt.md": "```text\nIC.\n```\n",
+                "char_a_payload.json": "{}",
+            }
+        )
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", zip_bytes, "application/zip")},
+        )
+        files = resp.json()["files"]
+        assert files == sorted(files)
+
+    # ── error paths ─────────────────────────────────────────────────────── #
+
+    def test_missing_metadata_json_returns_422(self, client: TestClient) -> None:
+        """A chat zip without metadata.json must return 422."""
+        zip_bytes = self._make_chat_zip({"system_prompt.md": "```text\nIC.\n```\n"})
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 422
+        assert "metadata.json" in resp.json()["detail"]
+
+    def test_corrupt_metadata_json_returns_400(self, client: TestClient) -> None:
+        """Invalid JSON in metadata.json must return 400."""
+        zip_bytes = self._make_chat_zip(
+            {
+                "metadata.json": "NOT JSON {{{",
+                "system_prompt.md": "```text\nIC.\n```\n",
+            }
+        )
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", zip_bytes, "application/zip")},
+        )
+        assert resp.status_code == 400
+        assert "not valid json" in resp.json()["detail"].lower()
+
+    def test_non_zip_returns_400(self, client: TestClient) -> None:
+        """Uploading non-zip bytes must return 400."""
+        resp = client.post(
+            "/api/import_chat",
+            files={"file": ("chat.zip", b"not a zip", "application/zip")},
+        )
+        assert resp.status_code == 400
+
+    def test_oversized_upload_returns_400(self, client: TestClient) -> None:
+        """An upload exceeding MAX_UPLOAD_SIZE must return 400."""
+        from unittest.mock import patch as _patch
+
+        zip_bytes = self._make_chat_zip({"metadata.json": self._minimal_metadata()})
+        with _patch("app.main.MAX_UPLOAD_SIZE", 10):
+            resp = client.post(
+                "/api/import_chat",
+                files={"file": ("chat.zip", zip_bytes, "application/zip")},
+            )
+        assert resp.status_code == 400
+        assert "exceeds" in resp.json()["detail"].lower()
