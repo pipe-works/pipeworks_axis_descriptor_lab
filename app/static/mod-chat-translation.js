@@ -1324,6 +1324,155 @@ async function saveChatLog() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Import zip
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Restore chat session state from a ``ChatImportResponse`` payload.
+ *
+ * Called by `importChatSave()` on a successful ``POST /api/import_chat``
+ * response.  Rebuilds character sliders, model settings, system prompt,
+ * and the historical game log panel.
+ *
+ * @param {Object} data - Parsed ``ChatImportResponse`` from the server.
+ * @returns {void}
+ */
+function restoreChatSessionState(data) {
+  // ── Step 1: Character payloads ─────────────────────────────────────── //
+  for (const ch of ["a", "b"]) {
+    const axesDict = data[`character_${ch}`];
+    if (axesDict) {
+      chatState[ch].payload = { axes: axesDict, policy_hash: null, seed: null, world_id: null };
+      chatState[ch].originalAxes = JSON.parse(JSON.stringify(axesDict));
+      chatState[ch].activeAxes = null;
+      const cd = charDom(ch);
+      cd.jsonTextarea.value = JSON.stringify(chatState[ch].payload, null, 2);
+      setJsonBadge(ch, true);
+      buildChatSliders(ch);
+    }
+  }
+
+  // ── Step 2: Model settings ─────────────────────────────────────────── //
+  const modelName = data.model || "";
+  // Prefer the select if available, else fall back to the text input.
+  if (dom.chatModelSelect && !dom.chatModelSelect.classList.contains("hidden")) {
+    // Try to select the matching option; if not present, switch to text input.
+    const opt = Array.from(dom.chatModelSelect.options).find(o => o.value === modelName);
+    if (opt) {
+      dom.chatModelSelect.value = modelName;
+    } else {
+      dom.chatModelSelect.classList.add("hidden");
+      dom.chatModelInput.classList.remove("hidden");
+      dom.chatModelInput.value = modelName;
+    }
+  } else {
+    dom.chatModelInput.value = modelName;
+  }
+  const temp = data.temperature ?? 0;
+  dom.chatTempRange.value = temp;
+  dom.chatTempInput.value = temp;
+  dom.chatTokensInput.value = data.max_tokens ?? 128;
+  dom.chatSeedInput.value = data.seed ?? -1;
+
+  // ── Step 3: System prompt ──────────────────────────────────────────── //
+  if (data.system_prompt) {
+    dom.chatSystemPrompt.value = data.system_prompt;
+    updateChatPromptBadge();
+  }
+
+  // ── Step 4: Game log ───────────────────────────────────────────────── //
+  const entries = data.game_log_entries || [];
+  if (entries.length > 0) {
+    // Build a 1-based index → hash lookup from metadata.per_entry_hashes so
+    // we can pass the original IPC provenance hashes to appendGameEntry.
+    const hashByIdx = {};
+    for (const h of (data.metadata?.per_entry_hashes ?? [])) {
+      hashByIdx[h.index] = h;
+    }
+
+    // Clear any existing log display then replay all historical entries.
+    dom.chatGameOutput.innerHTML = "";
+    chatState.gameLog = [];
+    chatState.logSeq = 0;
+
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const h = hashByIdx[i + 1] ?? {};
+      appendGameEntry(
+        e.ch, e.channel, e.ooc_message, e.ic_text, data.model,
+        h.ipc_id            ?? null,
+        h.input_hash        ?? null,
+        h.system_prompt_hash ?? null,
+        h.output_hash       ?? null,
+      );
+    }
+
+    // Populate each character's output box + IPC meta table with their most
+    // recent entry's data, mirroring what renderTranslationResult() does after
+    // a live translation.
+    for (const ch of ["a", "b"]) {
+      // Find the last game log entry for this character.
+      const lastEntry = [...chatState.gameLog].reverse().find(e => e.ch === ch);
+      if (!lastEntry) continue;
+
+      const outputBox = ch === "a" ? dom.chatAOutput   : dom.chatBOutput;
+      const metaDiv   = ch === "a" ? dom.chatAMeta     : dom.chatBMeta;
+      const badge     = ch === "a" ? dom.chatAStatusBadge : dom.chatBStatusBadge;
+
+      renderTranslationResult(outputBox, metaDiv, badge, {
+        status:             "success",
+        ic_text:            lastEntry.icText,
+        input_hash:         lastEntry.inputHash,
+        system_prompt_hash: lastEntry.systemPromptHash,
+        output_hash:        lastEntry.outputHash,
+        ipc_id:             lastEntry.ipcId,
+      });
+    }
+
+    // Make the game section visible so the restored log is immediately readable.
+    dom.chatGameSection.classList.remove("hidden");
+  }
+}
+
+/**
+ * Handle the Import Zip action for the Chat Translation page.
+ *
+ * Opens a hidden ``<input type="file">`` via a programmatic click; the
+ * browser's file picker lets the user select a ``.zip`` chat save package.
+ * On selection the file is POSTed to ``/api/import_chat``, and on success
+ * ``restoreChatSessionState()`` rebuilds the full page state.
+ *
+ * @returns {Promise<void>}
+ */
+async function importChatSave() {
+  const file = dom.chatImportFileInput.files[0];
+  if (!file) return;
+
+  setStatus("Importing chat session…", true);
+  const fd = new FormData();
+  fd.append("file", file);
+
+  // Reset so the same file can be re-imported if needed.
+  dom.chatImportFileInput.value = "";
+
+  try {
+    const res = await fetch("/api/import_chat", { method: "POST", body: fd });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    restoreChatSessionState(data);
+    const warnSuffix = data.warnings.length ? ` (${data.warnings.length} warning(s))` : "";
+    setStatus(`Chat session imported from ${data.folder_name}.${warnSuffix}`);
+  } catch (err) {
+    setStatus(`Import error: ${err.message}`);
+  } finally {
+    dom.spinner.classList.add("hidden");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Initialisation
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1371,6 +1520,7 @@ export async function initChatTranslation() {
  * - Copy TXT button → `copyGameLogTxt()` (plain-text clipboard; includes OOC)
  * - Copy MD button  → `copyGameLogMd()` (5-column Markdown table; includes OOC)
  * - Save all data button → `saveChatLog()` (server write + zip download; includes OOC)
+ * - Import Zip button → triggers hidden file input → `importChatSave()` (POST /api/import_chat)
  *
  * Called once during startup by the mod-events coordinator
  * ({@link module:mod-events~wireEvents}).
@@ -1491,4 +1641,11 @@ export function wireChatTranslationEvents() {
   dom.chatCopyLogTxt.addEventListener("click", () => copyGameLogTxt());
   dom.chatCopyLogMd.addEventListener("click",  () => copyGameLogMd());
   dom.chatSaveLog.addEventListener("click",    () => saveChatLog());
+
+  // ── Import zip ────────────────────────────────────────────────────── //
+  // Button triggers the hidden file input; change event fires importChatSave().
+  dom.chatImportLog.addEventListener("click", () => dom.chatImportFileInput.click());
+  dom.chatImportFileInput.addEventListener("change", () => {
+    if (dom.chatImportFileInput.files.length) importChatSave();
+  });
 }

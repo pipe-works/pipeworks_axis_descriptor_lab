@@ -40,6 +40,7 @@ GET  /api/system-prompt        → return the default system prompt as plain tex
 POST /api/save                 → save session state to a timestamped data/ subfolder
 GET  /api/save/{name}/export   → download a save package as a zip
 POST /api/import               → import a save package from a zip upload
+POST /api/import_chat          → import a chat save package from a zip upload
 
 Architecture notes
 ------------------
@@ -99,11 +100,13 @@ from app.save_package import (
     create_zip_archive,
     extract_body_text,
     extract_fenced_code,
+    parse_game_log_md,
     validate_and_extract_zip,
     MAX_UPLOAD_SIZE,
 )
 from app.schema import (
     AxisPayload,
+    ChatImportResponse,
     ChatSaveRequest,
     ChatSaveResponse,
     ChatTranslationRequest,
@@ -991,6 +994,112 @@ async def import_save(file: UploadFile) -> ImportResponse:
         temperature=metadata.get("temperature", 0.2),
         max_tokens=metadata.get("max_tokens", 120),
         manifest_valid=manifest_valid,
+        files=sorted(extracted.keys()),
+        warnings=warnings,
+    )
+
+
+# -----------------------------------------------------------------------------
+# POST /api/import_chat
+# -----------------------------------------------------------------------------
+
+
+@app.post(
+    "/api/import_chat",
+    response_model=ChatImportResponse,
+    summary="Import a chat save package from a zip upload",
+)
+async def import_chat_save(file: UploadFile) -> ChatImportResponse:
+    """
+    Accept an uploaded chat save-package zip and return structured state
+    for the frontend to restore a complete chat translation session.
+
+    Extracts character payloads, model settings, system prompt, and the
+    historical game log so the frontend can rebuild sliders, settings, and
+    the in-game log panel without any further parsing.
+
+    Parameters
+    ----------
+    file : The uploaded zip file (multipart form data).
+
+    Returns
+    -------
+    ChatImportResponse : Everything the frontend needs to restore chat state.
+
+    Raises
+    ------
+    HTTPException(400) : If the file is not a valid zip, exceeds size limits,
+                         or fails checksum validation.
+    HTTPException(422) : If metadata.json is missing from the zip.
+    """
+    zip_bytes = await file.read()
+    if len(zip_bytes) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Upload size ({len(zip_bytes):,} bytes) exceeds the "
+                f"{MAX_UPLOAD_SIZE:,}-byte limit."
+            ),
+        )
+
+    try:
+        extracted, warnings = validate_and_extract_zip(zip_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # -- Parse required file ------------------------------------------------- #
+
+    if "metadata.json" not in extracted:
+        raise HTTPException(status_code=422, detail="Missing required file: metadata.json")
+    try:
+        metadata = json.loads(extracted["metadata.json"].decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(
+            status_code=400, detail=f"metadata.json is not valid JSON: {exc}"
+        ) from exc
+
+    # -- Parse system_prompt.md (required; server default used as fallback) -- #
+
+    system_prompt = ""
+    if "system_prompt.md" in extracted:
+        system_prompt = extract_fenced_code(extracted["system_prompt.md"].decode("utf-8"))
+    else:
+        warnings.append("system_prompt.md missing — prompt not restored.")
+
+    # -- Parse optional character payloads ----------------------------------- #
+
+    character_a: dict | None = None
+    if "char_a_payload.json" in extracted:
+        try:
+            character_a = json.loads(extracted["char_a_payload.json"].decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            warnings.append("char_a_payload.json could not be parsed — skipped.")
+
+    character_b: dict | None = None
+    if "char_b_payload.json" in extracted:
+        try:
+            character_b = json.loads(extracted["char_b_payload.json"].decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            warnings.append("char_b_payload.json could not be parsed — skipped.")
+
+    # -- Parse optional game log --------------------------------------------- #
+
+    game_log_entries: list[dict[str, str]] = []
+    if "game_log.md" in extracted:
+        game_log_entries = parse_game_log_md(extracted["game_log.md"].decode("utf-8"))
+
+    return ChatImportResponse(
+        folder_name=metadata.get("folder_name", "unknown"),
+        metadata=metadata,
+        character_a=character_a,
+        character_b=character_b,
+        system_prompt=system_prompt,
+        game_log_entries=game_log_entries,
+        model=metadata.get("model", "unknown"),
+        temperature=metadata.get("temperature", 0.0),
+        max_tokens=metadata.get("max_tokens", 128),
+        seed=metadata.get("seed", -1),
+        manifest_valid=True,
         files=sorted(extracted.keys()),
         warnings=warnings,
     )
