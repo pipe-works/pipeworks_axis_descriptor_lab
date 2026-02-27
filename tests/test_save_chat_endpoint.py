@@ -166,7 +166,10 @@ class TestConditionalFiles:
     def test_system_prompt_md_written_when_provided(
         self, client: TestClient, base_request: dict
     ) -> None:
-        req = {**base_request, "system_prompt": "Translate: {{ooc_message}}"}
+        req = {
+            **base_request,
+            "system_prompt": "Translate the user's OOC message using this profile.",
+        }
         data = client.post("/api/save_chat", json=req).json()
         assert "system_prompt.md" in data["files"]
 
@@ -395,7 +398,10 @@ class TestHashesInMetadata:
         self, client: TestClient, base_request: dict
     ) -> None:
         """When system_prompt is in the request, system_prompt_hash must not be null."""
-        req = {**base_request, "system_prompt": "Translate: {{ooc_message}}"}
+        req = {
+            **base_request,
+            "system_prompt": "Translate the user's OOC message using this profile.",
+        }
         meta = self._read_metadata(client, req)
         assert meta["system_prompt_hash"] is not None
 

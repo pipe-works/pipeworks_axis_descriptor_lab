@@ -338,21 +338,23 @@ class TestSystemPromptHandling:
         """When system_prompt is provided inline, it is used as the template."""
         req = {
             **base_request,
-            "system_prompt": "Translate: {{ooc_message}}",
+            "system_prompt": "Translate the user's OOC message using this profile.",
         }
 
-        captured: list[str] = []
+        captured: list[tuple[str, str]] = []
 
         def capture_render(self_inner, system_prompt: str, user_message: str):
-            captured.append(system_prompt)
+            captured.append((system_prompt, user_message))
             return "ok"
 
         with patch("app.chat_renderer.ChatRenderer.render", capture_render):
             client.post("/api/translate_chat", json=req)
 
         assert len(captured) == 1
-        # ooc_message placeholder should be substituted with the actual message
-        assert "I look around the room." in captured[0]
+        # Inline prompt text is passed through unchanged; the OOC input stays in
+        # the user turn rather than being injected into the system prompt.
+        assert captured[0][0] == req["system_prompt"]
+        assert captured[0][1] == base_request["character_a"]["ooc_message"]
 
     def test_prompt_name_404_raises_error(self, client: TestClient, base_request: dict) -> None:
         """A non-existent prompt_name returns a 404 from the endpoint."""
