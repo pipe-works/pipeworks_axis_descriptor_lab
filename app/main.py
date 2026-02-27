@@ -1164,12 +1164,12 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
             ic_default_path.read_text(encoding="utf-8").strip()
             if ic_default_path.exists()
             else (
-                "You are a narrative rendering engine. Translate the player's "
+                "You are a narrative rendering engine. Translate the user's "
                 "OOC message into one line of IC dialogue.\n\n"
                 "CHARACTER PROFILE:\n{{profile_summary}}\nChannel: {{channel}}\n\n"
                 "RULES:\n1. One line of dialogue only.\n"
-                "2. If untranslatable, output: PASSTHROUGH\n\n"
-                "OOC: {{ooc_message}}"
+                "2. The user's message is the OOC input to translate.\n"
+                "3. If untranslatable, output: PASSTHROUGH"
             )
         )
 
@@ -1206,8 +1206,6 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
         rendered = template
         for key, value in profile.items():
             rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
-        rendered = rendered.replace("{{ooc_message}}", char.ooc_message)
-
         # ── Compute input + system prompt hashes ──────────────────────────────
         input_dict = {
             "axes": {k: v.model_dump() for k, v in char.axes.items() if k in active},
