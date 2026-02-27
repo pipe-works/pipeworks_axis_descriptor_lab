@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.4.0...axis-descriptor-lab-v0.5.0) (2026-02-27)
+
+
+### Features
+
+* **chat:** add import zip to Chat Translation page ([b56ae09](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/b56ae090dbc5fc84b3f00121a51f1771e6dc9e96))
+* **chat:** import zip and collapsible Ollama settings ([c7f08b8](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/c7f08b88e0afc439b609ecd3bc9ba02146a0569b))
+
 ## [0.4.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.3.0...axis-descriptor-lab-v0.4.0) (2026-02-27)
 
 
