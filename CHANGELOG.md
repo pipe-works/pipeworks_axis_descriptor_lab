@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.3.0...axis-descriptor-lab-v0.4.0) (2026-02-27)
+
+
+### Features
+
+* **ui:** split axes into dedicated column, fix slider rendering, improve centre panel ([4aa71a8](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/4aa71a8319d87241f8c377fb762acd9aba8e271d))
+* **ui:** split axes into dedicated column, fix sliders, improve centre panel ([f4d6c2b](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/f4d6c2bacf2949ce0b25971390d43024e90dfd27))
+
+
+### Documentation
+
+* update CLAUDE.md — backend/frontend inventory and versioning guidance ([d488b75](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/d488b75da27de5619ede4cb7091a0e66dd505f88))
+* update CLAUDE.md — module inventory and versioning guidance ([c4999f9](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/c4999f97c3decbd3f1df33a366c0d0a8f2b5fbca))
+
 ## [0.3.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.2.0...axis-descriptor-lab-v0.3.0) (2026-02-26)
 
 
