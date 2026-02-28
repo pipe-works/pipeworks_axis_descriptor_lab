@@ -160,6 +160,65 @@ class TestSessionStatus:
 
 
 # ---------------------------------------------------------------------------
+# list_worlds / world_config happy path
+# ---------------------------------------------------------------------------
+
+
+class TestListWorlds:
+    """list_worlds returns the server's world list."""
+
+    def test_list_worlds_not_authenticated_raises(self, client: MudServerClient) -> None:
+        with pytest.raises(MudServerSessionExpiredError):
+            client.list_worlds()
+
+    def test_list_worlds_returns_list(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = [
+            {"world_id": "pipeworks_web", "name": "Pipeworks Web", "translation_enabled": True}
+        ]
+
+        with patch("app.mud_server_client.httpx.Client") as MockClient:
+            mock_ctx = MagicMock()
+            mock_ctx.get.return_value = mock_resp
+            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+            MockClient.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = client.list_worlds()
+
+        assert isinstance(result, list)
+        assert result[0]["world_id"] == "pipeworks_web"
+
+
+class TestWorldConfig:
+    """world_config returns the server's world configuration."""
+
+    def test_world_config_returns_dict(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "world_id": "pipeworks_web",
+            "model": "gemma2:2b",
+            "active_axes": ["health", "age"],
+        }
+
+        with patch("app.mud_server_client.httpx.Client") as MockClient:
+            mock_ctx = MagicMock()
+            mock_ctx.get.return_value = mock_resp
+            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+            MockClient.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = client.world_config("pipeworks_web")
+
+        assert isinstance(result, dict)
+        assert result["world_id"] == "pipeworks_web"
+
+
+# ---------------------------------------------------------------------------
 # Translate
 # ---------------------------------------------------------------------------
 

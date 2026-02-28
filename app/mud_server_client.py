@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _MUD_SERVER_URL: str | None = os.getenv("MUD_SERVER_URL")
-if _MUD_SERVER_URL:
+if _MUD_SERVER_URL:  # pragma: no cover — env-dependent import-time init
     _MUD_SERVER_URL = _MUD_SERVER_URL.rstrip("/")
 
 _MUD_SERVER_TIMEOUT: float = float(os.getenv("MUD_SERVER_TIMEOUT", "120"))
@@ -279,7 +279,7 @@ def get_mud_client() -> MudServerClient | None:
 
 
 _mud_client: MudServerClient | None = None
-if _MUD_SERVER_URL:
+if _MUD_SERVER_URL:  # pragma: no cover — env-dependent import-time init
     _mud_client = MudServerClient(_MUD_SERVER_URL, timeout=_MUD_SERVER_TIMEOUT)
     logger.info("Mud server client initialised: %s", _MUD_SERVER_URL)
 

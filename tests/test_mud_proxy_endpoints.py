@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -107,6 +108,22 @@ class TestMudLogin:
         data = resp.json()
         assert data["authenticated"] is False
         assert "connect" in data["message"].lower()
+
+    def test_login_http_status_error(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client()
+        fake_response = MagicMock()
+        fake_response.status_code = 500
+        mock.login.side_effect = httpx.HTTPStatusError(
+            "Server Error", request=MagicMock(), response=fake_response
+        )
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            resp = test_client.post("/api/mud/login", json={"username": "user", "password": "pass"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["authenticated"] is False
+        assert "500" in data["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +266,15 @@ class TestMudWorldConfig:
             resp = test_client.get("/api/mud/world-config/pipeworks_web")
 
         assert resp.status_code == 401
+
+    def test_world_config_connection_error(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.world_config.side_effect = MudServerConnectionError("down")
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/world-config/pipeworks_web")
+
+        assert resp.status_code == 502
 
     def test_world_config_standalone_503(self, test_client: TestClient) -> None:
         with patch("app.main.get_mud_client", return_value=None):
