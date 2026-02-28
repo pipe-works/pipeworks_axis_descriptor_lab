@@ -174,6 +174,9 @@ class MudServerClient:
             MudServerConnectionError: Server unreachable.
         """
         result = self._get("/api/lab/worlds")
+        # The mud server wraps the list: {"worlds": [...]}.
+        if isinstance(result, dict) and "worlds" in result:
+            result = result["worlds"]
         if not isinstance(result, list):  # pragma: no cover
             raise TypeError(f"Expected list from /api/lab/worlds, got {type(result).__name__}")
         return result
@@ -264,6 +267,10 @@ class MudServerClient:
             self._role = None
             raise MudServerSessionExpiredError("Session expired or invalid")
 
+        if resp.status_code >= 400:
+            print(
+                f"[MudServerClient._post] {path} → HTTP {resp.status_code}: " f"{resp.text[:500]}"
+            )
         resp.raise_for_status()
         return resp.json()
 

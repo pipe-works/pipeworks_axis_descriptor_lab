@@ -2,9 +2,14 @@
 
 # Axis Descriptor Lab
 
-Tiny web tool for testing how small LLMs (via Ollama) produce _non-authoritative_ descriptive text from a deterministic axis payload. Part of the [Pipe-Works](https://github.com/pipe-works) project.
+Single-user web tool for testing how small LLMs (via Ollama) produce _non-authoritative_ descriptive text from deterministic axis payloads. Part of the [Pipe-Works](https://github.com/pipe-works) project.
 
 **Key principle:** The system (axes, scores, seeds) is _authoritative_. The LLM is _ornamental_ -- it produces flavour text only, never makes decisions, and its output is never trusted as ground truth.
+
+The lab has two pages:
+
+- **Character Description** -- generate descriptive paragraphs from axis payloads with A/B diffing, signal isolation, and transformation-map analysis.
+- **Chat Translation** -- translate out-of-character (OOC) player messages into in-character (IC) speech using axis-defined character profiles. Works standalone (local Ollama) or connected to a [Pipe-Works mud server](https://github.com/pipe-works/pipeworks_mud_server) for canonical pipeline translation.
 
 <p align="center">
   <img src="docs/images/lab_ui_dark_v2.png" alt="Axis Descriptor Lab – dark theme with micro-indicators" width="90%">
@@ -13,7 +18,7 @@ Tiny web tool for testing how small LLMs (via Ollama) produce _non-authoritative
 ## Quick start
 
 ```bash
-# 1. Install dependencies into the padl virtualenv
+# 1. Install dependencies
 pip install -e .
 
 # 2. Copy .env.example and adjust if needed
@@ -25,13 +30,15 @@ ollama pull gemma2:2b
 # 4. Start the server
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8242
 
-Or use the dev launcher (reads `.env` first):
+# Or use the dev launcher (reads .env first):
 python tools/dev_server.py
 ```
 
 Then open **<http://127.0.0.1:8242>** in your browser.
 
 ## Usage
+
+### Character Description page
 
 1. Choose an example from the dropdown (or paste your own JSON into the textarea).
 2. Adjust axis scores with the sliders; labels update automatically in the textarea.
@@ -41,6 +48,23 @@ Then open **<http://127.0.0.1:8242>** in your browser.
 6. Click **Set as A** to store the output as a baseline, then tweak axes and generate again to see the **Δ Changes** diff.
 7. Use the **Prompt** dropdown inside the System Prompt collapsible to load alternative prompt styles (terse, environmental, contrast). The override badge glows amber when a custom prompt is active.
 8. Click **Save** to persist the session state (payload, output, baseline, system prompt, and generation settings) to a timestamped subfolder under `data/`.
+
+### Chat Translation page
+
+1. Load examples for **Character A** and optionally **Character B** -- each gets independent axis sliders, an OOC message field, and a channel selector (say/yell/whisper).
+2. Use per-axis checkboxes to enable or disable individual axes in the character profile sent to the LLM.
+3. Click **▶ Translate** to translate both characters' OOC messages into IC speech in a single request.
+4. Toggle **Live** mode to reveal per-character **Send** buttons and an in-game output log that accumulates entries in MUD-style format.
+5. Use **Copy TXT**, **Copy MD**, or **Save all data** to export the game log.
+
+**Server mode:** When `MUD_SERVER_URL` is configured in `.env`, the Chat Translation page connects to a mud server for canonical translation. A mode badge indicates the connection type (Standalone / Server local / Server prod). In server mode:
+
+- A login panel appears for mud server authentication.
+- After login, a world selector loads available worlds from the server.
+- The server's model and active axes are displayed read-only; axes not active in the selected world are visually dimmed.
+- Ollama host, model, strict mode, max tokens, max chars, and IC prompt controls are hidden (the server controls these).
+- Temperature and seed remain adjustable (forwarded to the server).
+- Session expiry (401) is handled automatically by returning to the login panel.
 
 ## Interpretive Provenance Chain (IPC)
 
@@ -66,7 +90,7 @@ The IPC enables:
 - **Reproducibility audits** -- verify that a saved session can be reproduced
 - **Run grouping** -- group log entries by IPC ID to measure output stability
 
-Four hashes are computed and returned on every `/api/generate` response:
+Four hashes are computed and returned on every `/api/generate` and `/api/translate_chat` response:
 
 | Hash | What it fingerprints |
 |------|---------------------|
@@ -75,11 +99,13 @@ Four hashes are computed and returned on every `/api/generate` response:
 | `output_hash` | Normalised LLM output text |
 | `ipc_id` | Composite of all provenance fields above |
 
-Hashes are displayed (truncated to 16 chars) in the UI meta area, persisted in `metadata.json` on save, and included in JSONL log entries.
+Hashes are displayed (truncated to 16 chars) in the UI meta area, persisted in `metadata.json` on save, and included in JSONL log entries. Hashing is provided by the [`pipeworks_ipc`](https://github.com/pipe-works/pipeworks_ipc) library.
 
 For a comprehensive explanation of the IPC framework, normalisation rules, and design rationale, see the [IPC and Hashing Guide](https://pipeworks-axis-descriptor-lab.readthedocs.io/en/latest/guides/ipc-and-hashing.html) in the project documentation.
 
 ## Endpoints
+
+### Character Description
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -96,6 +122,29 @@ For a comprehensive explanation of the IPC framework, normalisation rules, and d
 | POST | `/api/analyze-delta` | Content-word delta (signal isolation) |
 | POST | `/api/transformation-map` | Clause-level diff with micro-indicators |
 | POST | `/api/save` | Save session state to data/ |
+| GET | `/api/save/{folder}/export` | Download a save package as zip |
+| POST | `/api/import` | Import a save package from zip |
+
+### Chat Translation
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/translate_chat` | OOC→IC translation for one or two characters |
+| POST | `/api/save_chat` | Save chat session state |
+| POST | `/api/import_chat` | Import a chat save package from zip |
+
+### Mud Server Proxy
+
+These endpoints proxy requests to the mud server when `MUD_SERVER_URL` is configured.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/mud/login` | Proxy login to mud server |
+| POST | `/api/mud/logout` | Clear mud server session |
+| GET | `/api/mud/session` | Check authentication status |
+| GET | `/api/mud/worlds` | List available worlds |
+| GET | `/api/mud/world-config/{world_id}` | Get world configuration |
+| POST | `/api/mud/select-world` | Select world for translation |
 
 Interactive API docs: **<http://127.0.0.1:8242/docs>**
 
@@ -108,68 +157,83 @@ axis_descriptor_lab/
 ├─ .env.example
 ├─ app/
 │  ├─ main.py                # FastAPI app — thin routing layer
-│  ├─ hashing.py             # IPC normalisation and hash utilities
 │  ├─ schema.py              # Pydantic v2 models
-│  ├─ ollama_client.py       # HTTP wrapper around Ollama /api/generate
+│  ├─ chat_renderer.py       # Unified Ollama HTTP client (/api/generate + /api/chat)
 │  ├─ signal_isolation.py    # NLP pipeline for content-word delta
 │  ├─ transformation_map.py  # Clause-level sentence alignment + diffing
-│  ├─ save_package.py        # Manifest builder, zip archive, import/export
+│  ├─ micro_indicators.py    # Structural Learning Layer — 10 heuristic classifiers
+│  ├─ output_validator.py    # OOC→IC output validator (7-step pipeline)
+│  ├─ mud_server_client.py   # Mud server proxy client for chat translation
 │  ├─ relabel_policy.py      # Policy table + score-to-label mapping
+│  ├─ save_package.py        # Manifest builder, zip archive, import/export
 │  ├─ save_formatting.py     # Markdown builders + folder-name generator
 │  ├─ file_loaders.py        # Example + prompt file loading/listing
-│  ├─ micro_indicators.py   # Structural Learning Layer — 10 heuristic classifiers
 │  ├─ data/
 │  │  ├─ embodiment_v0_1.json    # Lexicon: abstract ↔ physical terms
 │  │  ├─ abstraction_v0_1.json   # Lexicon: concrete ↔ abstract terms
 │  │  └─ intensity_v0_1.json     # Lexicon: ordered intensity scales
 │  ├─ prompts/
-│  │  ├─ system_prompt_v01.txt
+│  │  ├─ system_prompt_v01.txt          # Default character description prompt
 │  │  ├─ system_prompt_v02_terse.txt
 │  │  ├─ system_prompt_v03_environmental.txt
-│  │  └─ system_prompt_v04_contrast.txt
+│  │  ├─ system_prompt_v04_contrast.txt
+│  │  ├─ ic_v01_undertaking.txt         # IC prompt for The Undertaking world
+│  │  ├─ ic_v02_generic.txt             # Generic IC prompt
+│  │  └─ ic_v03_development.txt         # Development/testing IC prompt
 │  ├─ examples/
 │  │  ├─ example_a.json
 │  │  └─ example_b.json
 │  ├─ static/
-│  │  ├─ styles.css
-│  │  ├─ mod-init.js           # ES module entry point
-│  │  ├─ mod-state.js          # state singleton + DOM refs
-│  │  ├─ mod-events.js         # event wiring coordinator
-│  │  ├─ mod-utils.js          # pure utility functions
-│  │  ├─ mod-status.js         # status bar
-│  │  ├─ mod-sync.js           # JSON / slider / badge sync
-│  │  ├─ mod-loaders.js        # example + prompt loading
-│  │  ├─ mod-generate.js       # LLM generation + meta table
-│  │  ├─ mod-diff.js           # word diff + signal isolation
-│  │  ├─ mod-axis-actions.js   # relabel + randomise
-│  │  ├─ mod-persistence.js    # save / export / import
-│  │  ├─ mod-indicator-modal.js # indicator tooltip + click modal
-│  │  ├─ mod-tooltip.js        # tooltip system
-│  │  └─ mod-theme.js          # dark/light theme toggle
+│  │  ├─ pipe-works-fonts.css   # @font-face declarations (6 font families)
+│  │  ├─ pipe-works-base.css    # Shared Pipe-Works design system
+│  │  ├─ styles.css             # App-specific styles
+│  │  ├─ fonts/                 # 16 woff2 font files
+│  │  ├─ mod-init.js            # ES module entry point
+│  │  ├─ mod-state.js           # State singleton + DOM refs
+│  │  ├─ mod-events.js          # Event wiring coordinator
+│  │  ├─ mod-utils.js           # Pure utility functions
+│  │  ├─ mod-status.js          # Status bar
+│  │  ├─ mod-sync.js            # JSON / slider / badge sync
+│  │  ├─ mod-loaders.js         # Example + prompt loading
+│  │  ├─ mod-generate.js        # LLM generation + meta table
+│  │  ├─ mod-diff.js            # Word diff + signal isolation
+│  │  ├─ mod-axis-actions.js    # Relabel + randomise
+│  │  ├─ mod-persistence.js     # Save / export / import
+│  │  ├─ mod-navigation.js      # Page switching (Char Description ↔ Chat Translation)
+│  │  ├─ mod-chat-translation.js # Chat Translation page — all state + API interaction
+│  │  ├─ mod-indicator-modal.js # Indicator tooltip + click modal
+│  │  ├─ mod-tooltip.js         # Tooltip system
+│  │  └─ mod-theme.js           # Dark/light theme toggle
 │  └─ templates/
-│     └─ index.html
-├─ docs/                     # Sphinx documentation (build with: make -C docs html)
+│     └─ index.html             # SPA shell (Jinja2)
+├─ docs/                        # Sphinx documentation (build with: make -C docs html)
 │  ├─ conf.py
 │  ├─ index.rst
-│  ├─ api/                   # autodoc API reference
-│  └─ guides/                # narrative guides (IPC, hashing)
-├─ tests/                    # pytest test suite (561 tests, 99% coverage)
+│  ├─ api/                      # Autodoc API reference
+│  └─ guides/                   # Narrative guides (IPC, hashing)
+├─ tests/                       # pytest test suite (773 tests)
 │  ├─ conftest.py
-│  ├─ test_hashing.py
-│  ├─ test_main.py
-│  ├─ test_ollama_client.py
-│  ├─ test_save_package.py
+│  ├─ test_main.py              # Endpoint integration tests
 │  ├─ test_schema.py
+│  ├─ test_chat_renderer.py     # Ollama HTTP client tests
 │  ├─ test_signal_isolation.py
-│  ├─ test_static_modules.py    # ES module structure verification
 │  ├─ test_transformation_map.py
-│  ├─ test_relabel_policy.py    # policy table + relabel logic
-│  ├─ test_save_formatting.py   # Markdown builders + folder names
-│  ├─ test_file_loaders.py      # file loading + listing
-│  └─ test_micro_indicators.py  # heuristic classifier tests
-├─ data/                     # session saves (gitignored)
+│  ├─ test_micro_indicators.py  # Heuristic classifier tests
+│  ├─ test_output_validator.py  # OOC→IC validator tests
+│  ├─ test_mud_server_client.py # Mud server proxy client tests
+│  ├─ test_mud_proxy_endpoints.py # Mud proxy endpoint tests
+│  ├─ test_translate_chat_endpoint.py
+│  ├─ test_save_chat_endpoint.py
+│  ├─ test_save_package.py
+│  ├─ test_save_formatting.py
+│  ├─ test_relabel_policy.py
+│  ├─ test_file_loaders.py
+│  └─ test_static_modules.py    # ES module structure verification
+├─ tools/
+│  └─ dev_server.py             # Dev launcher (reads .env)
+├─ data/                        # Session saves (gitignored)
 └─ logs/
-   └─ run_log.jsonl          # created automatically on first log call
+   └─ run_log.jsonl             # Created automatically on first log call
 ```
 
 ## Documentation
@@ -196,8 +260,8 @@ Key documentation pages:
 pip install -e ".[dev]"
 
 # Run tests
-pytest                             # all 561 tests
-pytest -v --cov --cov-report=term  # with coverage (99%)
+pytest                             # all 773 tests
+pytest -v --cov --cov-report=term  # with coverage
 
 # Lint
 ruff check app/ tests/
@@ -217,6 +281,8 @@ Configured via `.env` (copy from `.env.example`):
 | `DEFAULT_MODEL` | `gemma2:2b` | Default model for generation |
 | `APP_HOST` | `127.0.0.1` | Server bind address |
 | `APP_PORT` | `8242` | Server port |
+| `MUD_SERVER_URL` | _(unset)_ | Mud server URL for Chat Translation server mode. Unset = standalone. |
+| `MUD_SERVER_TIMEOUT` | `120` | Timeout (seconds) for mud server proxy requests |
 
 ## License
 

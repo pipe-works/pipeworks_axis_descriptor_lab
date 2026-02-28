@@ -777,6 +777,13 @@ class ChatTranslationRequest(BaseModel):
         le=2000,
         description="Maximum character count for IC output.",
     )
+    world_id: str | None = Field(
+        default=None,
+        description=(
+            "World ID for server-mode translation.  Sent by the frontend "
+            "so the backend does not depend on prior select-world state."
+        ),
+    )
 
 
 class ChatTranslationResult(BaseModel):

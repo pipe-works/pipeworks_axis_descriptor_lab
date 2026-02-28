@@ -119,6 +119,17 @@ const chatState = {
   busy: false,
   liveMode: false,
   logSeq: 0,
+  // ── Server-mode state ──────────────────────────────────────────────── //
+  /** @type {"standalone"|"server-prod"|"server-local"} */
+  translationMode: "standalone",
+  /** True when the user has an active session with the mud server. */
+  authenticated: false,
+  /** @type {{id: string, name: string}[]} */
+  worlds: [],
+  /** Currently selected world ID, or null. */
+  worldId: null,
+  /** World config from GET /api/mud/world-config/{id}, or null. */
+  worldConfig: null,
   /**
    * @type {{
    *   ch: string,
@@ -411,6 +422,9 @@ function buildChatSliders(ch) {
 
   panel.textContent = "";
   panel.appendChild(fragment);
+
+  // Re-apply server active-axes dimming if a world config is loaded.
+  if (chatState.worldConfig) applyActiveAxesIndicators();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -839,6 +853,344 @@ function renderTranslationResult(outputBox, metaDiv, statusBadge, result) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Server mode — authentication, world selection, active axes
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** @returns {boolean} True if the lab is configured for server-backed translation. */
+function isServerMode() {
+  return chatState.translationMode !== "standalone";
+}
+
+/**
+ * Update the mode badge text and class to reflect `chatState.translationMode`.
+ *
+ * Badge variants:
+ * - `badge--info`   (blue)  → server-prod
+ * - `badge--active` (amber) → server-local
+ * - `badge--muted`  (grey)  → standalone
+ */
+function updateModeBadge() {
+  const badge = dom.chatModeBadge;
+  if (!badge) return;
+  badge.classList.remove("badge--info", "badge--active", "badge--muted");
+  switch (chatState.translationMode) {
+    case "server-prod":
+      badge.textContent = "Server (prod)";
+      badge.classList.add("badge--info");
+      break;
+    case "server-local":
+      badge.textContent = "Server (local)";
+      badge.classList.add("badge--active");
+      break;
+    default:
+      badge.textContent = "Standalone";
+      badge.classList.add("badge--muted");
+  }
+}
+
+/**
+ * Check for an existing mud-server session.
+ *
+ * In standalone mode this is a no-op.  In server mode, GETs
+ * `/api/mud/session` — if authenticated, calls `onAuthenticated()`;
+ * otherwise shows the login panel.
+ */
+async function checkSession() {
+  if (!isServerMode()) return;
+  try {
+    const res = await fetch("/api/mud/session");
+    if (!res.ok) { showLoginPanel(); return; }
+    const data = await res.json();
+    if (data.authenticated) {
+      await onAuthenticated();
+    } else {
+      showLoginPanel();
+    }
+  } catch {
+    showLoginPanel();
+  }
+}
+
+/** Show the login panel and hide controls that require auth. */
+function showLoginPanel() {
+  dom.chatLoginPanel.classList.remove("hidden");
+  dom.chatBtnDisconnect.classList.add("hidden");
+  dom.chatWorldSelector.classList.add("hidden");
+  toggleServerControls(false);
+}
+
+/** Hide the login panel and clear error. */
+function hideLoginPanel() {
+  dom.chatLoginPanel.classList.add("hidden");
+  dom.chatLoginError.classList.add("hidden");
+  dom.chatLoginError.textContent = "";
+}
+
+/**
+ * POST credentials to `/api/mud/login`.
+ *
+ * On success, calls `onAuthenticated()`.  On failure, shows an error
+ * message in the login panel.
+ */
+async function doLogin() {
+  const username = dom.chatLoginUsername.value.trim();
+  const password = dom.chatLoginPassword.value;
+  if (!username || !password) {
+    dom.chatLoginError.textContent = "Username and password required.";
+    dom.chatLoginError.classList.remove("hidden");
+    return;
+  }
+  dom.chatBtnConnect.disabled = true;
+  dom.chatLoginError.classList.add("hidden");
+  try {
+    const res = await fetch("/api/mud/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    await onAuthenticated();
+  } catch (err) {
+    dom.chatLoginError.textContent = err.message;
+    dom.chatLoginError.classList.remove("hidden");
+  } finally {
+    dom.chatBtnConnect.disabled = false;
+  }
+}
+
+/**
+ * POST to `/api/mud/logout`, then clear state and show login panel.
+ */
+async function doLogout() {
+  try { await fetch("/api/mud/logout", { method: "POST" }); } catch { /* ignore */ }
+  chatState.authenticated = false;
+  chatState.worlds = [];
+  chatState.worldId = null;
+  chatState.worldConfig = null;
+  clearActiveAxesIndicators();
+  dom.chatServerConfigInfo.classList.add("hidden");
+  showLoginPanel();
+  setStatus("Disconnected from mud server.");
+}
+
+/**
+ * Called after successful login or session resume.
+ *
+ * Hides the login panel, shows the disconnect button, fetches worlds,
+ * and toggles server controls.
+ */
+async function onAuthenticated() {
+  chatState.authenticated = true;
+  hideLoginPanel();
+  dom.chatBtnDisconnect.classList.remove("hidden");
+  toggleServerControls(true);
+  await fetchWorlds();
+  setStatus("Connected to mud server.");
+}
+
+/**
+ * Fetch available worlds from `/api/mud/worlds` and populate the
+ * world select dropdown.
+ */
+async function fetchWorlds() {
+  try {
+    const res = await fetch("/api/mud/worlds");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    chatState.worlds = data.worlds || [];
+    populateWorldSelect();
+    dom.chatWorldSelector.classList.remove("hidden");
+  } catch (err) {
+    setStatus(`Failed to fetch worlds: ${err.message}`);
+  }
+}
+
+/** Rebuild the world `<select>` options from `chatState.worlds`. */
+function populateWorldSelect() {
+  const sel = dom.chatWorldSelect;
+  sel.innerHTML = '<option value="">— select world —</option>';
+  for (const w of chatState.worlds) {
+    const opt = document.createElement("option");
+    opt.value = w.world_id;
+    opt.textContent = w.name || w.world_id;
+    sel.appendChild(opt);
+  }
+  // Determine which world to select: restore previous selection, or
+  // auto-select when exactly one translation-enabled world is available.
+  // Fall back to any single world if none are flagged translation_enabled
+  // (the server may report false when Ollama was unreachable at init time
+  // but the translate endpoint can still work).
+  const enabled = chatState.worlds.filter(w => w.translation_enabled);
+  const target = chatState.worldId
+    || (enabled.length === 1 ? enabled[0].world_id : null)
+    || (chatState.worlds.length === 1 ? chatState.worlds[0].world_id : null);
+
+  // --- Diagnostic (remove after root-cause confirmed) ---
+  console.warn("[populateWorldSelect]", {
+    worldCount: chatState.worlds.length,
+    enabledCount: enabled.length,
+    target,
+    firstWorld: chatState.worlds[0],
+  });
+  // --- End diagnostic ---
+
+  if (target) {
+    sel.value = target;
+    if (sel.value === target) {
+      // Set worldId immediately so translate requests include it even
+      // before the async selectWorld() round-trips complete.
+      chatState.worldId = target;
+      // Fire selectWorld() for backend sync + config fetch (not awaited —
+      // the world_id in the request body is the primary source of truth).
+      selectWorld(target);
+    }
+  }
+}
+
+/**
+ * Select a world: POST to `/api/mud/select-world`, then GET
+ * `/api/mud/world-config/{id}` to retrieve active axes and model.
+ *
+ * @param {string} worldId - The world ID to select.
+ */
+async function selectWorld(worldId) {
+  if (!worldId) {
+    chatState.worldId = null;
+    chatState.worldConfig = null;
+    clearActiveAxesIndicators();
+    dom.chatServerConfigInfo.classList.add("hidden");
+    return;
+  }
+  try {
+    const selRes = await fetch("/api/mud/select-world", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ world_id: worldId }),
+    });
+    if (!selRes.ok) {
+      if (selRes.status === 401) { handleSessionExpired(); return; }
+      throw new Error(`select-world: HTTP ${selRes.status}`);
+    }
+
+    const cfgRes = await fetch(`/api/mud/world-config/${encodeURIComponent(worldId)}`);
+    if (!cfgRes.ok) {
+      if (cfgRes.status === 401) { handleSessionExpired(); return; }
+      throw new Error(`world-config: HTTP ${cfgRes.status}`);
+    }
+    const config = await cfgRes.json();
+    chatState.worldId = worldId;
+    chatState.worldConfig = config;
+    applyActiveAxesIndicators();
+    updateServerConfigDisplay();
+    setStatus(`World "${worldId}" selected.`);
+  } catch (err) {
+    setStatus(`World selection error: ${err.message}`);
+  }
+}
+
+/** Clear auth state and show the login panel on 401. */
+function handleSessionExpired() {
+  chatState.authenticated = false;
+  chatState.worldId = null;
+  chatState.worldConfig = null;
+  clearActiveAxesIndicators();
+  dom.chatServerConfigInfo.classList.add("hidden");
+  showLoginPanel();
+  setStatus("Session expired — please log in again.");
+}
+
+/**
+ * Show or hide server-only vs standalone-only UI elements.
+ *
+ * When `auth` is true (server mode, authenticated):
+ * - Hides `[data-server-hide]` rows (Ollama host/model, max tokens, strict, max chars)
+ * - Hides the IC Prompt `<details>` section
+ * - Shows the server config info block
+ *
+ * When `auth` is false:
+ * - Restores `[data-server-hide]` rows
+ * - Shows the IC Prompt section
+ * - Hides the server config info block
+ *
+ * @param {boolean} auth - True if authenticated in server mode.
+ */
+function toggleServerControls(auth) {
+  // Toggle data-server-hide elements inside the Ollama Settings details.
+  const settingsDetails = document.getElementById("chat-ollama-settings-details");
+  if (settingsDetails) {
+    for (const el of settingsDetails.querySelectorAll("[data-server-hide]")) {
+      el.classList.toggle("hidden", auth);
+    }
+  }
+  // Toggle IC prompt section.
+  if (dom.chatIcPromptDetails) {
+    dom.chatIcPromptDetails.classList.toggle("hidden", auth);
+  }
+  // Toggle server config info.
+  if (dom.chatServerConfigInfo) {
+    dom.chatServerConfigInfo.classList.toggle("hidden", !auth);
+  }
+}
+
+/**
+ * Dim axes not in `worldConfig.active_axes` on both character slider panels.
+ *
+ * Applies `axis-row--inactive-server` class and a title tooltip explaining
+ * the axis is not active for this world.  Axes remain interactive (just dimmed).
+ */
+function applyActiveAxesIndicators() {
+  const config = chatState.worldConfig;
+  if (!config || !config.active_axes) return;
+  const activeSet = new Set(config.active_axes);
+  for (const ch of ["a", "b"]) {
+    const panel = charDom(ch).sliderPanel;
+    for (const row of panel.querySelectorAll(".axis-row")) {
+      const axis = row.dataset.axis;
+      if (!axis) continue;
+      const inactive = !activeSet.has(axis);
+      row.classList.toggle("axis-row--inactive-server", inactive);
+      if (inactive) {
+        row.title = `"${axis}" is not an active axis in this world.`;
+      } else {
+        row.removeAttribute("title");
+      }
+    }
+  }
+}
+
+/** Remove all server-applied inactive-axis dimming from both panels. */
+function clearActiveAxesIndicators() {
+  for (const ch of ["a", "b"]) {
+    const panel = charDom(ch).sliderPanel;
+    for (const row of panel.querySelectorAll(".axis-row--inactive-server")) {
+      row.classList.remove("axis-row--inactive-server");
+      row.removeAttribute("title");
+    }
+  }
+}
+
+/**
+ * Populate the read-only server config display (model + active axes)
+ * from `chatState.worldConfig`.
+ */
+function updateServerConfigDisplay() {
+  const config = chatState.worldConfig;
+  if (!config) return;
+  if (dom.chatServerModel) {
+    dom.chatServerModel.textContent = config.model || "--";
+  }
+  if (dom.chatServerActiveAxes) {
+    dom.chatServerActiveAxes.textContent = config.active_axes
+      ? config.active_axes.join(", ")
+      : "--";
+  }
+  dom.chatServerConfigInfo.classList.remove("hidden");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Live mode
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -962,6 +1314,14 @@ async function sendForChar(ch) {
   const model = getChatModelName();
   if (!model) { setStatus("No model specified."); return; }
 
+  if (isServerMode()) {
+    const wid = chatState.worldId || dom.chatWorldSelect?.value;
+    if (!wid) {
+      setStatus("Please select a world before translating.");
+      return;
+    }
+  }
+
   const axes = buildAxesForRequest(ch);
   if (!axes || Object.keys(axes).length === 0) {
     setStatus(`Load an example for Character ${ch.toUpperCase()} before sending.`);
@@ -988,6 +1348,7 @@ async function sendForChar(ch) {
     strict_mode: dom.chatStrictMode.checked,
     max_output_chars: parseInt(dom.chatMaxChars.value, 10),
     system_prompt: dom.chatSystemPrompt.value.trim() || null,
+    world_id: chatState.worldId || dom.chatWorldSelect?.value || null,
   };
 
   chatState.busy = true;
@@ -1006,6 +1367,10 @@ async function sendForChar(ch) {
       body: JSON.stringify(reqBody),
     });
     if (!res.ok) {
+      if (res.status === 401 && isServerMode()) {
+        handleSessionExpired();
+        return;
+      }
       const errData = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(errData.detail || `HTTP ${res.status}`);
     }
@@ -1070,6 +1435,14 @@ export async function translate() {
     return;
   }
 
+  if (isServerMode()) {
+    const wid = chatState.worldId || dom.chatWorldSelect?.value;
+    if (!wid) {
+      setStatus("Please select a world before translating.");
+      return;
+    }
+  }
+
   const temperature = parseFloat(dom.chatTempInput.value);
   const max_tokens  = parseInt(dom.chatTokensInput.value, 10);
   const seed        = resolveChatSeed();
@@ -1123,6 +1496,7 @@ export async function translate() {
     strict_mode,
     max_output_chars,
     system_prompt,
+    world_id: chatState.worldId || dom.chatWorldSelect?.value || null,
   };
 
   // ── Pre-request UI state ─────────────────────────────────────────────── //
@@ -1147,6 +1521,10 @@ export async function translate() {
       body: JSON.stringify(reqBody),
     });
     if (!res.ok) {
+      if (res.status === 401 && isServerMode()) {
+        handleSessionExpired();
+        return;
+      }
       const errData = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(errData.detail || `HTTP ${res.status}`);
     }
@@ -1489,10 +1867,20 @@ async function importChatSave() {
  * @returns {Promise<void>} Resolves when both lists have been fetched.
  */
 export async function initChatTranslation() {
+  // Initialise translation mode from server-injected config.
+  const labConfig = window.__LAB_CONFIG__ || {};
+  chatState.translationMode = labConfig.translationMode || "standalone";
+  updateModeBadge();
+
   await Promise.all([
     loadChatExampleList(),
     loadChatIcPromptList(),
   ]);
+
+  // In server mode, check for an existing session.
+  if (isServerMode()) {
+    await checkSession();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1647,5 +2035,26 @@ export function wireChatTranslationEvents() {
   dom.chatImportLog.addEventListener("click", () => dom.chatImportFileInput.click());
   dom.chatImportFileInput.addEventListener("change", () => {
     if (dom.chatImportFileInput.files.length) importChatSave();
+  });
+
+  // ── Server mode: Connect / Disconnect / World select ────────────── //
+  dom.chatBtnConnect.addEventListener("click", () => doLogin());
+  // Allow Enter key to submit login form.
+  dom.chatLoginPassword.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") doLogin();
+  });
+  dom.chatLoginUsername.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") doLogin();
+  });
+  dom.chatBtnDisconnect.addEventListener("click", () => doLogout());
+  dom.chatWorldSelect.addEventListener("change", () => {
+    const val = dom.chatWorldSelect.value;
+    chatState.worldId = val || null;
+    selectWorld(val);
+  });
+
+  // Re-check session when the user navigates to the Chat Translation page.
+  document.addEventListener("chat-translation-activated", () => {
+    if (isServerMode()) checkSession();
   });
 }

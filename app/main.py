@@ -1188,7 +1188,10 @@ def mud_worlds() -> dict:
     if client is None:
         raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
     try:
-        return {"worlds": client.list_worlds()}
+        worlds = client.list_worlds()
+        for w in worlds:
+            print(f"[mud_worlds] {w!r}")
+        return {"worlds": worlds}
     except MudServerSessionExpiredError:
         raise HTTPException(
             status_code=401,
@@ -1261,13 +1264,23 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
     ChatTranslationResponse with results for A and optionally B.
     """
     mud_client = get_mud_client()
-    if mud_client is not None and mud_client.is_authenticated and mud_client.selected_world_id:
-        return _translate_via_server(req, mud_client)
+    if mud_client is not None:
+        # Server mode — require authentication and world selection.
+        # Never silently fall through to standalone; the frontend needs
+        # a clear signal so it can show the login panel or world selector.
+        if not mud_client.is_authenticated:
+            raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+        # Prefer world_id from the request (survives server restarts),
+        # fall back to the in-memory selection from select-world.
+        world_id = req.world_id or mud_client.selected_world_id
+        if not world_id:
+            raise HTTPException(status_code=400, detail="No world selected.")
+        return _translate_via_server(req, mud_client, world_id)
     return _translate_standalone(req)
 
 
 def _translate_via_server(
-    req: ChatTranslationRequest, mud_client: MudServerClient
+    req: ChatTranslationRequest, mud_client: MudServerClient, world_id: str
 ) -> ChatTranslationResponse:
     """Delegate translation to the mud server's canonical pipeline.
 
@@ -1277,15 +1290,16 @@ def _translate_via_server(
     IPC trace is meaningful.
     """
 
-    world_id = mud_client.selected_world_id
-    if world_id is None:  # pragma: no cover — caller guards this
-        raise HTTPException(status_code=400, detail="No world selected.")
-
     def _server_translate_one(char) -> ChatTranslationResult:
         # Build axes dict in {name: {label, score}} format for the server
         axes_for_server = {
             name: {"label": av.label, "score": av.score} for name, av in char.axes.items()
         }
+
+        print(
+            f"[_translate_via_server] world_id={world_id!r}, "
+            f"axes={list(axes_for_server.keys())}, channel={char.channel!r}"
+        )
 
         try:
             data = mud_client.translate(
@@ -1301,7 +1315,17 @@ def _translate_via_server(
                 status_code=401,
                 detail="Mud server session expired. Please log in again.",
             )
-        except MudServerConnectionError:
+        except MudServerConnectionError as exc:
+            print(f"[_translate_via_server] connection error: {exc}")
+            return ChatTranslationResult(
+                ic_text=None,
+                status="fallback.api_error",
+            )
+        except Exception as exc:
+            # Catch httpx.HTTPStatusError and any other unexpected errors
+            # from the mud server (e.g. 503 translation not enabled, 404
+            # world not found) that _post propagates via raise_for_status().
+            print(f"[_translate_via_server] unexpected error: {type(exc).__name__}: {exc}")
             return ChatTranslationResult(
                 ic_text=None,
                 status="fallback.api_error",
@@ -1311,6 +1335,12 @@ def _translate_via_server(
         status = data.get("status", "fallback.api_error")
         rendered_prompt = data.get("rendered_prompt", "")
         model = data.get("model", req.model)
+
+        print(
+            f"[_translate_via_server] response: status={status!r}, "
+            f"ic_text={'<' + str(len(ic_text)) + ' chars>' if ic_text else None}, "
+            f"model={model!r}, has_prompt={bool(rendered_prompt)}"
+        )
 
         # Recompute IPC hashes from the server's rendered_prompt
         sp_hash = compute_system_prompt_hash(rendered_prompt) if rendered_prompt else None
