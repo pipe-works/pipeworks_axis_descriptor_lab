@@ -525,39 +525,82 @@
 
   <!-- ── CONTROLS + OUTPUT PANEL ───────────────────────────────────────────── -->
   <section class="panel panel--right" aria-label="Translation Controls and Output">
-    <h2 class="panel__heading">Translation</h2>
+    <div class="chat-translation-header">
+      <h2 class="panel__heading">Translation</h2>
+      <span id="chat-mode-badge" class="badge badge--muted">Standalone</span>
+      <button id="chat-btn-disconnect" class="btn btn--secondary btn--sm hidden" type="button">Disconnect</button>
+    </div>
+
+    <!-- Login panel — shown in server mode when not authenticated -->
+    <div id="chat-login-panel" class="chat-login-panel hidden">
+      <div class="chat-login-panel__card">
+        <h3 class="chat-login-panel__title">Connect to Mud Server</h3>
+        <div class="settings-grid">
+          <label class="control-label">Username</label>
+          <input id="chat-login-username" class="input" type="text" autocomplete="username" />
+          <label class="control-label">Password</label>
+          <input id="chat-login-password" class="input" type="password" autocomplete="current-password" />
+        </div>
+        <button id="chat-btn-connect" class="btn btn--primary btn--full" type="button"
+                style="margin-top:var(--sp-3);">Connect</button>
+        <div id="chat-login-error" class="chat-login-panel__error hidden"></div>
+      </div>
+    </div>
+
+    <!-- World selector — shown after login in server mode -->
+    <div id="chat-world-selector" class="control-row hidden" style="margin-top:0.5rem;">
+      <label for="chat-world-select" class="control-label">World</label>
+      <select id="chat-world-select" class="select">
+        <option value="">— select world —</option>
+      </select>
+    </div>
 
     <!-- Generation settings -->
     <details class="collapsible" id="chat-ollama-settings-details" open>
       <summary class="collapsible__summary">Ollama Settings</summary>
+
+    <!-- Server config info — read-only display of server-provided model + active axes -->
+    <div id="chat-server-config-info" class="server-config-info hidden">
+      <div class="settings-grid" style="margin-top:var(--sp-2);">
+        <span class="control-label">Model</span>
+        <span id="chat-server-model" class="server-config-value">--</span>
+        <span class="control-label">Active axes</span>
+        <span id="chat-server-active-axes" class="server-config-value">--</span>
+      </div>
+    </div>
+
     <div class="settings-grid" style="margin-top:var(--sp-2);">
-      <label for="chat-ollama-host" class="control-label">Ollama</label>
-      <div class="model-row">
-        <input
-          id="chat-ollama-host"
-          class="input input--url"
-          type="url"
-          value="{{ ollama_host }}"
-          placeholder="http://localhost:11434"
-          aria-label="Ollama server URL"
-        />
-        <select id="chat-model-select" class="select">
-          {% if available_models %}
-            {% for m in available_models %}
-              <option value="{{ m }}" {% if m == default_model %}selected{% endif %}>{{ m }}</option>
-            {% endfor %}
-          {% else %}
-            <option value="{{ default_model }}">{{ default_model }}</option>
-          {% endif %}
-        </select>
-        <input
-          id="chat-model-input"
-          class="input {% if available_models %}hidden{% endif %}"
-          type="text"
-          value="{{ default_model }}"
-          placeholder="e.g. gemma2:2b"
-          aria-label="Model name"
-        />
+      <div data-server-hide>
+        <label for="chat-ollama-host" class="control-label">Ollama</label>
+      </div>
+      <div data-server-hide>
+        <div class="model-row">
+          <input
+            id="chat-ollama-host"
+            class="input input--url"
+            type="url"
+            value="{{ ollama_host }}"
+            placeholder="http://localhost:11434"
+            aria-label="Ollama server URL"
+          />
+          <select id="chat-model-select" class="select">
+            {% if available_models %}
+              {% for m in available_models %}
+                <option value="{{ m }}" {% if m == default_model %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            {% else %}
+              <option value="{{ default_model }}">{{ default_model }}</option>
+            {% endif %}
+          </select>
+          <input
+            id="chat-model-input"
+            class="input {% if available_models %}hidden{% endif %}"
+            type="text"
+            value="{{ default_model }}"
+            placeholder="e.g. gemma2:2b"
+            aria-label="Model name"
+          />
+        </div>
       </div>
 
       <label for="chat-temp-input" class="control-label">Temperature</label>
@@ -566,25 +609,37 @@
         <input type="number" id="chat-temp-input" min="0" max="2" step="0.05" value="0" class="input input--sm" />
       </div>
 
-      <label for="chat-tokens-input" class="control-label">Max tokens</label>
-      <input type="number" id="chat-tokens-input" min="10" max="512" value="128" class="input input--sm" />
+      <div data-server-hide>
+        <label for="chat-tokens-input" class="control-label">Max tokens</label>
+      </div>
+      <div data-server-hide>
+        <input type="number" id="chat-tokens-input" min="10" max="512" value="128" class="input input--sm" />
+      </div>
 
       <label for="chat-seed-input" class="control-label">Seed</label>
       <input type="number" id="chat-seed-input" value="-1" class="input input--sm" />
 
-      <label for="chat-strict-mode" class="control-label">Strict</label>
-      <label class="toggle-label">
-        <input type="checkbox" id="chat-strict-mode" role="switch" checked />
-        <span class="toggle-text">Strict validation</span>
-      </label>
+      <div data-server-hide>
+        <label for="chat-strict-mode" class="control-label">Strict</label>
+      </div>
+      <div data-server-hide>
+        <label class="toggle-label">
+          <input type="checkbox" id="chat-strict-mode" role="switch" checked />
+          <span class="toggle-text">Strict validation</span>
+        </label>
+      </div>
 
-      <label for="chat-max-chars" class="control-label">Max chars</label>
-      <input type="number" id="chat-max-chars" min="50" max="2000" value="280" class="input input--sm" />
+      <div data-server-hide>
+        <label for="chat-max-chars" class="control-label">Max chars</label>
+      </div>
+      <div data-server-hide>
+        <input type="number" id="chat-max-chars" min="50" max="2000" value="280" class="input input--sm" />
+      </div>
     </div>
     </details>
 
-    <!-- IC Prompt -->
-    <details class="collapsible" style="margin-top:0.75rem;">
+    <!-- IC Prompt — hidden in server mode (server controls the prompt) -->
+    <details class="collapsible" id="chat-ic-prompt-details" style="margin-top:0.75rem;">
       <summary class="collapsible__summary">IC Prompt Template
         <span class="badge badge--muted" id="chat-prompt-badge">default</span>
       </summary>

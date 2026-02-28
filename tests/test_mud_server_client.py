@@ -172,13 +172,16 @@ class TestListWorlds:
             client.list_worlds()
 
     def test_list_worlds_returns_list(self, client: MudServerClient) -> None:
+        """Server wraps the list as {"worlds": [...]}."""
         client._session_id = "abc-123"
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = [
-            {"world_id": "pipeworks_web", "name": "Pipeworks Web", "translation_enabled": True}
-        ]
+        mock_resp.json.return_value = {
+            "worlds": [
+                {"world_id": "pipeworks_web", "name": "Pipeworks Web", "translation_enabled": True}
+            ]
+        }
 
         with patch("app.mud_server_client.httpx.Client") as MockClient:
             mock_ctx = MagicMock()
@@ -190,6 +193,27 @@ class TestListWorlds:
 
         assert isinstance(result, list)
         assert result[0]["world_id"] == "pipeworks_web"
+
+    def test_list_worlds_bare_list_fallback(self, client: MudServerClient) -> None:
+        """Bare list (without wrapper) is also accepted for robustness."""
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = [
+            {"world_id": "w1", "name": "World 1", "translation_enabled": True}
+        ]
+
+        with patch("app.mud_server_client.httpx.Client") as MockClient:
+            mock_ctx = MagicMock()
+            mock_ctx.get.return_value = mock_resp
+            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
+            MockClient.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = client.list_worlds()
+
+        assert isinstance(result, list)
+        assert result[0]["world_id"] == "w1"
 
 
 class TestWorldConfig:

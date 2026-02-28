@@ -1092,6 +1092,68 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   CHAT TRANSLATION — SERVER MODE
+   ─────────────────────────────────────────────────────────────────────────
+   Header row with mode badge, login panel overlay, server config display,
+   and inactive-axis visual treatment for server-provided active_axes.
+════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Header row with mode badge + disconnect button ──────────────────── */
+.chat-translation-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.chat-translation-header .panel__heading {
+  margin-bottom: 0;
+}
+
+/* ── Login panel ─────────────────────────────────────────────────────── */
+.chat-login-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-6);
+  flex: 1;
+}
+.chat-login-panel.hidden { display: none; }
+.chat-login-panel__card {
+  max-width: 320px;
+  width: 100%;
+}
+.chat-login-panel__title {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--col-text-muted);
+  margin-bottom: var(--sp-3);
+}
+.chat-login-panel__error {
+  color: var(--col-err);
+  font-size: var(--text-xs);
+  margin-top: var(--sp-2);
+}
+.chat-login-panel__error.hidden { display: none; }
+
+/* ── Server config read-only display ─────────────────────────────────── */
+.server-config-info.hidden { display: none; }
+.server-config-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--col-text-muted);
+}
+
+/* ── Inactive axis — server active_axes dimming ──────────────────────── */
+.axis-row--inactive-server {
+  opacity: 0.55;
+}
+.axis-row--inactive-server .axis-name::after {
+  content: " ·";
+  color: var(--col-text-dim);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    LIGHT THEME — app-specific overrides
    ─────────────────────────────────────────────────────────────────────────
    Only overrides for app-specific components that can't be handled by

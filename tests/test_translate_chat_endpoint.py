@@ -37,6 +37,17 @@ from app.mud_server_client import MudServerConnectionError, MudServerSessionExpi
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _standalone_mode():
+    """Default to standalone mode (no mud server) for all tests in this module.
+
+    Server-mode tests override this with their own
+    ``patch("app.main.get_mud_client", return_value=mock)`` context manager.
+    """
+    with patch("app.main.get_mud_client", return_value=None):
+        yield
+
+
 @pytest.fixture()
 def client() -> TestClient:
     """FastAPI test client (same as conftest but explicit for clarity)."""
@@ -656,41 +667,50 @@ class TestServerModeTranslation:
         assert resp.status_code == 401
 
 
-class TestStandaloneFallback:
-    """When mud client is not authenticated, standalone mode is used."""
+class TestServerModeGuards:
+    """Server mode rejects requests when auth or world selection is missing."""
 
-    def test_unauthenticated_falls_back_to_standalone(
-        self, client: TestClient, base_request: dict
-    ) -> None:
-        """Unauthenticated client → standalone Ollama pipeline."""
+    def test_unauthenticated_returns_401(self, client: TestClient, base_request: dict) -> None:
+        """Unauthenticated client in server mode → 401, not silent fallback."""
         mock = _mock_mud_client(authenticated=False)
 
-        with (
-            patch("app.main.get_mud_client", return_value=mock),
-            _patch_renderer("She peers cautiously about the chamber."),
-        ):
+        with patch("app.main.get_mud_client", return_value=mock):
             resp = client.post("/api/translate_chat", json=base_request)
 
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["character_a"]["status"] == "success"
-        # The mock mud client's translate should NOT have been called
+        assert resp.status_code == 401
         mock.translate.assert_not_called()
 
-    def test_no_world_selected_falls_back_to_standalone(
-        self, client: TestClient, base_request: dict
-    ) -> None:
-        """Authenticated but no world selected → standalone pipeline."""
+    def test_no_world_selected_returns_400(self, client: TestClient, base_request: dict) -> None:
+        """Authenticated but no world selected anywhere → 400."""
         mock = _mock_mud_client(authenticated=True, world_id=None)
 
-        with (
-            patch("app.main.get_mud_client", return_value=mock),
-            _patch_renderer("ok"),
-        ):
+        with patch("app.main.get_mud_client", return_value=mock):
             resp = client.post("/api/translate_chat", json=base_request)
 
-        assert resp.status_code == 200
+        assert resp.status_code == 400
         mock.translate.assert_not_called()
+
+    def test_world_id_in_request_overrides_missing_selection(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """world_id in request body rescues a lost in-memory selection."""
+        mock = _mock_mud_client(authenticated=True, world_id=None)
+        mock.translate.return_value = {
+            "ic_text": "She nods.",
+            "status": "success",
+            "profile_summary": "",
+            "rendered_prompt": "prompt",
+            "model": "gemma2:2b",
+            "world_config": {},
+        }
+        req = {**base_request, "world_id": "pipeworks_web"}
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            resp = client.post("/api/translate_chat", json=req)
+
+        assert resp.status_code == 200
+        assert resp.json()["character_a"]["status"] == "success"
+        mock.translate.assert_called_once()
 
     def test_none_client_uses_standalone(self, client: TestClient, base_request: dict) -> None:
         """When get_mud_client returns None (standalone mode), Ollama pipeline runs."""

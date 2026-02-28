@@ -84,5 +84,8 @@ export function wireNavigationEvents() {
       dom.navChatTrans,         // mark active
       dom.navCharDesc,          // mark inactive
     );
+    // Notify the chat translation module so it can re-check session state
+    // (prevents stale auth after returning from the Character Description page).
+    document.dispatchEvent(new CustomEvent("chat-translation-activated"));
   });
 }

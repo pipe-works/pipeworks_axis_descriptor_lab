@@ -206,6 +206,21 @@ export const dom = {
   chatBOoc:             $("chat-b-ooc"),
   chatBChannel:         $("chat-b-channel"),
 
+  // ── Chat Translation — Server mode ──────────────────────────────── //
+  chatModeBadge:        $("chat-mode-badge"),
+  chatBtnDisconnect:    $("chat-btn-disconnect"),
+  chatLoginPanel:       $("chat-login-panel"),
+  chatLoginUsername:     $("chat-login-username"),
+  chatLoginPassword:    $("chat-login-password"),
+  chatBtnConnect:       $("chat-btn-connect"),
+  chatLoginError:       $("chat-login-error"),
+  chatWorldSelector:    $("chat-world-selector"),
+  chatWorldSelect:      $("chat-world-select"),
+  chatServerConfigInfo: $("chat-server-config-info"),
+  chatServerModel:      $("chat-server-model"),
+  chatServerActiveAxes: $("chat-server-active-axes"),
+  chatIcPromptDetails:  $("chat-ic-prompt-details"),
+
   // ── Chat Translation — Controls ───────────────────────────────────── //
   chatOllamaHost:       $("chat-ollama-host"),
   chatModelSelect:      $("chat-model-select"),
