@@ -17,16 +17,20 @@ Test coverage:
   - IPC hashes present on success; output_hash and ipc_id absent on failure.
   - Pydantic validation: missing required fields → 422.
   - Strict mode and lenient mode flags forwarded correctly.
+  - Server-mode translation via MudServerClient proxy.
+  - Fallback to standalone when client not authenticated.
+  - MudServerSessionExpiredError during translate → 401.
 """
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.mud_server_client import MudServerConnectionError, MudServerSessionExpiredError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -544,3 +548,157 @@ class TestOptionalCharacterA:
         }
         resp = client.post("/api/translate_chat", json=req)
         assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Server-mode translation (via MudServerClient)
+# ---------------------------------------------------------------------------
+
+
+def _mock_mud_client(*, authenticated: bool = True, world_id: str = "pipeworks_web") -> MagicMock:
+    """Create a mock MudServerClient for server-mode tests."""
+    mock = MagicMock()
+    mock.is_authenticated = authenticated
+    mock.selected_world_id = world_id
+    return mock
+
+
+class TestServerModeTranslation:
+    """Translation delegated to mud server when client is authenticated."""
+
+    def test_server_mode_returns_success(self, client: TestClient, base_request: dict) -> None:
+        """When mud client is authenticated, translation goes through server."""
+        mock = _mock_mud_client()
+        mock.translate.return_value = {
+            "ic_text": "She peers cautiously about the chamber.",
+            "status": "success",
+            "profile_summary": "health: weary (score: 0.3)\nage: old (score: 0.75)",
+            "rendered_prompt": "You are a narrative engine. Profile:\n  health: weary",
+            "model": "gemma2:2b",
+            "world_config": {"world_id": "pipeworks_web"},
+        }
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            resp = client.post("/api/translate_chat", json=base_request)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["character_a"]["status"] == "success"
+        assert data["character_a"]["ic_text"] == "She peers cautiously about the chamber."
+
+    def test_server_mode_ipc_hashes_present(self, client: TestClient, base_request: dict) -> None:
+        """IPC hashes are recomputed from server's rendered_prompt."""
+        mock = _mock_mud_client()
+        mock.translate.return_value = {
+            "ic_text": "A weathered figure nods.",
+            "status": "success",
+            "profile_summary": "test",
+            "rendered_prompt": "System prompt for IPC hashing.",
+            "model": "gemma2:2b",
+            "world_config": {},
+        }
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        result = data["character_a"]
+        assert result["input_hash"] is not None
+        assert result["system_prompt_hash"] is not None
+        assert result["output_hash"] is not None
+        assert result["ipc_id"] is not None
+        # Verify they are valid 64-char hex strings
+        for field in ("input_hash", "system_prompt_hash", "output_hash"):
+            assert len(result[field]) == 64
+            int(result[field], 16)
+
+    def test_server_mode_api_error_from_server(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """Server returns api_error status → propagated to response."""
+        mock = _mock_mud_client()
+        mock.translate.return_value = {
+            "ic_text": None,
+            "status": "fallback.api_error",
+            "profile_summary": "",
+            "rendered_prompt": "",
+            "model": "gemma2:2b",
+            "world_config": {},
+        }
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        assert data["character_a"]["status"] == "fallback.api_error"
+        assert data["character_a"]["ic_text"] is None
+
+    def test_server_mode_connection_error_fallback(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """MudServerConnectionError → fallback.api_error in result."""
+        mock = _mock_mud_client()
+        mock.translate.side_effect = MudServerConnectionError("unreachable")
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        assert data["character_a"]["status"] == "fallback.api_error"
+
+    def test_server_mode_session_expired_returns_401(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """MudServerSessionExpiredError during translate → 401 HTTP response."""
+        mock = _mock_mud_client()
+        mock.translate.side_effect = MudServerSessionExpiredError("expired")
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            resp = client.post("/api/translate_chat", json=base_request)
+
+        assert resp.status_code == 401
+
+
+class TestStandaloneFallback:
+    """When mud client is not authenticated, standalone mode is used."""
+
+    def test_unauthenticated_falls_back_to_standalone(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """Unauthenticated client → standalone Ollama pipeline."""
+        mock = _mock_mud_client(authenticated=False)
+
+        with (
+            patch("app.main.get_mud_client", return_value=mock),
+            _patch_renderer("She peers cautiously about the chamber."),
+        ):
+            resp = client.post("/api/translate_chat", json=base_request)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["character_a"]["status"] == "success"
+        # The mock mud client's translate should NOT have been called
+        mock.translate.assert_not_called()
+
+    def test_no_world_selected_falls_back_to_standalone(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """Authenticated but no world selected → standalone pipeline."""
+        mock = _mock_mud_client(authenticated=True, world_id=None)
+
+        with (
+            patch("app.main.get_mud_client", return_value=mock),
+            _patch_renderer("ok"),
+        ):
+            resp = client.post("/api/translate_chat", json=base_request)
+
+        assert resp.status_code == 200
+        mock.translate.assert_not_called()
+
+    def test_none_client_uses_standalone(self, client: TestClient, base_request: dict) -> None:
+        """When get_mud_client returns None (standalone mode), Ollama pipeline runs."""
+        with (
+            patch("app.main.get_mud_client", return_value=None),
+            _patch_renderer("She nods."),
+        ):
+            resp = client.post("/api/translate_chat", json=base_request)
+
+        assert resp.status_code == 200
+        assert resp.json()["character_a"]["status"] == "success"

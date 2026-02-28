@@ -683,6 +683,13 @@
   <span id="spinner" class="spinner hidden" aria-label="Loading" role="status"></span>
 </footer>
 
+<!-- Server-injected data for JS modules -->
+<script>
+  window.__LAB_CONFIG__ = {
+    translationMode: "{{ translation_mode }}"
+  };
+</script>
+
 <!-- ES module entry point (type="module" is deferred by default) -->
 <script type="module" src="/static/mod-init.js"></script>
 </body>

@@ -19,6 +19,7 @@ Domain modules
 - ``app.relabel_policy``   – Policy table and score-to-label mapping.
 - ``app.save_formatting``  – Markdown builders and folder-name generator.
 - ``app.file_loaders``     – Example and prompt file loading/listing.
+- ``app.mud_server_client`` – Synchronous HTTP client for the mud server lab API.
 
 Run with:
     uvicorn app.main:app --reload --host 127.0.0.1 --port 8242
@@ -41,6 +42,12 @@ POST /api/save                 → save session state to a timestamped data/ sub
 GET  /api/save/{name}/export   → download a save package as a zip
 POST /api/import               → import a save package from a zip upload
 POST /api/import_chat          → import a chat save package from a zip upload
+POST /api/mud/login            → proxy login to mud server
+POST /api/mud/logout           → clear mud server session
+GET  /api/mud/session          → return auth status + translation mode
+GET  /api/mud/worlds           → proxy list worlds from mud server
+GET  /api/mud/world-config/{id}→ proxy world config from mud server
+POST /api/mud/select-world     → store selected world_id
 
 Architecture notes
 ------------------
@@ -104,6 +111,13 @@ from app.save_package import (
     validate_and_extract_zip,
     MAX_UPLOAD_SIZE,
 )
+from app.mud_server_client import (
+    MudServerClient,
+    MudServerConnectionError,
+    MudServerSessionExpiredError,
+    compute_translation_mode,
+    get_mud_client,
+)
 from app.schema import (
     AxisPayload,
     ChatImportResponse,
@@ -118,6 +132,10 @@ from app.schema import (
     GenerateResponse,
     ImportResponse,
     LogEntry,
+    MudLoginRequest,
+    MudLoginResponse,
+    MudSelectWorldRequest,
+    MudSessionResponse,
     SaveRequest,
     SaveResponse,
     TransformationMapRequest,
@@ -200,6 +218,7 @@ def index(request: Request) -> HTMLResponse:
             "available_models": available_models,
             "ollama_host": OLLAMA_HOST,
             "app_version": _APP_VERSION,
+            "translation_mode": compute_translation_mode(),
         },
     )
 
@@ -1106,6 +1125,107 @@ async def import_chat_save(file: UploadFile) -> ChatImportResponse:
 
 
 # -----------------------------------------------------------------------------
+# Mud server proxy endpoints  (/api/mud/*)
+# -----------------------------------------------------------------------------
+
+
+@app.post("/api/mud/login", response_model=MudLoginResponse, summary="Proxy login to mud server")
+def mud_login(req: MudLoginRequest) -> MudLoginResponse:
+    """Proxy login to the mud server and store the session in memory."""
+    client = get_mud_client()
+    if client is None:
+        return MudLoginResponse(
+            authenticated=False,
+            message="Standalone mode — no mud server configured.",
+        )
+    try:
+        data = client.login(req.username, req.password)
+    except MudServerConnectionError:
+        return MudLoginResponse(authenticated=False, message="Cannot connect to mud server.")
+    except httpx.HTTPStatusError as exc:
+        return MudLoginResponse(
+            authenticated=False,
+            message=f"Login failed: {exc.response.status_code}",
+        )
+
+    return MudLoginResponse(
+        authenticated=data.get("success", False),
+        role=data.get("role"),
+        message=data.get("message"),
+    )
+
+
+@app.post("/api/mud/logout", summary="Clear mud server session")
+def mud_logout() -> dict:
+    """Clear the mud server session from memory."""
+    client = get_mud_client()
+    if client is not None:
+        client.logout()
+    return {"success": True}
+
+
+@app.get("/api/mud/session", response_model=MudSessionResponse, summary="Auth status")
+def mud_session() -> MudSessionResponse:
+    """Return current mud server auth status and translation mode."""
+    client = get_mud_client()
+    if client is None:
+        return MudSessionResponse(
+            authenticated=False,
+            translation_mode=compute_translation_mode(),
+        )
+    status = client.session_status()
+    return MudSessionResponse(
+        authenticated=status["authenticated"],
+        role=status.get("role"),
+        translation_mode=compute_translation_mode(),
+    )
+
+
+@app.get("/api/mud/worlds", summary="List mud server worlds")
+def mud_worlds() -> dict:
+    """Proxy to ``GET /api/lab/worlds`` on the mud server."""
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    try:
+        return {"worlds": client.list_worlds()}
+    except MudServerSessionExpiredError:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        )
+    except MudServerConnectionError:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.")
+
+
+@app.get("/api/mud/world-config/{world_id}", summary="Get world config")
+def mud_world_config(world_id: str) -> dict:
+    """Proxy to ``GET /api/lab/world-config/{world_id}`` on the mud server."""
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    try:
+        return client.world_config(world_id)
+    except MudServerSessionExpiredError:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        )
+    except MudServerConnectionError:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.")
+
+
+@app.post("/api/mud/select-world", summary="Select world for translation")
+def mud_select_world(req: MudSelectWorldRequest) -> dict:
+    """Store the selected world_id in the MudServerClient's memory."""
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    client.select_world(req.world_id)
+    return {"success": True, "world_id": req.world_id}
+
+
+# -----------------------------------------------------------------------------
 # POST /api/translate_chat
 # -----------------------------------------------------------------------------
 
@@ -1117,25 +1237,19 @@ async def import_chat_save(file: UploadFile) -> ChatImportResponse:
 )
 def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
     """
-    Simulate the MUD server's OOC→IC translation layer for one or two
-    characters.
+    OOC→IC translation for one or two characters.
 
-    For each character supplied the endpoint:
+    When a mud server is configured and the lab is authenticated, translation
+    is delegated to the server's canonical pipeline (``_translate_via_server``).
+    Otherwise the lab runs its own Ollama pipeline (``_translate_standalone``).
 
-    1.  Builds a flat profile dict from the character's axes, filtered by
-        ``active_axes`` if provided.  A ``profile_summary`` placeholder is
-        generated from the active axes and injected alongside per-axis
-        ``{{name_label}}`` / ``{{name_score}}`` placeholders.
-    2.  Renders the system prompt template (``{{key}}`` substitution,
-        same pattern as mud_server renderer.py).
-    3.  Calls ``ChatRenderer`` → Ollama ``/api/chat``.
-    4.  Runs ``OutputValidator`` (strict or lenient, configurable).
-    5.  Computes IPC hashes (input, system prompt, output, IPC ID) via
-        ``pipeworks_ipc``.
+    Both paths produce the same ``ChatTranslationResponse`` shape so the
+    frontend is unaware of which path was taken.
 
     The ``status`` field in each result is one of:
+
     - ``"success"`` — IC text returned.
-    - ``"fallback.api_error"`` — Ollama unreachable / timed out.
+    - ``"fallback.api_error"`` — Ollama / server unreachable or timed out.
     - ``"fallback.validation_failed"`` — Output rejected by the validator.
 
     Parameters
@@ -1146,6 +1260,107 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
     -------
     ChatTranslationResponse with results for A and optionally B.
     """
+    mud_client = get_mud_client()
+    if mud_client is not None and mud_client.is_authenticated and mud_client.selected_world_id:
+        return _translate_via_server(req, mud_client)
+    return _translate_standalone(req)
+
+
+def _translate_via_server(
+    req: ChatTranslationRequest, mud_client: MudServerClient
+) -> ChatTranslationResponse:
+    """Delegate translation to the mud server's canonical pipeline.
+
+    For each character the mud server returns a ``LabTranslateResponse`` with
+    ``ic_text``, ``status``, ``rendered_prompt``, and ``model``.  IPC hashes
+    are recomputed locally from the returned ``rendered_prompt`` so the lab's
+    IPC trace is meaningful.
+    """
+
+    world_id = mud_client.selected_world_id
+    if world_id is None:  # pragma: no cover — caller guards this
+        raise HTTPException(status_code=400, detail="No world selected.")
+
+    def _server_translate_one(char) -> ChatTranslationResult:
+        # Build axes dict in {name: {label, score}} format for the server
+        axes_for_server = {
+            name: {"label": av.label, "score": av.score} for name, av in char.axes.items()
+        }
+
+        try:
+            data = mud_client.translate(
+                world_id=world_id,
+                axes=axes_for_server,
+                channel=char.channel,
+                ooc_message=char.ooc_message,
+                seed=req.seed,
+                temperature=req.temperature,
+            )
+        except MudServerSessionExpiredError:
+            raise HTTPException(
+                status_code=401,
+                detail="Mud server session expired. Please log in again.",
+            )
+        except MudServerConnectionError:
+            return ChatTranslationResult(
+                ic_text=None,
+                status="fallback.api_error",
+            )
+
+        ic_text = data.get("ic_text")
+        status = data.get("status", "fallback.api_error")
+        rendered_prompt = data.get("rendered_prompt", "")
+        model = data.get("model", req.model)
+
+        # Recompute IPC hashes from the server's rendered_prompt
+        sp_hash = compute_system_prompt_hash(rendered_prompt) if rendered_prompt else None
+
+        # Build the same input_dict shape as standalone for input_hash
+        active: set[str] = (
+            set(char.active_axes) if char.active_axes is not None else set(char.axes.keys())
+        )
+        input_dict = {
+            "axes": {k: v.model_dump() for k, v in char.axes.items() if k in active},
+            "ooc_message": char.ooc_message,
+            "channel": char.channel,
+        }
+        input_hash = compute_payload_hash(input_dict)
+
+        if ic_text is None or status != "success":
+            return ChatTranslationResult(
+                ic_text=None,
+                status=status,
+                input_hash=input_hash,
+                system_prompt_hash=sp_hash,
+            )
+
+        out_hash = compute_output_hash(ic_text)
+        ipc_id = compute_ipc_id(
+            input_hash=input_hash,
+            system_prompt_hash=sp_hash,
+            model=model,
+            temperature=req.temperature,
+            max_tokens=req.max_tokens,
+            seed=req.seed,
+        )
+
+        return ChatTranslationResult(
+            ic_text=ic_text,
+            status="success",
+            input_hash=input_hash,
+            system_prompt_hash=sp_hash,
+            output_hash=out_hash,
+            ipc_id=ipc_id,
+        )
+
+    result_a = _server_translate_one(req.character_a) if req.character_a is not None else None
+    result_b = _server_translate_one(req.character_b) if req.character_b is not None else None
+
+    return ChatTranslationResponse(character_a=result_a, character_b=result_b)
+
+
+def _translate_standalone(req: ChatTranslationRequest) -> ChatTranslationResponse:
+    """Run translation using the lab's own Ollama pipeline (original logic)."""
     from app.output_validator import OutputValidator
 
     ollama_base = (req.ollama_host or OLLAMA_HOST).rstrip("/")
