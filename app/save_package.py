@@ -55,11 +55,36 @@ _FILE_ROLES: dict[str, str] = {
     "char_b_payload.json": "char_b_payload",
 }
 
+_DYNAMIC_FILE_ROLE_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Additional prompt markdown files written for chat sessions when the
+    # system prompt changes mid-conversation.
+    (re.compile(r"system_prompt_\d{3}\.md"), "system_prompt"),
+)
+
 # Security limits for zip import.  These prevent zip bombs and excessively
 # large uploads from consuming server resources.
 MAX_FILE_SIZE: int = 5_242_880  # 5 MB per individual file inside the zip
-MAX_FILE_COUNT: int = 20  # maximum number of entries allowed in the zip
+MAX_FILE_COUNT: int = 100  # maximum number of entries allowed in the zip
 MAX_UPLOAD_SIZE: int = 10_485_760  # 10 MB total upload size
+
+
+def _file_role(name: str) -> str | None:
+    """
+    Return the manifest/import role for a save-package filename.
+
+    Exact names are looked up first. Dynamic prompt-history filenames are
+    accepted via a small set of explicit regex patterns so chat save packages
+    can contain one markdown file per distinct prompt used in a conversation.
+    """
+
+    if name in _FILE_ROLES:
+        return _FILE_ROLES[name]
+
+    for pattern, role in _DYNAMIC_FILE_ROLE_PATTERNS:
+        if pattern.fullmatch(name):
+            return role
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -117,9 +142,10 @@ def build_manifest(save_dir: Path, files_written: list[str]) -> dict:
 
     for filename in files_written:
         file_path = save_dir / filename
+        role = _file_role(filename)
         files_manifest[filename] = {
             "sha256": _compute_file_sha256(file_path),
-            "role": _FILE_ROLES.get(filename, "unknown"),
+            "role": role or "unknown",
             "size_bytes": file_path.stat().st_size,
         }
 
@@ -166,7 +192,7 @@ def create_zip_archive(save_dir: Path) -> bytes:
         for child in sorted(save_dir.iterdir()):
             # Only include files with known roles — skip directories and
             # unexpected files (e.g. .DS_Store, __pycache__).
-            if child.is_file() and child.name in _FILE_ROLES:
+            if child.is_file() and _file_role(child.name) is not None:
                 zf.write(child, arcname=child.name)
 
     return buffer.getvalue()
@@ -237,7 +263,7 @@ def validate_and_extract_zip(
                 )
 
             # -- Security: only accept known save-package filenames ------ #
-            if name not in _FILE_ROLES:
+            if _file_role(name) is None:
                 warnings.append(f"Skipped unknown file '{name}'.")
                 continue
 

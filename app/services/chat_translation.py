@@ -356,12 +356,47 @@ def save_chat(req: ChatSaveRequest, data_dir: Path, prompt_root: Path) -> ChatSa
             None,
         )
 
+    # Preserve every distinct prompt used during the live conversation so a
+    # saved session can be audited even when the prompt template changed
+    # mid-conversation.
+    prompt_history_by_key: dict[tuple[str | None, str], dict] = {}
+    for index, entry in enumerate(entries_raw, start=1):
+        prompt_text = entry.get("system_prompt")
+        if not prompt_text:
+            continue
+
+        prompt_hash = entry.get("system_prompt_hash")
+        if prompt_hash is None:
+            prompt_hash = compute_system_prompt_hash(prompt_text)
+
+        key = (prompt_hash, prompt_text)
+        history_row = prompt_history_by_key.setdefault(
+            key,
+            {
+                "system_prompt_hash": prompt_hash,
+                "system_prompt": prompt_text,
+                "entry_indices": [],
+            },
+        )
+        history_row["entry_indices"].append(index)
+
+    system_prompt_history = list(prompt_history_by_key.values())
+    for index, history_row in enumerate(system_prompt_history, start=1):
+        filename = f"system_prompt_{index:03d}.md"
+        (save_dir / filename).write_text(
+            build_system_prompt_md(history_row["system_prompt"], folder_name),
+            encoding="utf-8",
+        )
+        files_written.append(filename)
+        history_row["filename"] = filename
+
     per_entry_hashes = [
         {
             "index": i + 1,
             "ch": entry["ch"],
             "input_hash": entry.get("input_hash"),
             "system_prompt_hash": entry.get("system_prompt_hash"),
+            "system_prompt": entry.get("system_prompt"),
             "output_hash": entry.get("output_hash"),
             "ipc_id": entry.get("ipc_id"),
             "status": entry.get("status", "success"),
@@ -383,6 +418,7 @@ def save_chat(req: ChatSaveRequest, data_dir: Path, prompt_root: Path) -> ChatSa
         "has_character_a": req.character_a is not None,
         "has_character_b": req.character_b is not None,
         "system_prompt_hash": sp_hash,
+        "system_prompt_history": system_prompt_history,
         "log_hash": log_hash[:16],
         "per_entry_hashes": per_entry_hashes,
     }

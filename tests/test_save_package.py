@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 
 from app.save_package import (
+    MAX_FILE_COUNT,
     _compute_file_sha256,
     _validate_checksums,
     build_manifest,
@@ -231,6 +232,7 @@ class TestValidateAndExtractZip:
         """Valid zip with manifest: all files extracted, no warnings, checksums pass."""
         payload_bytes = b'{"axes": {}}'
         prompt_bytes = b"# System Prompt\n\n```text\nTest\n```\n"
+        prompt_hist_bytes = b"# System Prompt\n\n```text\nTest 2\n```\n"
 
         # Build a metadata.json that includes a manifest with correct checksums
         manifest = {
@@ -245,6 +247,11 @@ class TestValidateAndExtractZip:
                     "sha256": hashlib.sha256(prompt_bytes).hexdigest(),
                     "role": "system_prompt",
                     "size_bytes": len(prompt_bytes),
+                },
+                "system_prompt_001.md": {
+                    "sha256": hashlib.sha256(prompt_hist_bytes).hexdigest(),
+                    "role": "system_prompt",
+                    "size_bytes": len(prompt_hist_bytes),
                 },
                 "metadata.json": {
                     "sha256": None,
@@ -261,6 +268,7 @@ class TestValidateAndExtractZip:
                 "metadata.json": metadata_bytes,
                 "payload.json": payload_bytes,
                 "system_prompt.md": prompt_bytes,
+                "system_prompt_001.md": prompt_hist_bytes,
             }
         )
 
@@ -268,6 +276,7 @@ class TestValidateAndExtractZip:
         assert "metadata.json" in files
         assert "payload.json" in files
         assert "system_prompt.md" in files
+        assert "system_prompt_001.md" in files
         assert len(warnings) == 0
 
     def test_happy_path_without_manifest(self) -> None:
@@ -341,9 +350,10 @@ class TestValidateAndExtractZip:
 
     def test_too_many_files_raises(self) -> None:
         """Zips with more than MAX_FILE_COUNT entries must raise ValueError."""
-        # Create a zip with 21 entries (all with names that won't match
-        # _FILE_ROLES, but the count check happens before name filtering)
-        many_files = {f"file_{i}.txt": b"data" for i in range(21)}
+        # Create a zip with one more entry than the configured hard limit. The
+        # names do not need to be recognized save-package files because the
+        # count check happens before role filtering.
+        many_files = {f"file_{i}.txt": b"data" for i in range(MAX_FILE_COUNT + 1)}
         zip_bytes = _make_zip(many_files)
         with pytest.raises(ValueError, match="exceeding the maximum"):
             validate_and_extract_zip(zip_bytes)

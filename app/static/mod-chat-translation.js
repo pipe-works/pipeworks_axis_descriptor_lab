@@ -26,6 +26,7 @@ import { chatState, charDom } from "./mod-chat-state.js";
 import { buildChatSliders, setJsonBadge, syncJsonTextarea } from "./mod-chat-sliders.js";
 import {
   checkSession,
+  getCurrentSystemPromptText,
   getEffectiveSystemPrompt,
   handleSessionExpired,
   isServerMode,
@@ -396,6 +397,8 @@ async function sendForChar(ch) {
   }
 
   const channel = charDom(ch).channelSelect.value;
+  const requestSystemPrompt = getEffectiveSystemPrompt();
+  const currentSystemPrompt = getCurrentSystemPromptText();
   const charInput = {
     axes,
     ooc_message: oocMessage,
@@ -412,7 +415,7 @@ async function sendForChar(ch) {
     seed: resolveChatSeed(),
     strict_mode: dom.chatStrictMode.checked,
     max_output_chars: parseInt(dom.chatMaxChars.value, 10),
-    system_prompt: getEffectiveSystemPrompt(),
+    system_prompt: requestSystemPrompt,
     world_id: chatState.worldId || dom.chatWorldSelect?.value || null,
     ollama_host: getChatOllamaHostForRequest(),
   };
@@ -472,6 +475,7 @@ async function sendForChar(ch) {
         result.input_hash ?? null,
         result.system_prompt_hash ?? null,
         result.output_hash ?? null,
+        currentSystemPrompt,
       );
 
       // Re-render the opposite character's IPC table when both hashes are now
@@ -505,7 +509,22 @@ async function sendForChar(ch) {
       : err.message;
 
     outputBox.innerHTML = `<span style="color:var(--col-err)">Error: ${msg}</span>`;
-    appendGameEntry(ch, channel, oocMessage, null, model, "error", msg, sentAt, durationMs);
+    appendGameEntry(
+      ch,
+      channel,
+      oocMessage,
+      null,
+      model,
+      "error",
+      msg,
+      sentAt,
+      durationMs,
+      null,
+      null,
+      null,
+      null,
+      currentSystemPrompt,
+    );
     setStatus(`Send error (${ch.toUpperCase()}): ${msg}`);
   } finally {
     clearTimeout(timer);

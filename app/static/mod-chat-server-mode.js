@@ -339,13 +339,53 @@ function updateServerPromptBadge() {
   badge.classList.toggle("badge--muted", !modified);
 }
 
+/**
+ * Return the prompt text currently visible in the chat page UI.
+ *
+ * In server mode this is the server prompt textarea content. In standalone
+ * mode this is the local IC prompt textarea content. The return value is the
+ * literal prompt text currently shown to the user, regardless of whether it
+ * will be sent as an explicit override or resolved server-side as the active
+ * default template.
+ *
+ * @returns {string|null}
+ */
+export function getCurrentSystemPromptText() {
+  if (isServerMode() && chatState.authenticated) {
+    return dom.chatServerPromptText?.value.trim() || null;
+  }
+  return dom.chatSystemPrompt.value.trim() || null;
+}
+
+/**
+ * Return the prompt override that should be sent with the next request.
+ *
+ * Server mode intentionally distinguishes between:
+ * - the active world prompt selected on the server, which does not need an
+ *   override when unmodified, and
+ * - a different prompt file selected locally in developer mode, which must be
+ *   sent even if the textarea is still identical to that file's content.
+ *
+ * @returns {string|null}
+ */
 export function getEffectiveSystemPrompt() {
   if (isServerMode() && chatState.authenticated) {
     const textarea = dom.chatServerPromptText;
     if (!textarea) return null;
     const text = textarea.value;
+    const trimmed = text.trim() || null;
+    const selectedFilename = dom.chatServerPromptSelect?.value || null;
+    const activeFilename = chatState.worldPrompts.find((entry) => entry.is_active)?.filename || null;
+
+    // Selecting a different prompt file in developer mode should immediately
+    // affect subsequent translations, even when the textarea is otherwise
+    // unmodified relative to that file.
+    if (selectedFilename && selectedFilename !== activeFilename) {
+      return trimmed;
+    }
+
     if (text === chatState.serverPromptOriginal) return null;
-    return text.trim() || null;
+    return trimmed;
   }
   return dom.chatSystemPrompt.value.trim() || null;
 }
