@@ -508,7 +508,7 @@ class TestGetSystemPromptEndpoint:
 class TestSaveEndpoint:
     """Tests for the POST /api/save endpoint.
 
-    All tests use ``tmp_path`` + ``patch("app.main._DATA_DIR", tmp_path)``
+    All tests use ``tmp_path`` + ``patch("app.routes_save._DATA_DIR", tmp_path)``
     to isolate file I/O and avoid polluting the real ``data/`` directory.
     """
 
@@ -520,7 +520,7 @@ class TestSaveEndpoint:
     ) -> None:
         """Happy path: saves metadata.json, payload.json, system_prompt.md,
         and output.md when output is provided."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         assert resp.status_code == 200
@@ -549,7 +549,7 @@ class TestSaveEndpoint:
     ) -> None:
         """output.md must not be created when output is None."""
         body = {**save_request_body, "output": None}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -564,7 +564,7 @@ class TestSaveEndpoint:
         tmp_path: Path,
     ) -> None:
         """baseline.md must not be created when baseline is None."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         data = resp.json()
@@ -580,7 +580,7 @@ class TestSaveEndpoint:
     ) -> None:
         """baseline.md must be created and contain the text when provided."""
         body = {**save_request_body, "baseline": "The old description."}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -599,7 +599,7 @@ class TestSaveEndpoint:
         """metadata.json must include all provenance fields including IPC hashes."""
         import json as _json
 
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         data = resp.json()
@@ -631,7 +631,7 @@ class TestSaveEndpoint:
         """payload.json must contain the full payload with all axes."""
         import json as _json
 
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         data = resp.json()
@@ -653,7 +653,7 @@ class TestSaveEndpoint:
         """Folder name must match YYYYMMDD_HHMMSS_<8 hex chars> format."""
         import re
 
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         folder_name = resp.json()["folder_name"]
@@ -672,7 +672,7 @@ class TestSaveEndpoint:
             **save_request_body,
             "system_prompt": "Custom test prompt text.",
         }
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -689,7 +689,7 @@ class TestSaveEndpoint:
     ) -> None:
         """files list in response must be sorted alphabetically."""
         body = {**save_request_body, "baseline": "A baseline."}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         files = resp.json()["files"]
@@ -704,7 +704,7 @@ class TestSaveEndpoint:
         """When both output and baseline are set, all 6 files must exist
         including delta.json from the signal isolation pipeline."""
         body = {**save_request_body, "baseline": "Baseline text."}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -719,7 +719,7 @@ class TestSaveEndpoint:
 
     def test_invalid_payload_returns_422(self, client: TestClient, tmp_path: Path) -> None:
         """Malformed request body must return 422 Unprocessable Entity."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json={"payload": "not a payload"})
         assert resp.status_code == 422
 
@@ -731,7 +731,7 @@ class TestSaveEndpoint:
     ) -> None:
         """An empty system_prompt string must be rejected (min_length=1)."""
         body = {**save_request_body, "system_prompt": ""}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
         assert resp.status_code == 422
 
@@ -742,7 +742,7 @@ class TestSaveEndpoint:
         tmp_path: Path,
     ) -> None:
         """output.md must contain the actual generated text."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         data = resp.json()
@@ -758,7 +758,7 @@ class TestSaveEndpoint:
     ) -> None:
         """An OSError during file I/O must surface as HTTP 500."""
         with (
-            patch("app.main._DATA_DIR", tmp_path),
+            patch("app.routes_save._DATA_DIR", tmp_path),
             patch("pathlib.Path.write_text", side_effect=OSError("disk full")),
         ):
             resp = client.post("/api/save", json=save_request_body)
@@ -773,7 +773,7 @@ class TestSaveEndpoint:
         tmp_path: Path,
     ) -> None:
         """SaveResponse must include system_prompt_hash, output_hash, and ipc_id."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         assert resp.status_code == 200
@@ -793,7 +793,7 @@ class TestSaveEndpoint:
     ) -> None:
         """When output is None, output_hash and ipc_id must be null."""
         body = {**save_request_body, "output": None}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         assert resp.status_code == 200
@@ -819,7 +819,7 @@ class TestSaveEndpoint:
             "output": "A dark figure lurks beyond the crumbling gate.",
             "baseline": "The weathered figure stands near the threshold.",
         }
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -851,7 +851,7 @@ class TestSaveEndpoint:
             "output": "The zebra and antelope walk slowly near the river.",
             "baseline": "The monkey and tiger swim quickly across the bridge.",
         }
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         save_dir = tmp_path / resp.json()["folder_name"]
@@ -867,7 +867,7 @@ class TestSaveEndpoint:
     ) -> None:
         """delta.json must not be created when baseline is None."""
         body = {**save_request_body, "baseline": None}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -883,7 +883,7 @@ class TestSaveEndpoint:
     ) -> None:
         """delta.json must not be created when output is None."""
         body = {**save_request_body, "output": None, "baseline": "Some baseline."}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -902,12 +902,12 @@ class TestSaveEndpoint:
         the provenance chain."""
         # Save without baseline (no delta.json)
         body_no_baseline = {**save_request_body, "baseline": None}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             r1 = client.post("/api/save", json=body_no_baseline)
 
         # Save with baseline (delta.json written)
         body_with_baseline = {**save_request_body, "baseline": "Baseline text."}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             r2 = client.post("/api/save", json=body_with_baseline)
 
         d1 = r1.json()
@@ -1136,7 +1136,7 @@ class TestSaveManifest:
         tmp_path: Path,
     ) -> None:
         """metadata.json must include a 'manifest' section after saving."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         data = resp.json()
@@ -1154,7 +1154,7 @@ class TestSaveManifest:
         tmp_path: Path,
     ) -> None:
         """Manifest version must be 1."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         data = resp.json()
@@ -1171,7 +1171,7 @@ class TestSaveManifest:
     ) -> None:
         """Every file in the response's files list must appear in the manifest."""
         body = {**save_request_body, "baseline": "Baseline text."}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -1192,7 +1192,7 @@ class TestSaveManifest:
         import hashlib
 
         body = {**save_request_body, "baseline": "Baseline text."}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -1217,7 +1217,7 @@ class TestSaveManifest:
         tmp_path: Path,
     ) -> None:
         """metadata.json's manifest entry must have sha256=null (cannot hash itself)."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         data = resp.json()
@@ -1240,7 +1240,7 @@ class TestSaveManifest:
             "system_prompt.md": "system_prompt",
             "output.md": "output",
         }
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         data = resp.json()
@@ -1258,7 +1258,7 @@ class TestSaveManifest:
         tmp_path: Path,
     ) -> None:
         """size_bytes in manifest entries must match actual file sizes on disk."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=save_request_body)
 
         data = resp.json()
@@ -1296,7 +1296,7 @@ class TestExportEndpoint:
         """Save a package, export as zip, verify it's a valid zip with expected files."""
         import zipfile as _zipfile
 
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             save_resp = client.post("/api/save", json=save_request_body)
             folder_name = save_resp.json()["folder_name"]
 
@@ -1323,7 +1323,7 @@ class TestExportEndpoint:
         """File contents inside the exported zip must match the originals on disk."""
         import zipfile as _zipfile
 
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             save_resp = client.post("/api/save", json=save_request_body)
             folder_name = save_resp.json()["folder_name"]
 
@@ -1340,7 +1340,7 @@ class TestExportEndpoint:
         tmp_path: Path,
     ) -> None:
         """Exporting a non-existent folder must return 404."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.get("/api/save/20260219_120000_deadbeef/export")
         assert resp.status_code == 404
 
@@ -1350,7 +1350,7 @@ class TestExportEndpoint:
         tmp_path: Path,
     ) -> None:
         """A folder name that doesn't match the expected pattern must return 400."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.get("/api/save/not_a_valid_folder_name/export")
         assert resp.status_code == 400
 
@@ -1361,7 +1361,7 @@ class TestExportEndpoint:
         tmp_path: Path,
     ) -> None:
         """The Content-Disposition header must include the folder name as the filename."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             save_resp = client.post("/api/save", json=save_request_body)
             folder_name = save_resp.json()["folder_name"]
 
@@ -1389,7 +1389,7 @@ class TestImportEndpoint:
         tmp_path: Path,
     ) -> None:
         """Full round-trip: save → export → import → verify restored state."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             # 1. Save
             save_resp = client.post("/api/save", json=save_request_body)
             folder_name = save_resp.json()["folder_name"]
@@ -1430,7 +1430,7 @@ class TestImportEndpoint:
     ) -> None:
         """When baseline was saved, import must restore it."""
         body = {**save_request_body, "baseline": "The old goblin shuffles forward."}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             save_resp = client.post("/api/save", json=body)
             folder_name = save_resp.json()["folder_name"]
             export_resp = client.get(f"/api/save/{folder_name}/export")
@@ -1486,7 +1486,7 @@ class TestImportEndpoint:
         """A zip with tampered file contents must fail checksum validation."""
         import zipfile as _zipfile
 
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             save_resp = client.post("/api/save", json=save_request_body)
             folder_name = save_resp.json()["folder_name"]
             export_resp = client.get(f"/api/save/{folder_name}/export")
@@ -1544,7 +1544,7 @@ class TestImportEndpoint:
         tmp_path: Path,
     ) -> None:
         """The files list in ImportResponse must be sorted alphabetically."""
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             save_resp = client.post("/api/save", json=save_request_body)
             folder_name = save_resp.json()["folder_name"]
             export_resp = client.get(f"/api/save/{folder_name}/export")
@@ -1675,7 +1675,7 @@ class TestTransformationMapSave:
                 {"removed": "stands", "added": "waits"},
             ],
         }
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -1697,7 +1697,7 @@ class TestTransformationMapSave:
     ) -> None:
         """transformation_map.json must not be created when field is absent."""
         body = {**save_request_body}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()
@@ -1714,7 +1714,7 @@ class TestTransformationMapSave:
     ) -> None:
         """transformation_map.json must not be created when rows list is empty."""
         body = {**save_request_body, "transformation_map": []}
-        with patch("app.main._DATA_DIR", tmp_path):
+        with patch("app.routes_save._DATA_DIR", tmp_path):
             resp = client.post("/api/save", json=body)
 
         data = resp.json()

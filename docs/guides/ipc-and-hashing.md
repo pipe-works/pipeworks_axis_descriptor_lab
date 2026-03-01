@@ -528,7 +528,7 @@ All four fields are `str | None` with `default=None` on the schema,
 but the generate endpoint always populates them.
 
 *Implementation: `app/main.py`, generate route handler.
-Schema: `app/schema.py`, `GenerateResponse` class.*
+Schema: `app/schema/generate.py`, `GenerateResponse` class.*
 
 ### `/api/log` -- Backward-Compatible IPC
 
@@ -549,7 +549,7 @@ JSONL records written before IPC was implemented can still be
 deserialised without error.
 
 *Implementation: `app/main.py`, log_run route handler.
-Schema: `app/schema.py`, `LogEntry` class.*
+Schema: `app/schema/generate.py`, `LogEntry` class.*
 
 ### `/api/save` -- Persistent IPC Record
 
@@ -591,8 +591,8 @@ However, `output_hash` and `ipc_id` are only computed when the user
 has generated output before saving.  Without output, the provenance
 chain is incomplete, and both fields are `null`.
 
-*Implementation: `app/main.py`, save route handler.
-Schema: `app/schema.py`, `SaveRequest` and `SaveResponse` classes.*
+*Implementation: `app/routes_save.py`, save route handler.
+Schema: `app/schema/save.py`, `SaveRequest` and `SaveResponse` classes.*
 
 ### Frontend Display
 
@@ -735,7 +735,7 @@ avoid meaningless diffs."*
 
 `app/hashing.py` imports only `hashlib`, `json`, and `re` from the
 standard library.  It does not import Pydantic models from
-`app/schema.py`.  This is intentional: it keeps the module usable from
+`app/schema/`.  This is intentional: it keeps the module usable from
 any context (tests, scripts, future tools) without pulling in the web
 framework's dependencies.  Callers convert Pydantic models to plain
 dicts before calling `compute_payload_hash`.
