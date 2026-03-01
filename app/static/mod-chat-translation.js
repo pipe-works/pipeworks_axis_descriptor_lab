@@ -1238,10 +1238,23 @@ async function fetchWorldPrompts(worldId) {
  *
  * Auto-selects the active prompt (the one matching the world's
  * `prompt_template_path`) and loads its content into the textarea.
+ *
+ * If the user has modified the textarea (content differs from
+ * `serverPromptOriginal`), the current textarea content and dropdown
+ * selection are preserved — modifications persist until the user
+ * explicitly clicks Reset or selects a different prompt.
  */
 function populateServerPromptSelect() {
   const sel = dom.chatServerPromptSelect;
   if (!sel) return;
+
+  // Detect whether the user has unsaved modifications before rebuilding.
+  const textarea = dom.chatServerPromptText;
+  const prevSelection = sel.value;
+  const hasModifications = textarea
+    && chatState.serverPromptOriginal !== ""
+    && textarea.value !== chatState.serverPromptOriginal;
+
   sel.innerHTML = "";
   for (const p of chatState.worldPrompts) {
     const opt = document.createElement("option");
@@ -1249,7 +1262,24 @@ function populateServerPromptSelect() {
     opt.textContent = p.is_active ? `${p.filename} (active)` : p.filename;
     sel.appendChild(opt);
   }
-  // Auto-select the active prompt, or the first one.
+
+  // If the user has modifications and the previously selected prompt still
+  // exists in the new list, restore the dropdown selection and keep the
+  // textarea content untouched.
+  if (hasModifications && prevSelection) {
+    const stillExists = chatState.worldPrompts.find(p => p.filename === prevSelection);
+    if (stillExists) {
+      sel.value = prevSelection;
+      // Update serverPromptOriginal to the (possibly refreshed) file content
+      // so the modified badge stays accurate relative to the server's version.
+      chatState.serverPromptOriginal = stillExists.content;
+      updateServerPromptBadge();
+      return;
+    }
+  }
+
+  // No modifications (or previous selection no longer available) — load
+  // the active prompt, or the first one.
   const active = chatState.worldPrompts.find(p => p.is_active);
   if (active) {
     sel.value = active.filename;
