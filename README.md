@@ -156,8 +156,23 @@ axis_descriptor_lab/
 ├─ pyproject.toml
 ├─ .env.example
 ├─ app/
-│  ├─ main.py                # FastAPI app — thin routing layer
-│  ├─ schema.py              # Pydantic v2 models
+│  ├─ main.py                # FastAPI app bootstrap + router mounting
+│  ├─ config.py              # Shared app paths, defaults, and version metadata
+│  ├─ routes_chat.py         # Chat translation + save endpoints
+│  ├─ routes_mud.py          # /api/mud/* proxy endpoints
+│  ├─ routes_save.py         # Save/export/system-prompt endpoints
+│  ├─ schema/                # Pydantic v2 models split by domain
+│  │  ├─ __init__.py         # Backward-compatible re-exports for app.schema
+│  │  ├─ axis.py
+│  │  ├─ generate.py
+│  │  ├─ save.py
+│  │  ├─ analysis.py
+│  │  ├─ chat.py
+│  │  └─ mud.py
+│  ├─ services/
+│  │  ├─ __init__.py
+│  │  ├─ chat_translation.py # Chat translation orchestration helpers
+│  │  └─ save_service.py     # Save/export orchestration helpers
 │  ├─ chat_renderer.py       # Unified Ollama HTTP client (/api/generate + /api/chat)
 │  ├─ signal_isolation.py    # NLP pipeline for content-word delta
 │  ├─ transformation_map.py  # Clause-level sentence alignment + diffing
@@ -200,7 +215,12 @@ axis_descriptor_lab/
 │  │  ├─ mod-axis-actions.js    # Relabel + randomise
 │  │  ├─ mod-persistence.js     # Save / export / import
 │  │  ├─ mod-navigation.js      # Page switching (Char Description ↔ Chat Translation)
-│  │  ├─ mod-chat-translation.js # Chat Translation page — all state + API interaction
+│  │  ├─ mod-chat-state.js      # Chat Translation page state + DOM bundle
+│  │  ├─ mod-chat-server-mode.js # Mud-server auth/world/prompt behaviour
+│  │  ├─ mod-chat-sliders.js    # Chat Translation slider + JSON sync helpers
+│  │  ├─ mod-chat-game-log.js   # Game-log rendering, clipboard, and save helpers
+│  │  ├─ mod-chat-import.js     # Chat save import + restore helpers
+│  │  ├─ mod-chat-translation.js # Chat Translation page controller/orchestration
 │  │  ├─ mod-indicator-modal.js # Indicator tooltip + click modal
 │  │  ├─ mod-tooltip.js         # Tooltip system
 │  │  └─ mod-theme.js           # Dark/light theme toggle
