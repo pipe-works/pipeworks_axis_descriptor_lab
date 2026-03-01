@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.5.0...axis-descriptor-lab-v0.6.0) (2026-03-01)
+
+
+### Features
+
+* add Chat Translation server-mode UI (Phase 3) ([#57](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/57)) ([e2865a2](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/e2865a25912c938a479d8a35af451588ebf27805))
+* add mud server proxy client for chat translation (Phase 2) ([5d89d95](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/5d89d9538835eb6084bc2a4125eb02c2818d85ae))
+* add mud server proxy client for chat translation (Phase 2) ([003a2e5](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/003a2e5a0314f397a37d4808c83218c22f00764f))
+
+
+### Bug Fixes
+
+* chat translation server-mode connection handling and diagnostics ([29d4015](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/29d40156be05ba83f544a18abbd372751a3aaeea))
+* chat translation server-mode connection handling and diagnostics ([59b6fb8](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/59b6fb8d304f885f3a6237da5242efc36931158d))
+
 ## [0.5.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.4.0...axis-descriptor-lab-v0.5.0) (2026-02-27)
 
 
