@@ -124,6 +124,19 @@ const chatState = {
   b: { payload: null, originalAxes: null, activeAxes: null },
   busy: false,
   liveMode: false,
+  /**
+   * When true, the Ollama host URL from the settings input is included
+   * in translation request bodies as ``ollama_host``.  When false
+   * (default), requests omit the field and the server uses its
+   * configured ``OLLAMA_HOST`` environment variable.
+   *
+   * This is a development feature for routing requests to a remote
+   * Ollama instance on a different network without changing the
+   * server's environment.
+   *
+   * @type {boolean}
+   */
+  useAddress: false,
   logSeq: 0,
   // ── Server-mode state ──────────────────────────────────────────────── //
   /** @type {"standalone"|"server-prod"|"server-local"} */
@@ -676,6 +689,45 @@ function getChatModelName() {
  */
 function getChatOllamaHost() {
   return dom.chatOllamaHost.value.trim();
+}
+
+/**
+ * Return the Ollama host URL for inclusion in translation request bodies.
+ *
+ * When the "Use address" checkbox is checked (``chatState.useAddress``
+ * is true), returns the value of the Ollama host input field — or
+ * ``null`` if the field is blank.  When the checkbox is unchecked,
+ * always returns ``null`` so the server falls back to its configured
+ * ``OLLAMA_HOST`` environment variable.
+ *
+ * This is intentionally separate from {@link getChatOllamaHost} which
+ * is used by ``refreshChatModels()`` and always returns the raw input
+ * value regardless of the checkbox state — model list refresh should
+ * work even when "Use address" is unchecked.
+ *
+ * @returns {string|null} The Ollama server URL to send in the request
+ *     body, or ``null`` to use the server default.
+ */
+function getChatOllamaHostForRequest() {
+  if (!chatState.useAddress) return null;
+  return getChatOllamaHost() || null;
+}
+
+/**
+ * Synchronise the visual state of the Ollama host input with the
+ * "Use address" checkbox.
+ *
+ * When the checkbox is unchecked, the host input receives the
+ * ``.input--dimmed`` CSS class, reducing its opacity to signal that
+ * its value will not be sent with translation requests.  The input
+ * remains fully interactive so the user can still change the URL for
+ * model-list refresh.
+ *
+ * When checked, the ``.input--dimmed`` class is removed and the input
+ * appears at full opacity.
+ */
+function syncUseAddressUI() {
+  dom.chatOllamaHost.classList.toggle("input--dimmed", !chatState.useAddress);
 }
 
 /**
@@ -1535,6 +1587,7 @@ async function sendForChar(ch) {
     max_output_chars: parseInt(dom.chatMaxChars.value, 10),
     system_prompt: getEffectiveSystemPrompt(),
     world_id: chatState.worldId || dom.chatWorldSelect?.value || null,
+    ollama_host: getChatOllamaHostForRequest(),
   };
 
   chatState.busy = true;
@@ -1735,6 +1788,7 @@ export async function translate() {
     max_output_chars,
     system_prompt,
     world_id: chatState.worldId || dom.chatWorldSelect?.value || null,
+    ollama_host: getChatOllamaHostForRequest(),
   };
 
   // ── Pre-request UI state ─────────────────────────────────────────────── //
@@ -2178,6 +2232,9 @@ export async function initChatTranslation() {
   chatState.liveMode = dom.chatLiveToggle.checked;
   updateLiveModeUI();
 
+  // Sync "Use address" visual state — defaults to unchecked (dimmed).
+  syncUseAddressUI();
+
   // In server mode, check for an existing session.
   if (isServerMode()) {
     await checkSession();
@@ -2272,6 +2329,16 @@ export function wireChatTranslationEvents() {
     "input",
     debounce(() => refreshChatModels(), 600)
   );
+
+  // ── "Use address" toggle ─────────────────────────────────────────── //
+  // Controls whether the Ollama host input value is sent in translation
+  // request bodies.  When unchecked (default), the server uses its own
+  // OLLAMA_HOST.  The host input is dimmed when unchecked to visually
+  // reinforce that its value is not being used for translations.
+  dom.chatUseAddress.addEventListener("change", () => {
+    chatState.useAddress = dom.chatUseAddress.checked;
+    syncUseAddressUI();
+  });
 
   // ── IC prompt loader ──────────────────────────────────────────────── //
   dom.chatBtnLoadPrompt.addEventListener("click", async () => {

@@ -908,3 +908,68 @@ class TestModelField:
         ipc_id2 = data2["character_a"]["ipc_id"]
         # Different model → different IPC ID
         assert ipc_id != ipc_id2
+
+
+# ---------------------------------------------------------------------------
+# Ollama host override
+# ---------------------------------------------------------------------------
+
+
+class TestOllamaHostOverride:
+    """Verify that the optional ``ollama_host`` field is accepted and forwarded.
+
+    The ``ChatTranslationRequest`` schema exposes ``ollama_host: str | None``
+    (default None).  When provided, ``_translate_standalone`` passes it to
+    ``ChatRenderer(host=...)`` instead of the server's default ``OLLAMA_HOST``
+    environment variable.  These tests confirm:
+
+    1. The schema accepts ``ollama_host`` without returning 422.
+    2. An explicit ``null`` value is accepted (server uses its default).
+    3. A custom host string is forwarded to ``ChatRenderer.__init__``.
+    """
+
+    def test_request_accepts_ollama_host(self, client: TestClient, base_request: dict) -> None:
+        """``ChatTranslationRequest`` with a non-null ``ollama_host`` does not 422."""
+        base_request["ollama_host"] = "http://remote-ollama:11434"
+        with _patch_renderer("She peers about."):
+            resp = client.post("/api/translate_chat", json=base_request)
+        assert resp.status_code == 200
+
+    def test_ollama_host_none_accepted(self, client: TestClient, base_request: dict) -> None:
+        """Explicit ``null`` ``ollama_host`` does not error."""
+        base_request["ollama_host"] = None
+        with _patch_renderer("She peers about."):
+            resp = client.post("/api/translate_chat", json=base_request)
+        assert resp.status_code == 200
+
+    def test_custom_host_passed_to_renderer(self, client: TestClient, base_request: dict) -> None:
+        """When ``ollama_host`` is provided, ``ChatRenderer`` receives it."""
+        base_request["ollama_host"] = "http://remote:11434"
+        with patch("app.main.ChatRenderer") as MockRenderer:
+            MockRenderer.return_value.render.return_value = "She looks around."
+            client.post("/api/translate_chat", json=base_request)
+            # ChatRenderer was instantiated with the custom host.
+            init_kwargs = MockRenderer.call_args.kwargs
+            assert init_kwargs["host"] == "http://remote:11434"
+
+    def test_ollama_host_bypasses_server_mode(self, client: TestClient, base_request: dict) -> None:
+        """When ``ollama_host`` is set, server mode is bypassed even if authenticated.
+
+        The "Use address" toggle in the frontend sends ``ollama_host`` to force
+        standalone translation via the specified Ollama instance, skipping the
+        mud server pipeline entirely.
+        """
+        base_request["ollama_host"] = "http://remote:11434"
+        mock_mud = MagicMock()
+        mock_mud.is_authenticated = True
+        mock_mud.selected_world_id = "test-world"
+
+        with patch("app.main.get_mud_client", return_value=mock_mud):
+            with patch("app.main.ChatRenderer") as MockRenderer:
+                MockRenderer.return_value.render.return_value = "Direct Ollama."
+                resp = client.post("/api/translate_chat", json=base_request)
+
+        assert resp.status_code == 200
+        assert resp.json()["character_a"]["ic_text"] == "Direct Ollama."
+        # mud_client.translate should NOT have been called.
+        mock_mud.translate.assert_not_called()

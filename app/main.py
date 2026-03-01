@@ -1286,6 +1286,13 @@ def translate_chat(req: ChatTranslationRequest) -> ChatTranslationResponse:
     -------
     ChatTranslationResponse with results for A and optionally B.
     """
+    # When an explicit ollama_host is provided (the "Use address" toggle in
+    # the frontend), bypass the mud server and translate directly via the
+    # specified Ollama instance.  This lets developers test against a remote
+    # Ollama without routing through the mud server pipeline.
+    if req.ollama_host:
+        return _translate_standalone(req)
+
     mud_client = get_mud_client()
     if mud_client is not None:
         # Server mode — require authentication and world selection.
