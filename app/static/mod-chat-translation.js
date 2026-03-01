@@ -1140,11 +1140,14 @@ function toggleServerControls(auth) {
       el.classList.toggle("hidden", auth);
     }
   }
-  // Toggle IC prompt section.
+  // Toggle IC prompt section (standalone) vs server world prompt section.
   if (dom.chatIcPromptDetails) {
     dom.chatIcPromptDetails.classList.toggle("hidden", auth);
   }
-  // Toggle server config info.
+  if (dom.chatServerPromptDetails) {
+    dom.chatServerPromptDetails.classList.toggle("hidden", !auth);
+  }
+  // Toggle server config info (model label inside Ollama Settings).
   if (dom.chatServerConfigInfo) {
     dom.chatServerConfigInfo.classList.toggle("hidden", !auth);
   }
@@ -2058,6 +2061,19 @@ export async function initChatTranslation() {
     loadChatExampleList(),
     loadChatIcPromptList(),
   ]);
+
+  // Auto-load default examples for both characters.
+  await Promise.all([
+    loadChatExample("a", "example_a").then(() => relabelChatChar("a")),
+    loadChatExample("b", "example_b").then(() => relabelChatChar("b")),
+  ]);
+  // Set the dropdowns to reflect the loaded defaults.
+  charDom("a").exampleSelect.value = "example_a";
+  charDom("b").exampleSelect.value = "example_b";
+
+  // Sync live mode state from the checkbox (checked by default in HTML).
+  chatState.liveMode = dom.chatLiveToggle.checked;
+  updateLiveModeUI();
 
   // In server mode, check for an existing session.
   if (isServerMode()) {
