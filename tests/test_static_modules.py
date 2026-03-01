@@ -1,7 +1,7 @@
 """Tests for the ES module structure introduced by the app.js → mod-*.js refactor.
 
 Verifies that:
-  1. All 14 module files are served at /static/ with correct content type.
+  1. All module files are served at /static/ with correct content type.
   2. The HTML template references the ES module entry point.
   3. The old monolithic app.js is no longer served.
   4. Each module contains its expected imports and exports.
@@ -135,9 +135,70 @@ MODULE_MANIFEST: dict[str, dict] = {
         "exports": ["wireNavigationEvents"],
         "imports_from": ["mod-state.js"],
     },
+    "mod-chat-state.js": {
+        "exports": ["chatState", "charDom"],
+        "imports_from": ["mod-state.js"],
+    },
+    "mod-chat-server-mode.js": {
+        "exports": [
+            "isServerMode",
+            "updateModeBadge",
+            "checkSession",
+            "doLogin",
+            "doLogout",
+            "selectWorld",
+            "handleSessionExpired",
+            "toggleServerControls",
+            "applyActiveAxesIndicators",
+            "clearActiveAxesIndicators",
+            "getEffectiveSystemPrompt",
+            "wireServerModeEvents",
+        ],
+        "imports_from": ["mod-state.js", "mod-status.js", "mod-chat-state.js"],
+    },
+    "mod-chat-sliders.js": {
+        "exports": ["syncJsonTextarea", "setJsonBadge", "buildChatSliders"],
+        "imports_from": ["mod-utils.js", "mod-chat-state.js", "mod-chat-server-mode.js"],
+    },
+    "mod-chat-game-log.js": {
+        "exports": [
+            "buildIpcMetaTable",
+            "renderTranslationResult",
+            "appendGameEntry",
+            "copyGameLogTxt",
+            "copyGameLogMd",
+            "saveChatLog",
+            "wireGameLogEvents",
+        ],
+        "imports_from": [
+            "mod-state.js",
+            "mod-status.js",
+            "mod-chat-state.js",
+            "mod-chat-server-mode.js",
+        ],
+    },
+    "mod-chat-import.js": {
+        "exports": ["restoreChatSessionState", "importChatSave", "wireChatImportEvents"],
+        "imports_from": [
+            "mod-state.js",
+            "mod-status.js",
+            "mod-chat-state.js",
+            "mod-chat-sliders.js",
+            "mod-chat-game-log.js",
+        ],
+    },
     "mod-chat-translation.js": {
         "exports": ["translate", "initChatTranslation", "wireChatTranslationEvents"],
-        "imports_from": ["mod-state.js", "mod-utils.js", "mod-status.js"],
+        "imports_from": [
+            "mod-state.js",
+            "mod-utils.js",
+            "mod-status.js",
+            "mod-chat-state.js",
+            "mod-chat-sliders.js",
+            "mod-chat-server-mode.js",
+            "mod-chat-game-log.js",
+            "mod-chat-import.js",
+        ],
     },
     "mod-events.js": {
         "exports": ["wireEvents"],
@@ -183,7 +244,7 @@ def _read_module(name: str) -> str:
 
 
 class TestModuleServing:
-    """All 14 mod-*.js files are served via /static/ with correct content type."""
+    """All 21 mod-*.js files are served via /static/ with correct content type."""
 
     @pytest.mark.parametrize("module_name", ALL_MODULE_NAMES)
     def test_module_served_with_200(self, client: TestClient, module_name: str) -> None:
@@ -391,15 +452,15 @@ class TestModuleDocumentation:
 
 
 class TestModuleCount:
-    """The application has exactly 16 module files (14 original + navigation + chat-translation)."""
+    """The application has exactly 21 module files after the chat-module split."""
 
-    def test_exactly_16_modules_on_disk(self) -> None:
-        """The static directory contains exactly 16 mod-*.js files."""
+    def test_exactly_21_modules_on_disk(self) -> None:
+        """The static directory contains exactly 21 mod-*.js files."""
         static_dir = Path(__file__).resolve().parent.parent / "app" / "static"
         mod_files = sorted(p.name for p in static_dir.glob("mod-*.js"))
         assert (
-            len(mod_files) == 16
-        ), f"Expected 16 mod-*.js files, found {len(mod_files)}: {mod_files}"
+            len(mod_files) == 21
+        ), f"Expected 21 mod-*.js files, found {len(mod_files)}: {mod_files}"
 
     def test_manifest_matches_disk(self) -> None:
         """Every file in the manifest exists on disk, and vice versa."""

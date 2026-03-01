@@ -64,7 +64,7 @@ class TestMudLogin:
             "message": "Login successful.",
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.post("/api/mud/login", json={"username": "user", "password": "pass"})
 
         assert resp.status_code == 200
@@ -79,7 +79,7 @@ class TestMudLogin:
             "message": "Invalid credentials.",
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.post(
                 "/api/mud/login", json={"username": "user", "password": "wrong"}
             )
@@ -89,7 +89,7 @@ class TestMudLogin:
         assert data["authenticated"] is False
 
     def test_login_standalone_mode(self, test_client: TestClient) -> None:
-        with patch("app.main.get_mud_client", return_value=None):
+        with patch("app.routes_mud.get_mud_client", return_value=None):
             resp = test_client.post("/api/mud/login", json={"username": "user", "password": "pass"})
 
         assert resp.status_code == 200
@@ -101,7 +101,7 @@ class TestMudLogin:
         mock = _mock_mud_client()
         mock.login.side_effect = MudServerConnectionError("unreachable")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.post("/api/mud/login", json={"username": "user", "password": "pass"})
 
         assert resp.status_code == 200
@@ -117,7 +117,7 @@ class TestMudLogin:
             "Server Error", request=MagicMock(), response=fake_response
         )
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.post("/api/mud/login", json={"username": "user", "password": "pass"})
 
         assert resp.status_code == 200
@@ -137,7 +137,7 @@ class TestMudLogout:
     def test_logout_success(self, test_client: TestClient) -> None:
         mock = _mock_mud_client(authenticated=True)
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.post("/api/mud/logout")
 
         assert resp.status_code == 200
@@ -145,7 +145,7 @@ class TestMudLogout:
         mock.logout.assert_called_once()
 
     def test_logout_standalone(self, test_client: TestClient) -> None:
-        with patch("app.main.get_mud_client", return_value=None):
+        with patch("app.routes_mud.get_mud_client", return_value=None):
             resp = test_client.post("/api/mud/logout")
 
         assert resp.status_code == 200
@@ -164,8 +164,8 @@ class TestMudSession:
         mock = _mock_mud_client(authenticated=True)
 
         with (
-            patch("app.main.get_mud_client", return_value=mock),
-            patch("app.main.compute_translation_mode", return_value="server-prod"),
+            patch("app.routes_mud.get_mud_client", return_value=mock),
+            patch("app.routes_mud.compute_translation_mode", return_value="server-prod"),
         ):
             resp = test_client.get("/api/mud/session")
 
@@ -176,8 +176,8 @@ class TestMudSession:
 
     def test_session_standalone(self, test_client: TestClient) -> None:
         with (
-            patch("app.main.get_mud_client", return_value=None),
-            patch("app.main.compute_translation_mode", return_value="standalone"),
+            patch("app.routes_mud.get_mud_client", return_value=None),
+            patch("app.routes_mud.compute_translation_mode", return_value="standalone"),
         ):
             resp = test_client.get("/api/mud/session")
 
@@ -201,7 +201,7 @@ class TestMudWorlds:
             {"world_id": "pipeworks_web", "name": "Pipeworks Web", "translation_enabled": True}
         ]
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.get("/api/mud/worlds")
 
         assert resp.status_code == 200
@@ -213,13 +213,13 @@ class TestMudWorlds:
         mock = _mock_mud_client(authenticated=True)
         mock.list_worlds.side_effect = MudServerSessionExpiredError("expired")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.get("/api/mud/worlds")
 
         assert resp.status_code == 401
 
     def test_worlds_standalone_503(self, test_client: TestClient) -> None:
-        with patch("app.main.get_mud_client", return_value=None):
+        with patch("app.routes_mud.get_mud_client", return_value=None):
             resp = test_client.get("/api/mud/worlds")
 
         assert resp.status_code == 503
@@ -228,7 +228,7 @@ class TestMudWorlds:
         mock = _mock_mud_client(authenticated=True)
         mock.list_worlds.side_effect = MudServerConnectionError("down")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.get("/api/mud/worlds")
 
         assert resp.status_code == 502
@@ -251,7 +251,7 @@ class TestMudWorldConfig:
             "active_axes": ["health", "age"],
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.get("/api/mud/world-config/pipeworks_web")
 
         assert resp.status_code == 200
@@ -262,7 +262,7 @@ class TestMudWorldConfig:
         mock = _mock_mud_client(authenticated=True)
         mock.world_config.side_effect = MudServerSessionExpiredError("expired")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.get("/api/mud/world-config/pipeworks_web")
 
         assert resp.status_code == 401
@@ -271,13 +271,13 @@ class TestMudWorldConfig:
         mock = _mock_mud_client(authenticated=True)
         mock.world_config.side_effect = MudServerConnectionError("down")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.get("/api/mud/world-config/pipeworks_web")
 
         assert resp.status_code == 502
 
     def test_world_config_standalone_503(self, test_client: TestClient) -> None:
-        with patch("app.main.get_mud_client", return_value=None):
+        with patch("app.routes_mud.get_mud_client", return_value=None):
             resp = test_client.get("/api/mud/world-config/pipeworks_web")
 
         assert resp.status_code == 503
@@ -300,7 +300,7 @@ class TestMudWorldPrompts:
             ],
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.get("/api/mud/world-prompts/pipeworks_web")
 
         assert resp.status_code == 200
@@ -312,7 +312,7 @@ class TestMudWorldPrompts:
         mock = _mock_mud_client(authenticated=True)
         mock.world_prompts.side_effect = MudServerSessionExpiredError("expired")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.get("/api/mud/world-prompts/pipeworks_web")
 
         assert resp.status_code == 401
@@ -321,13 +321,13 @@ class TestMudWorldPrompts:
         mock = _mock_mud_client(authenticated=True)
         mock.world_prompts.side_effect = MudServerConnectionError("down")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.get("/api/mud/world-prompts/pipeworks_web")
 
         assert resp.status_code == 502
 
     def test_world_prompts_standalone_503(self, test_client: TestClient) -> None:
-        with patch("app.main.get_mud_client", return_value=None):
+        with patch("app.routes_mud.get_mud_client", return_value=None):
             resp = test_client.get("/api/mud/world-prompts/pipeworks_web")
 
         assert resp.status_code == 503
@@ -344,7 +344,7 @@ class TestMudSelectWorld:
     def test_select_world_success(self, test_client: TestClient) -> None:
         mock = _mock_mud_client(authenticated=True)
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
             resp = test_client.post("/api/mud/select-world", json={"world_id": "pipeworks_web"})
 
         assert resp.status_code == 200
@@ -354,7 +354,7 @@ class TestMudSelectWorld:
         mock.select_world.assert_called_once_with("pipeworks_web")
 
     def test_select_world_standalone_503(self, test_client: TestClient) -> None:
-        with patch("app.main.get_mud_client", return_value=None):
+        with patch("app.routes_mud.get_mud_client", return_value=None):
             resp = test_client.post("/api/mud/select-world", json={"world_id": "pipeworks_web"})
 
         assert resp.status_code == 503

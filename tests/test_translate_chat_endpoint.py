@@ -42,9 +42,9 @@ def _standalone_mode():
     """Default to standalone mode (no mud server) for all tests in this module.
 
     Server-mode tests override this with their own
-    ``patch("app.main.get_mud_client", return_value=mock)`` context manager.
+    ``patch("app.services.chat_translation.get_mud_client", return_value=mock)`` context manager.
     """
-    with patch("app.main.get_mud_client", return_value=None):
+    with patch("app.services.chat_translation.get_mud_client", return_value=None):
         yield
 
 
@@ -589,7 +589,7 @@ class TestServerModeTranslation:
             "world_config": {"world_id": "pipeworks_web"},
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             resp = client.post("/api/translate_chat", json=base_request)
 
         assert resp.status_code == 200
@@ -609,7 +609,7 @@ class TestServerModeTranslation:
             "world_config": {},
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             data = client.post("/api/translate_chat", json=base_request).json()
 
         result = data["character_a"]
@@ -636,7 +636,7 @@ class TestServerModeTranslation:
             "world_config": {},
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             data = client.post("/api/translate_chat", json=base_request).json()
 
         assert data["character_a"]["status"] == "fallback.api_error"
@@ -649,7 +649,7 @@ class TestServerModeTranslation:
         mock = _mock_mud_client()
         mock.translate.side_effect = MudServerConnectionError("unreachable")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             data = client.post("/api/translate_chat", json=base_request).json()
 
         assert data["character_a"]["status"] == "fallback.api_error"
@@ -661,7 +661,7 @@ class TestServerModeTranslation:
         mock = _mock_mud_client()
         mock.translate.side_effect = MudServerSessionExpiredError("expired")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             resp = client.post("/api/translate_chat", json=base_request)
 
         assert resp.status_code == 401
@@ -685,7 +685,7 @@ class TestServerModePromptOverride:
         }
         request = {**base_request, "system_prompt": "Custom prompt: {{profile_summary}}"}
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             resp = client.post("/api/translate_chat", json=request)
 
         assert resp.status_code == 200
@@ -706,7 +706,7 @@ class TestServerModePromptOverride:
             "world_config": {},
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             resp = client.post("/api/translate_chat", json=base_request)
 
         assert resp.status_code == 200
@@ -721,7 +721,7 @@ class TestServerModeGuards:
         """Unauthenticated client in server mode → 401, not silent fallback."""
         mock = _mock_mud_client(authenticated=False)
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             resp = client.post("/api/translate_chat", json=base_request)
 
         assert resp.status_code == 401
@@ -731,7 +731,7 @@ class TestServerModeGuards:
         """Authenticated but no world selected anywhere → 400."""
         mock = _mock_mud_client(authenticated=True, world_id=None)
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             resp = client.post("/api/translate_chat", json=base_request)
 
         assert resp.status_code == 400
@@ -752,7 +752,7 @@ class TestServerModeGuards:
         }
         req = {**base_request, "world_id": "pipeworks_web"}
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             resp = client.post("/api/translate_chat", json=req)
 
         assert resp.status_code == 200
@@ -762,7 +762,7 @@ class TestServerModeGuards:
     def test_none_client_uses_standalone(self, client: TestClient, base_request: dict) -> None:
         """When get_mud_client returns None (standalone mode), Ollama pipeline runs."""
         with (
-            patch("app.main.get_mud_client", return_value=None),
+            patch("app.services.chat_translation.get_mud_client", return_value=None),
             _patch_renderer("She nods."),
         ):
             resp = client.post("/api/translate_chat", json=base_request)
@@ -786,7 +786,7 @@ class TestErrorDetail:
         mock = _mock_mud_client()
         mock.translate.side_effect = MudServerConnectionError("unreachable")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             data = client.post("/api/translate_chat", json=base_request).json()
 
         assert data["character_a"]["error_detail"] == "Cannot connect to mud server."
@@ -798,7 +798,7 @@ class TestErrorDetail:
         mock = _mock_mud_client()
         mock.translate.side_effect = RuntimeError("boom")
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             data = client.post("/api/translate_chat", json=base_request).json()
 
         assert data["character_a"]["error_detail"] == "Server error: RuntimeError"
@@ -815,7 +815,7 @@ class TestErrorDetail:
             "model": "gemma2:2b",
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             data = client.post("/api/translate_chat", json=base_request).json()
 
         assert data["character_a"]["error_detail"] == (
@@ -867,7 +867,7 @@ class TestModelField:
             "model": "llama3:8b",
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             data = client.post("/api/translate_chat", json=base_request).json()
 
         assert data["character_a"]["model"] == "llama3:8b"
@@ -884,7 +884,7 @@ class TestModelField:
             "model": "llama3:8b",  # different from request's gemma2:2b
         }
 
-        with patch("app.main.get_mud_client", return_value=mock):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock):
             data = client.post("/api/translate_chat", json=base_request).json()
 
         # The IPC ID should contain the server model, not the request model.
@@ -902,7 +902,7 @@ class TestModelField:
             "model": "gemma2:2b",  # same as request model
         }
 
-        with patch("app.main.get_mud_client", return_value=mock2):
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock2):
             data2 = client.post("/api/translate_chat", json=base_request).json()
 
         ipc_id2 = data2["character_a"]["ipc_id"]
@@ -945,7 +945,7 @@ class TestOllamaHostOverride:
     def test_custom_host_passed_to_renderer(self, client: TestClient, base_request: dict) -> None:
         """When ``ollama_host`` is provided, ``ChatRenderer`` receives it."""
         base_request["ollama_host"] = "http://remote:11434"
-        with patch("app.main.ChatRenderer") as MockRenderer:
+        with patch("app.services.chat_translation.ChatRenderer") as MockRenderer:
             MockRenderer.return_value.render.return_value = "She looks around."
             client.post("/api/translate_chat", json=base_request)
             # ChatRenderer was instantiated with the custom host.
@@ -964,8 +964,8 @@ class TestOllamaHostOverride:
         mock_mud.is_authenticated = True
         mock_mud.selected_world_id = "test-world"
 
-        with patch("app.main.get_mud_client", return_value=mock_mud):
-            with patch("app.main.ChatRenderer") as MockRenderer:
+        with patch("app.services.chat_translation.get_mud_client", return_value=mock_mud):
+            with patch("app.services.chat_translation.ChatRenderer") as MockRenderer:
                 MockRenderer.return_value.render.return_value = "Direct Ollama."
                 resp = client.post("/api/translate_chat", json=base_request)
 

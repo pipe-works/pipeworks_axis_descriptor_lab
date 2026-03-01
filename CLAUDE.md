@@ -36,8 +36,14 @@ The app is a FastAPI backend serving a vanilla JS single-page frontend. There ar
 
 ### Backend (Python)
 
-- **`app/main.py`** — FastAPI app: thin routing layer that orchestrates calls to domain modules. Sync handlers (not async); FastAPI runs them in a threadpool. Serves the Jinja2 template at `/` and all `/api/*` endpoints.
-- **`app/schema.py`** — Pydantic v2 models: `AxisValue` (label + score 0.0–1.0), `AxisPayload` (dict of axes + policy_hash + seed + world_id), `GenerateRequest`, `GenerateResponse`, `LogEntry`, `DeltaRequest`, `DeltaResponse`, `IndicatorConfig`, `TransformationMapRow` (with `indicators`).
+- **`app/main.py`** — FastAPI app bootstrap: creates the application, mounts static/templates, keeps simple endpoints/import routes, and mounts the split route modules.
+- **`app/config.py`** — Shared runtime config: app paths, data/log directories, default model, and app version metadata.
+- **`app/routes_mud.py`** — `/api/mud/*` proxy router for mud-server authentication and world metadata.
+- **`app/routes_save.py`** — Save/export/system-prompt routes.
+- **`app/routes_chat.py`** — Chat translation and chat-save routes.
+- **`app/services/chat_translation.py`** — Standalone and server-backed chat translation orchestration.
+- **`app/services/save_service.py`** — Save/export orchestration helpers.
+- **`app/schema/`** — Pydantic v2 models split by domain and re-exported through `app.schema` for backward compatibility.
 - **`app/hashing.py`** — IPC normalisation and hash utilities (payload, system prompt, output, composite IPC ID, typed `payload_hash` convenience wrapper).
 - **`app/signal_isolation.py`** — NLP pipeline for the Signal Isolation Layer: tokenise (NLTK), lemmatise (WordNet), filter stopwords, compute content-word set delta between two texts. Requires NLTK data packages (punkt_tab, stopwords, wordnet) which are auto-downloaded on first run.
 - **`app/chat_renderer.py`** — Unified synchronous Ollama HTTP client. Wraps both `/api/generate` (main page) and `/api/chat` (chat translation page) using httpx. Replaces the old `ollama_client.py`. 10s connect / 120s read timeout.
@@ -52,7 +58,7 @@ The app is a FastAPI backend serving a vanilla JS single-page frontend. There ar
 
 ### Frontend (Vanilla JS — ES Modules)
 
-The frontend is split into 16 browser-native ES modules (`app/static/mod-*.js`). No bundler — `<script type="module">` loads the entry point and the browser resolves all imports.
+The frontend is split into 21 browser-native ES modules (`app/static/mod-*.js`). No bundler — `<script type="module">` loads the entry point and the browser resolves all imports.
 
 - **`mod-init.js`** — Entry point; orchestrates startup (theme, tooltips, events, data loading).
 - **`mod-state.js`** — Singleton state object + cached DOM refs (`state`, `dom`).
@@ -66,7 +72,12 @@ The frontend is split into 16 browser-native ES modules (`app/static/mod-*.js`).
 - **`mod-axis-actions.js`** — Relabel (server policy), randomise, auto-label toggle.
 - **`mod-persistence.js`** — Save, export zip, import zip, restore session, log.
 - **`mod-navigation.js`** — Page switching between Character Description and Chat Translation (standalone).
-- **`mod-chat-translation.js`** — All Chat Translation page logic: character A/B state, slider panels, OOC→IC translation, live mode, in-game log (self-contained `chatState`).
+- **`mod-chat-state.js`** — Chat Translation page state singleton plus `charDom()` DOM bundle helper.
+- **`mod-chat-server-mode.js`** — Mud-server authentication, world selection, active-axis indicators, and server prompt management.
+- **`mod-chat-sliders.js`** — Chat Translation slider-panel construction and JSON sync helpers.
+- **`mod-chat-game-log.js`** — IPC meta rendering, game-log rendering/copy/export, and chat save packaging.
+- **`mod-chat-import.js`** — Chat save import and browser-side state restoration.
+- **`mod-chat-translation.js`** — Chat Translation page controller and event wiring.
 - **`mod-indicator-modal.js`** — Indicator tooltip text + click-to-open modal with definitions, heuristics, examples, and docs link (standalone, no imports).
 - **`mod-tooltip.js`** — JS-positioned tooltip system (standalone, no imports).
 - **`mod-theme.js`** — Dark/light theme toggle with localStorage (standalone).

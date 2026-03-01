@@ -214,7 +214,7 @@ narrow (0.10), creating a slim "just adequate" zone.  The extremes
 ## Implementation Details
 
 Source location
-: `app/main.py`, inside the `relabel()` function (lines 509--575)
+: `app/main.py`, inside the `relabel()` route handler
 
 Endpoint
 : `POST /api/relabel`
