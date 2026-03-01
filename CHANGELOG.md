@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.6.1...axis-descriptor-lab-v0.7.0) (2026-03-01)
+
+
+### Features
+
+* server-mode IC prompt selector and display ([#61](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/61)) ([514aa08](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/514aa08ff257dbe746bfa290c92d4ccef9542c09))
+
 ## [0.6.1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.6.0...axis-descriptor-lab-v0.6.1) (2026-03-01)
 
 
