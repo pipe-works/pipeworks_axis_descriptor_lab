@@ -18,6 +18,14 @@ On any 401 response from a lab endpoint the cached token is cleared and
 :class:`MudServerSessionExpiredError` is raised so the caller can signal
 the frontend to re-authenticate.
 
+Connection management
+---------------------
+A persistent ``httpx.Client`` is created once in ``__init__`` and reused for
+all subsequent requests.  This ensures TCP connections and TLS sessions are
+pooled across calls, avoiding the cost of a fresh TLS handshake on every
+request to a remote HTTPS server.  ``httpx.Client`` is thread-safe, which
+is required since FastAPI runs sync handlers in a thread-pool executor.
+
 Sync rationale
 --------------
 The lab's route handlers are synchronous (FastAPI runs them in a
@@ -58,7 +66,7 @@ class MudServerSessionExpiredError(Exception):
 
 
 class MudServerConnectionError(Exception):
-    """Raised when the mud server is unreachable."""
+    """Raised when the mud server is unreachable or a request times out."""
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +81,9 @@ class MudServerClient:
     All lab endpoint calls attach the session_id in the request body
     (POST) or query params (GET), matching the mud server's pattern.
 
+    A persistent ``httpx.Client`` is created once and reused for all
+    requests, enabling TCP/TLS connection pooling to the remote server.
+
     Args:
         base_url: Mud server base URL (e.g. ``'https://api.pipe-works.org'``).
         timeout:  HTTP read timeout in seconds.  Defaults to 120.
@@ -81,9 +92,14 @@ class MudServerClient:
     def __init__(self, base_url: str, timeout: float = 120.0) -> None:
         self._base_url = base_url.rstrip("/")
         self._timeout = httpx.Timeout(timeout, connect=10.0)
+        self._client = httpx.Client(timeout=self._timeout)
         self._session_id: str | None = None
         self._role: str | None = None
         self._selected_world_id: str | None = None
+
+    def close(self) -> None:
+        """Close the underlying httpx.Client and release connections."""
+        self._client.close()
 
     # -- Properties --------------------------------------------------------
 
@@ -107,18 +123,17 @@ class MudServerClient:
 
         Raises:
             httpx.HTTPStatusError: Non-2xx response (e.g. 401 bad credentials).
-            MudServerConnectionError: Server unreachable.
+            MudServerConnectionError: Server unreachable or timed out.
         """
         try:
-            with httpx.Client(timeout=self._timeout) as client:
-                resp = client.post(
-                    f"{self._base_url}/login",
-                    json={"username": username, "password": password},
-                    headers={"X-Client-Type": "axis-descriptor-lab"},
-                )
-                resp.raise_for_status()
-                data = resp.json()
-        except httpx.ConnectError as exc:
+            resp = self._client.post(
+                f"{self._base_url}/login",
+                json={"username": username, "password": password},
+                headers={"X-Client-Type": "axis-descriptor-lab"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise MudServerConnectionError(
                 f"Cannot connect to mud server at {self._base_url}"
             ) from exc
@@ -140,11 +155,10 @@ class MudServerClient:
         """
         if self._session_id:
             try:
-                with httpx.Client(timeout=self._timeout) as client:
-                    client.post(
-                        f"{self._base_url}/logout",
-                        json={"session_id": self._session_id},
-                    )
+                self._client.post(
+                    f"{self._base_url}/logout",
+                    json={"session_id": self._session_id},
+                )
             except Exception:
                 logger.warning("Mud server logout request failed (ignored)")
         self._session_id = None
@@ -171,7 +185,7 @@ class MudServerClient:
 
         Raises:
             MudServerSessionExpiredError: Session invalid/expired.
-            MudServerConnectionError: Server unreachable.
+            MudServerConnectionError: Server unreachable or timed out.
         """
         result = self._get("/api/lab/worlds")
         # The mud server wraps the list: {"worlds": [...]}.
@@ -186,7 +200,7 @@ class MudServerClient:
 
         Raises:
             MudServerSessionExpiredError: Session invalid/expired.
-            MudServerConnectionError: Server unreachable.
+            MudServerConnectionError: Server unreachable or timed out.
         """
         result = self._get(f"/api/lab/world-config/{world_id}")
         if not isinstance(result, dict):  # pragma: no cover
@@ -208,7 +222,7 @@ class MudServerClient:
 
         Raises:
             MudServerSessionExpiredError: Session invalid/expired.
-            MudServerConnectionError: Server unreachable.
+            MudServerConnectionError: Server unreachable or timed out.
         """
         body = {
             "session_id": self._session_id,
@@ -229,12 +243,11 @@ class MudServerClient:
         if not self._session_id:
             raise MudServerSessionExpiredError("Not authenticated")
         try:
-            with httpx.Client(timeout=self._timeout) as client:
-                resp = client.get(
-                    f"{self._base_url}{path}",
-                    params={"session_id": self._session_id},
-                )
-        except httpx.ConnectError as exc:
+            resp = self._client.get(
+                f"{self._base_url}{path}",
+                params={"session_id": self._session_id},
+            )
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise MudServerConnectionError(
                 f"Cannot connect to mud server at {self._base_url}"
             ) from exc
@@ -252,12 +265,11 @@ class MudServerClient:
         if not self._session_id:
             raise MudServerSessionExpiredError("Not authenticated")
         try:
-            with httpx.Client(timeout=self._timeout) as client:
-                resp = client.post(
-                    f"{self._base_url}{path}",
-                    json=body,
-                )
-        except httpx.ConnectError as exc:
+            resp = self._client.post(
+                f"{self._base_url}{path}",
+                json=body,
+            )
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise MudServerConnectionError(
                 f"Cannot connect to mud server at {self._base_url}"
             ) from exc
@@ -268,8 +280,11 @@ class MudServerClient:
             raise MudServerSessionExpiredError("Session expired or invalid")
 
         if resp.status_code >= 400:
-            print(
-                f"[MudServerClient._post] {path} → HTTP {resp.status_code}: " f"{resp.text[:500]}"
+            logger.warning(
+                "MudServerClient._post %s → HTTP %d: %s",
+                path,
+                resp.status_code,
+                resp.text[:500],
             )
         resp.raise_for_status()
         return resp.json()

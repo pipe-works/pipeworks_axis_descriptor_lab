@@ -130,6 +130,8 @@ const chatState = {
   worldId: null,
   /** World config from GET /api/mud/world-config/{id}, or null. */
   worldConfig: null,
+  /** True while selectWorld() is in-flight (prevents translate race). */
+  worldConfigLoading: false,
   /**
    * @type {{
    *   ch: string,
@@ -844,10 +846,16 @@ function renderTranslationResult(outputBox, metaDiv, statusBadge, result) {
   } else {
     const errSpan = document.createElement("span");
     errSpan.style.color = "var(--col-err)";
-    errSpan.textContent =
-      result.status === "fallback.api_error"
-        ? "Ollama unreachable or timed out — check host and model."
-        : "Output rejected by validator (PASSTHROUGH or constraint violation).";
+    if (result.error_detail) {
+      errSpan.textContent = result.error_detail;
+    } else if (result.status === "fallback.api_error") {
+      errSpan.textContent = isServerMode()
+        ? "Server translation failed — check server logs."
+        : "Ollama unreachable or timed out — check host and model.";
+    } else {
+      errSpan.textContent =
+        "Output rejected by validator (PASSTHROUGH or constraint violation).";
+    }
     outputBox.appendChild(errSpan);
   }
 }
@@ -1028,15 +1036,6 @@ function populateWorldSelect() {
     || (enabled.length === 1 ? enabled[0].world_id : null)
     || (chatState.worlds.length === 1 ? chatState.worlds[0].world_id : null);
 
-  // --- Diagnostic (remove after root-cause confirmed) ---
-  console.warn("[populateWorldSelect]", {
-    worldCount: chatState.worlds.length,
-    enabledCount: enabled.length,
-    target,
-    firstWorld: chatState.worlds[0],
-  });
-  // --- End diagnostic ---
-
   if (target) {
     sel.value = target;
     if (sel.value === target) {
@@ -1064,6 +1063,7 @@ async function selectWorld(worldId) {
     dom.chatServerConfigInfo.classList.add("hidden");
     return;
   }
+  chatState.worldConfigLoading = true;
   try {
     const selRes = await fetch("/api/mud/select-world", {
       method: "POST",
@@ -1088,6 +1088,8 @@ async function selectWorld(worldId) {
     setStatus(`World "${worldId}" selected.`);
   } catch (err) {
     setStatus(`World selection error: ${err.message}`);
+  } finally {
+    chatState.worldConfigLoading = false;
   }
 }
 
@@ -1311,13 +1313,17 @@ function appendGameEntry(
  */
 async function sendForChar(ch) {
   if (chatState.busy) return;
-  const model = getChatModelName();
+  const model = isServerMode() ? (getChatModelName() || "(server)") : getChatModelName();
   if (!model) { setStatus("No model specified."); return; }
 
   if (isServerMode()) {
     const wid = chatState.worldId || dom.chatWorldSelect?.value;
     if (!wid) {
       setStatus("Please select a world before translating.");
+      return;
+    }
+    if (chatState.worldConfigLoading) {
+      setStatus("World config loading — please wait.");
       return;
     }
   }
@@ -1378,19 +1384,20 @@ async function sendForChar(ch) {
     const result = ch === "a" ? data.character_a : data.character_b;
     renderTranslationResult(outputBox, metaDiv, badge, result);
 
+    const usedModel = (result && result.model) || model;
     if (result && result.status === "success" && result.ic_text) {
       // Pass all four IPC provenance hashes from the translation result so they
       // are stored in chatState.gameLog and included in copy/save output.
       // These match the four rows shown in the in-browser IPC meta table.
       appendGameEntry(
-        ch, channel, ooc, result.ic_text, model,
+        ch, channel, ooc, result.ic_text, usedModel,
         result.ipc_id            ?? null,
         result.input_hash        ?? null,
         result.system_prompt_hash ?? null,
         result.output_hash        ?? null,
       );
     }
-    setStatus(`${ch.toUpperCase()} sent (${model}) — ${result ? result.status : "no result"}.`);
+    setStatus(`${ch.toUpperCase()} sent (${usedModel}) — ${result ? result.status : "no result"}.`);
   } catch (err) {
     outputBox.innerHTML = `<span style="color:var(--col-err)">Error: ${err.message}</span>`;
     setStatus(`Send error (${ch.toUpperCase()}): ${err.message}`);
@@ -1429,7 +1436,7 @@ async function sendForChar(ch) {
 export async function translate() {
   if (chatState.busy) return;
 
-  const model = getChatModelName();
+  const model = isServerMode() ? (getChatModelName() || "(server)") : getChatModelName();
   if (!model) {
     setStatus("No model specified for translation.");
     return;
@@ -1439,6 +1446,10 @@ export async function translate() {
     const wid = chatState.worldId || dom.chatWorldSelect?.value;
     if (!wid) {
       setStatus("Please select a world before translating.");
+      return;
+    }
+    if (chatState.worldConfigLoading) {
+      setStatus("World config loading — please wait.");
       return;
     }
   }
@@ -1540,9 +1551,10 @@ export async function translate() {
     );
 
     // Summarise both status fields in the global status bar.
+    const usedModel = (data.character_a && data.character_a.model) || model;
     const statusParts = [`A: ${data.character_a.status}`];
     if (data.character_b) statusParts.push(`B: ${data.character_b.status}`);
-    setStatus(`Done (${model}) — ${statusParts.join(", ")}.`);
+    setStatus(`Done (${usedModel}) — ${statusParts.join(", ")}.`);
 
   } catch (err) {
     // Show the error message in Character A's output box and status bar.

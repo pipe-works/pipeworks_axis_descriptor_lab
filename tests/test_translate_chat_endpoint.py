@@ -722,3 +722,141 @@ class TestServerModeGuards:
 
         assert resp.status_code == 200
         assert resp.json()["character_a"]["status"] == "success"
+
+
+# ---------------------------------------------------------------------------
+# error_detail field (Issue 1)
+# ---------------------------------------------------------------------------
+
+
+class TestErrorDetail:
+    """error_detail is populated on server-mode error paths."""
+
+    def test_connection_error_has_error_detail(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """MudServerConnectionError → error_detail explains the cause."""
+        mock = _mock_mud_client()
+        mock.translate.side_effect = MudServerConnectionError("unreachable")
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        assert data["character_a"]["error_detail"] == "Cannot connect to mud server."
+
+    def test_generic_exception_has_error_detail(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """Unexpected exception → error_detail includes the exception class."""
+        mock = _mock_mud_client()
+        mock.translate.side_effect = RuntimeError("boom")
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        assert data["character_a"]["error_detail"] == "Server error: RuntimeError"
+
+    def test_server_returns_failure_has_error_detail(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """Server returns non-success status → error_detail about model loading."""
+        mock = _mock_mud_client()
+        mock.translate.return_value = {
+            "ic_text": None,
+            "status": "fallback.api_error",
+            "rendered_prompt": "",
+            "model": "gemma2:2b",
+        }
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        assert data["character_a"]["error_detail"] == (
+            "Remote translation failed (model may be loading)."
+        )
+
+    def test_standalone_success_has_no_error_detail(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """Standalone success path → error_detail is None."""
+        with _patch_renderer("She nods."):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        assert data["character_a"]["error_detail"] is None
+
+
+# ---------------------------------------------------------------------------
+# model field in result (Issue 4)
+# ---------------------------------------------------------------------------
+
+
+class TestModelField:
+    """model field is populated in ChatTranslationResult."""
+
+    def test_standalone_success_returns_model(self, client: TestClient, base_request: dict) -> None:
+        """Standalone success → model echoes request model."""
+        with _patch_renderer("She nods."):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        assert data["character_a"]["model"] == "gemma2:2b"
+
+    def test_standalone_api_error_returns_model(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """Standalone api_error → model still echoes request model."""
+        with _patch_renderer(None):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        assert data["character_a"]["model"] == "gemma2:2b"
+
+    def test_server_mode_returns_server_model(self, client: TestClient, base_request: dict) -> None:
+        """Server mode → model comes from server response, not request."""
+        mock = _mock_mud_client()
+        mock.translate.return_value = {
+            "ic_text": "She nods.",
+            "status": "success",
+            "rendered_prompt": "prompt",
+            "model": "llama3:8b",
+        }
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        assert data["character_a"]["model"] == "llama3:8b"
+
+    def test_server_mode_ipc_uses_server_model(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """IPC ID is computed with the server-returned model, not req.model."""
+        mock = _mock_mud_client()
+        mock.translate.return_value = {
+            "ic_text": "She nods.",
+            "status": "success",
+            "rendered_prompt": "prompt",
+            "model": "llama3:8b",  # different from request's gemma2:2b
+        }
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            data = client.post("/api/translate_chat", json=base_request).json()
+
+        # The IPC ID should contain the server model, not the request model.
+        # IPC ID format: input:prompt:model:temp:tokens:seed
+        ipc_id = data["character_a"]["ipc_id"]
+        assert ipc_id is not None
+        # The model component is the 3rd segment (0-indexed: 2)
+        # Model is hashed, so we verify indirectly: changing the model
+        # should change the IPC ID.
+        mock2 = _mock_mud_client()
+        mock2.translate.return_value = {
+            "ic_text": "She nods.",
+            "status": "success",
+            "rendered_prompt": "prompt",
+            "model": "gemma2:2b",  # same as request model
+        }
+
+        with patch("app.main.get_mud_client", return_value=mock2):
+            data2 = client.post("/api/translate_chat", json=base_request).json()
+
+        ipc_id2 = data2["character_a"]["ipc_id"]
+        # Different model → different IPC ID
+        assert ipc_id != ipc_id2
