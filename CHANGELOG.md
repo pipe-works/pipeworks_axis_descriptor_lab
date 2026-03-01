@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.7.0...axis-descriptor-lab-v0.7.1) (2026-03-01)
+
+
+### Bug Fixes
+
+* chat translation UX defaults, prompt hash consistency, and copy buttons ([#63](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/63)) ([c17ce1f](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/c17ce1ff87097a8dd4e87ed8cb8993cfdff58734))
+
 ## [0.7.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.6.1...axis-descriptor-lab-v0.7.0) (2026-03-01)
 
 
