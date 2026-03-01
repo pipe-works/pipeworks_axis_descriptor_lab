@@ -65,6 +65,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import tomllib
@@ -152,6 +153,8 @@ from app.transformation_map import compute_transformation_map
 # -----------------------------------------------------------------------------
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Resolve paths relative to this file so the app works regardless of the
 # working directory from which uvicorn is launched.
@@ -1190,7 +1193,7 @@ def mud_worlds() -> dict:
     try:
         worlds = client.list_worlds()
         for w in worlds:
-            print(f"[mud_worlds] {w!r}")
+            logger.debug("mud_worlds: %r", w)
         return {"worlds": worlds}
     except MudServerSessionExpiredError:
         raise HTTPException(
@@ -1296,9 +1299,11 @@ def _translate_via_server(
             name: {"label": av.label, "score": av.score} for name, av in char.axes.items()
         }
 
-        print(
-            f"[_translate_via_server] world_id={world_id!r}, "
-            f"axes={list(axes_for_server.keys())}, channel={char.channel!r}"
+        logger.debug(
+            "Server translate: world_id=%r, axes=%s, channel=%r",
+            world_id,
+            list(axes_for_server.keys()),
+            char.channel,
         )
 
         try:
@@ -1316,19 +1321,21 @@ def _translate_via_server(
                 detail="Mud server session expired. Please log in again.",
             )
         except MudServerConnectionError as exc:
-            print(f"[_translate_via_server] connection error: {exc}")
+            logger.warning("Server translate connection error: %s", exc)
             return ChatTranslationResult(
                 ic_text=None,
                 status="fallback.api_error",
+                error_detail="Cannot connect to mud server.",
             )
         except Exception as exc:
             # Catch httpx.HTTPStatusError and any other unexpected errors
             # from the mud server (e.g. 503 translation not enabled, 404
             # world not found) that _post propagates via raise_for_status().
-            print(f"[_translate_via_server] unexpected error: {type(exc).__name__}: {exc}")
+            logger.warning("Server translate unexpected error: %s: %s", type(exc).__name__, exc)
             return ChatTranslationResult(
                 ic_text=None,
                 status="fallback.api_error",
+                error_detail=f"Server error: {type(exc).__name__}",
             )
 
         ic_text = data.get("ic_text")
@@ -1336,13 +1343,20 @@ def _translate_via_server(
         rendered_prompt = data.get("rendered_prompt", "")
         model = data.get("model", req.model)
 
-        print(
-            f"[_translate_via_server] response: status={status!r}, "
-            f"ic_text={'<' + str(len(ic_text)) + ' chars>' if ic_text else None}, "
-            f"model={model!r}, has_prompt={bool(rendered_prompt)}"
+        logger.debug(
+            "Server translate response: status=%r, ic_text=%s, model=%r, has_prompt=%s",
+            status,
+            f"<{len(ic_text)} chars>" if ic_text else None,
+            model,
+            bool(rendered_prompt),
         )
 
-        # Recompute IPC hashes from the server's rendered_prompt
+        # Recompute IPC hashes from the server's rendered_prompt.
+        # NOTE: the server path hashes the *rendered* prompt (not the raw
+        # template) because the raw template is not available in the server
+        # response.  This differs from standalone mode (below) which hashes
+        # the raw template so both characters sharing the same prompt file
+        # get the same system_prompt_hash.
         sp_hash = compute_system_prompt_hash(rendered_prompt) if rendered_prompt else None
 
         # Build the same input_dict shape as standalone for input_hash
@@ -1362,6 +1376,8 @@ def _translate_via_server(
                 status=status,
                 input_hash=input_hash,
                 system_prompt_hash=sp_hash,
+                model=model,
+                error_detail="Remote translation failed (model may be loading).",
             )
 
         out_hash = compute_output_hash(ic_text)
@@ -1381,6 +1397,7 @@ def _translate_via_server(
             system_prompt_hash=sp_hash,
             output_hash=out_hash,
             ipc_id=ipc_id,
+            model=model,
         )
 
     result_a = _server_translate_one(req.character_a) if req.character_a is not None else None
@@ -1483,6 +1500,7 @@ def _translate_standalone(req: ChatTranslationRequest) -> ChatTranslationRespons
                 status="fallback.api_error",
                 input_hash=input_hash,
                 system_prompt_hash=sp_hash,
+                model=req.model,
             )
 
         # ── Validate output ───────────────────────────────────────────────────
@@ -1494,6 +1512,7 @@ def _translate_standalone(req: ChatTranslationRequest) -> ChatTranslationRespons
                 status="fallback.validation_failed",
                 input_hash=input_hash,
                 system_prompt_hash=sp_hash,
+                model=req.model,
             )
 
         # ── Compute output hash + IPC ID ──────────────────────────────────────
@@ -1514,6 +1533,7 @@ def _translate_standalone(req: ChatTranslationRequest) -> ChatTranslationRespons
             system_prompt_hash=sp_hash,
             output_hash=out_hash,
             ipc_id=ipc_id,
+            model=req.model,
         )
 
     result_a = _translate_one(req.character_a) if req.character_a is not None else None

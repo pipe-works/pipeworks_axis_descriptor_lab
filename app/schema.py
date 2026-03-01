@@ -818,6 +818,14 @@ class ChatTranslationResult(BaseModel):
         default=None,
         description="IPC identifier (input:prompt:model:temp:tokens:seed).  None on failure.",
     )
+    model: str | None = Field(
+        default=None,
+        description="Model used for this translation (server-returned or request echo).",
+    )
+    error_detail: str | None = Field(
+        default=None,
+        description="Human-readable error detail when translation failed.",
+    )
 
 
 class ChatTranslationResponse(BaseModel):

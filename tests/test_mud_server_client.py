@@ -1,8 +1,9 @@
 """
 Tests for app/mud_server_client.py — MudServerClient unit tests.
 
-All tests mock httpx.Client to avoid real HTTP calls.  The client is
-tested in isolation from the FastAPI app.
+All tests mock the persistent ``httpx.Client`` instance (``_client``) to
+avoid real HTTP calls.  The client is tested in isolation from the FastAPI
+app.
 
 Test coverage:
   - login: success stores session_id, failure clears session.
@@ -11,9 +12,11 @@ Test coverage:
   - translate: request body shape, session_id included.
   - 401 handling: MudServerSessionExpiredError raised, token cleared.
   - Connection error handling: MudServerConnectionError raised.
+  - Timeout handling: TimeoutException raised → MudServerConnectionError.
   - list_worlds / world_config: authenticated GET with query params.
   - select_world: stores world_id in memory.
   - compute_translation_mode: correct mode strings.
+  - close: httpx.Client.close called.
 """
 
 from __future__ import annotations
@@ -37,8 +40,10 @@ from app.mud_server_client import (
 
 @pytest.fixture()
 def client() -> MudServerClient:
-    """Fresh MudServerClient pointing at a fake server."""
-    return MudServerClient("http://fake-server:8000", timeout=5.0)
+    """Fresh MudServerClient with a mocked httpx.Client."""
+    with patch("app.mud_server_client.httpx.Client"):
+        c = MudServerClient("http://fake-server:8000", timeout=5.0)
+    return c
 
 
 # ---------------------------------------------------------------------------
@@ -59,13 +64,9 @@ class TestLogin:
             "message": "Login successful.",
         }
         mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            MockClient.return_value.__enter__ = MagicMock(return_value=MagicMock())
-            MockClient.return_value.__enter__.return_value.post.return_value = mock_resp
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            data = client.login("user", "pass")
+        data = client.login("user", "pass")
 
         assert client.is_authenticated
         assert data["success"] is True
@@ -79,25 +80,24 @@ class TestLogin:
             "message": "Invalid credentials.",
         }
         mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            MockClient.return_value.__enter__ = MagicMock(return_value=MagicMock())
-            MockClient.return_value.__enter__.return_value.post.return_value = mock_resp
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            client.login("user", "wrong")
+        client.login("user", "wrong")
 
         assert not client.is_authenticated
 
     def test_login_connect_error_raises(self, client: MudServerClient) -> None:
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_ctx.post.side_effect = httpx.ConnectError("refused")
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
+        client._client.post.side_effect = httpx.ConnectError("refused")
 
-            with pytest.raises(MudServerConnectionError):
-                client.login("user", "pass")
+        with pytest.raises(MudServerConnectionError):
+            client.login("user", "pass")
+
+    def test_login_timeout_raises_connection_error(self, client: MudServerClient) -> None:
+        """TimeoutException during login → MudServerConnectionError."""
+        client._client.post.side_effect = httpx.ReadTimeout("timed out")
+
+        with pytest.raises(MudServerConnectionError):
+            client.login("user", "pass")
 
 
 # ---------------------------------------------------------------------------
@@ -109,31 +109,20 @@ class TestLogout:
     """Logout always clears local session."""
 
     def test_logout_clears_session(self, client: MudServerClient) -> None:
-        # Manually set authenticated state
         client._session_id = "abc-123"
         client._role = "admin"
+        mock_resp = MagicMock()
+        client._client.post.return_value = mock_resp
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_resp = MagicMock()
-            mock_ctx.post.return_value = mock_resp
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            client.logout()
+        client.logout()
 
         assert not client.is_authenticated
 
     def test_logout_tolerates_server_failure(self, client: MudServerClient) -> None:
         client._session_id = "abc-123"
+        client._client.post.side_effect = Exception("server down")
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_ctx.post.side_effect = Exception("server down")
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            client.logout()  # should not raise
+        client.logout()  # should not raise
 
         assert not client.is_authenticated
 
@@ -182,14 +171,9 @@ class TestListWorlds:
                 {"world_id": "pipeworks_web", "name": "Pipeworks Web", "translation_enabled": True}
             ]
         }
+        client._client.get.return_value = mock_resp
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_ctx.get.return_value = mock_resp
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            result = client.list_worlds()
+        result = client.list_worlds()
 
         assert isinstance(result, list)
         assert result[0]["world_id"] == "pipeworks_web"
@@ -203,14 +187,9 @@ class TestListWorlds:
         mock_resp.json.return_value = [
             {"world_id": "w1", "name": "World 1", "translation_enabled": True}
         ]
+        client._client.get.return_value = mock_resp
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_ctx.get.return_value = mock_resp
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            result = client.list_worlds()
+        result = client.list_worlds()
 
         assert isinstance(result, list)
         assert result[0]["world_id"] == "w1"
@@ -229,14 +208,9 @@ class TestWorldConfig:
             "model": "gemma2:2b",
             "active_axes": ["health", "age"],
         }
+        client._client.get.return_value = mock_resp
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_ctx.get.return_value = mock_resp
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            result = client.world_config("pipeworks_web")
+        result = client.world_config("pipeworks_web")
 
         assert isinstance(result, dict)
         assert result["world_id"] == "pipeworks_web"
@@ -264,24 +238,19 @@ class TestTranslate:
             "world_config": {},
         }
         mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_ctx.post.return_value = mock_resp
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            result = client.translate(
-                world_id="pipeworks_web",
-                axes={"health": {"label": "weary", "score": 0.3}},
-                channel="say",
-                ooc_message="I look around.",
-                seed=42,
-                temperature=0.7,
-            )
+        result = client.translate(
+            world_id="pipeworks_web",
+            axes={"health": {"label": "weary", "score": 0.3}},
+            channel="say",
+            ooc_message="I look around.",
+            seed=42,
+            temperature=0.7,
+        )
 
         # Verify the POST body
-        call_args = mock_ctx.post.call_args
+        call_args = client._client.post.call_args
         body = call_args[1]["json"]
         assert body["session_id"] == "abc-123"
         assert body["world_id"] == "pipeworks_web"
@@ -313,15 +282,10 @@ class TestAuthExpiry:
 
         mock_resp = MagicMock()
         mock_resp.status_code = 401
+        client._client.get.return_value = mock_resp
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_ctx.get.return_value = mock_resp
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            with pytest.raises(MudServerSessionExpiredError):
-                client.list_worlds()
+        with pytest.raises(MudServerSessionExpiredError):
+            client.list_worlds()
 
         assert not client.is_authenticated
 
@@ -330,20 +294,15 @@ class TestAuthExpiry:
 
         mock_resp = MagicMock()
         mock_resp.status_code = 401
+        client._client.post.return_value = mock_resp
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_ctx.post.return_value = mock_resp
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            with pytest.raises(MudServerSessionExpiredError):
-                client.translate(
-                    world_id="test",
-                    axes={},
-                    channel="say",
-                    ooc_message="test",
-                )
+        with pytest.raises(MudServerSessionExpiredError):
+            client.translate(
+                world_id="test",
+                axes={},
+                channel="say",
+                ooc_message="test",
+            )
 
         assert not client.is_authenticated
 
@@ -358,32 +317,65 @@ class TestConnectionErrors:
 
     def test_get_connect_error(self, client: MudServerClient) -> None:
         client._session_id = "abc-123"
+        client._client.get.side_effect = httpx.ConnectError("refused")
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_ctx.get.side_effect = httpx.ConnectError("refused")
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-
-            with pytest.raises(MudServerConnectionError):
-                client.list_worlds()
+        with pytest.raises(MudServerConnectionError):
+            client.list_worlds()
 
     def test_post_connect_error(self, client: MudServerClient) -> None:
         client._session_id = "abc-123"
+        client._client.post.side_effect = httpx.ConnectError("refused")
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            mock_ctx.post.side_effect = httpx.ConnectError("refused")
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
+        with pytest.raises(MudServerConnectionError):
+            client.translate(
+                world_id="test",
+                axes={},
+                channel="say",
+                ooc_message="test",
+            )
 
-            with pytest.raises(MudServerConnectionError):
-                client.translate(
-                    world_id="test",
-                    axes={},
-                    channel="say",
-                    ooc_message="test",
-                )
+
+# ---------------------------------------------------------------------------
+# Timeout handling
+# ---------------------------------------------------------------------------
+
+
+class TestTimeoutHandling:
+    """Timeout exceptions are caught and raised as MudServerConnectionError."""
+
+    def test_get_read_timeout(self, client: MudServerClient) -> None:
+        """ReadTimeout on GET → MudServerConnectionError."""
+        client._session_id = "abc-123"
+        client._client.get.side_effect = httpx.ReadTimeout("timed out")
+
+        with pytest.raises(MudServerConnectionError):
+            client.list_worlds()
+
+    def test_post_read_timeout(self, client: MudServerClient) -> None:
+        """ReadTimeout on POST → MudServerConnectionError."""
+        client._session_id = "abc-123"
+        client._client.post.side_effect = httpx.ReadTimeout("timed out")
+
+        with pytest.raises(MudServerConnectionError):
+            client.translate(
+                world_id="test",
+                axes={},
+                channel="say",
+                ooc_message="test",
+            )
+
+    def test_post_connect_timeout(self, client: MudServerClient) -> None:
+        """ConnectTimeout on POST → MudServerConnectionError."""
+        client._session_id = "abc-123"
+        client._client.post.side_effect = httpx.ConnectTimeout("connect timed out")
+
+        with pytest.raises(MudServerConnectionError):
+            client.translate(
+                world_id="test",
+                axes={},
+                channel="say",
+                ooc_message="test",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -402,14 +394,24 @@ class TestWorldSelection:
     def test_logout_clears_world(self, client: MudServerClient) -> None:
         client._session_id = "abc"
         client.select_world("pipeworks_web")
+        client._client.post.return_value = MagicMock()
 
-        with patch("app.mud_server_client.httpx.Client") as MockClient:
-            mock_ctx = MagicMock()
-            MockClient.return_value.__enter__ = MagicMock(return_value=mock_ctx)
-            MockClient.return_value.__exit__ = MagicMock(return_value=False)
-            client.logout()
+        client.logout()
 
         assert client.selected_world_id is None
+
+
+# ---------------------------------------------------------------------------
+# Close
+# ---------------------------------------------------------------------------
+
+
+class TestClose:
+    """close() closes the underlying httpx.Client."""
+
+    def test_close_calls_client_close(self, client: MudServerClient) -> None:
+        client.close()
+        client._client.close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
