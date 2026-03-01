@@ -285,6 +285,14 @@ class ChatLogEntry(BaseModel):
             "Matches the 'prompt' row in the in-browser IPC meta table."
         ),
     )
+    system_prompt: str | None = Field(
+        default=None,
+        description=(
+            "Prompt text in effect for this live message, if the frontend was able to "
+            "capture it. Used by chat save/export so prompt changes during a live "
+            "conversation can be preserved per entry."
+        ),
+    )
     output_hash: str | None = Field(
         default=None,
         description=(
@@ -340,7 +348,10 @@ class ChatSaveRequest(BaseModel):
     )
     system_prompt: str | None = Field(
         default=None,
-        description="IC system prompt used, or None if the server default was in effect.",
+        description=(
+            "Prompt text currently visible in the chat UI when the save was requested. "
+            "Used to write system_prompt.md for the present conversation state."
+        ),
     )
 
 

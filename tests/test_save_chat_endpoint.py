@@ -58,6 +58,7 @@ def base_entry(axes_a: dict) -> dict:
         "channel": "say",
         "ooc_message": "she looks around cautiously",
         "ic_text": "She peers cautiously about the chamber.",
+        "system_prompt": "Server prompt A: {{profile_summary}}",
         "model": "gemma2:2b",
         "ipc_id": "a1e28854078de8dd" + "a" * 48,
         "input_hash": "cd712615b3b3670a" + "b" * 48,
@@ -183,6 +184,34 @@ class TestConditionalFiles:
         data = client.post("/api/save_chat", json=base_request).json()
         assert "system_prompt.md" in data["files"]
 
+    def test_prompt_history_files_written_for_distinct_prompts(
+        self, client: TestClient, base_entry: dict
+    ) -> None:
+        """Each distinct prompt used during the chat must be written as its own md file."""
+        req = {
+            "entries": [
+                base_entry,
+                {
+                    **base_entry,
+                    "ch": "b",
+                    "system_prompt": "Server prompt B: {{profile_summary}}",
+                    "system_prompt_hash": "bbb5aabaa2474094" + "e" * 48,
+                    "ipc_id": "b1e28854078de8dd" + "f" * 48,
+                    "input_hash": "dd712615b3b3670a" + "1" * 48,
+                    "output_hash": "fa0c157dd83dbffb" + "2" * 48,
+                },
+            ],
+            "model": "gemma2:2b",
+            "temperature": 0.7,
+            "max_tokens": 128,
+            "seed": 42,
+            "system_prompt": "Server prompt B: {{profile_summary}}",
+        }
+        data = client.post("/api/save_chat", json=req).json()
+
+        assert "system_prompt_001.md" in data["files"]
+        assert "system_prompt_002.md" in data["files"]
+
 
 # ---------------------------------------------------------------------------
 # Validation
@@ -263,6 +292,35 @@ class TestChatSaveExport:
         resp = client.get(f"/api/save/{folder}/export")
         with zipfile.ZipFile(BytesIO(resp.content)) as zf:
             assert "system_prompt.md" in zf.namelist()
+
+    def test_export_zip_contains_prompt_history_md_files(
+        self, client: TestClient, base_entry: dict
+    ) -> None:
+        """Distinct prompts used during the chat must be exported as separate markdown files."""
+        req = {
+            "entries": [
+                base_entry,
+                {
+                    **base_entry,
+                    "ch": "b",
+                    "system_prompt": "Server prompt B: {{profile_summary}}",
+                    "system_prompt_hash": "bbb5aabaa2474094" + "e" * 48,
+                    "ipc_id": "b1e28854078de8dd" + "f" * 48,
+                    "input_hash": "dd712615b3b3670a" + "1" * 48,
+                    "output_hash": "fa0c157dd83dbffb" + "2" * 48,
+                },
+            ],
+            "model": "gemma2:2b",
+            "temperature": 0.7,
+            "max_tokens": 128,
+            "seed": 42,
+            "system_prompt": "Server prompt B: {{profile_summary}}",
+        }
+        folder = client.post("/api/save_chat", json=req).json()["folder_name"]
+        resp = client.get(f"/api/save/{folder}/export")
+        with zipfile.ZipFile(BytesIO(resp.content)) as zf:
+            assert "system_prompt_001.md" in zf.namelist()
+            assert "system_prompt_002.md" in zf.namelist()
 
 
 # ---------------------------------------------------------------------------
@@ -491,10 +549,10 @@ class TestHashesInMetadata:
         meta = self._read_metadata(client, base_request)
         assert len(meta["per_entry_hashes"]) == meta["entry_count"]
 
-    def test_per_entry_hashes_contain_all_four_fields(
+    def test_per_entry_hashes_contain_all_prompt_and_hash_fields(
         self, client: TestClient, base_request: dict, base_entry: dict
     ) -> None:
-        """Each per_entry_hashes row must carry index, ch, and all four hash fields."""
+        """Each per_entry_hashes row must carry index, ch, prompt text, and all hashes."""
         meta = self._read_metadata(client, base_request)
         row = meta["per_entry_hashes"][0]
 
@@ -502,8 +560,48 @@ class TestHashesInMetadata:
         assert row["ch"] == base_entry["ch"]
         assert row["input_hash"] == base_entry["input_hash"]
         assert row["system_prompt_hash"] == base_entry["system_prompt_hash"]
+        assert row["system_prompt"] == base_entry["system_prompt"]
         assert row["output_hash"] == base_entry["output_hash"]
         assert row["ipc_id"] == base_entry["ipc_id"]
+
+    def test_system_prompt_history_contains_unique_prompt_entries(
+        self, client: TestClient, base_entry: dict
+    ) -> None:
+        """metadata.json must preserve every distinct prompt used during the chat log."""
+        req = {
+            "entries": [
+                base_entry,
+                {
+                    **base_entry,
+                    "ch": "b",
+                    "ooc_message": "he narrows his eyes",
+                    "ic_text": "He narrows his eyes.",
+                    "system_prompt": "Server prompt B: {{profile_summary}}",
+                    "system_prompt_hash": "bbb5aabaa2474094" + "e" * 48,
+                    "ipc_id": "b1e28854078de8dd" + "f" * 48,
+                    "input_hash": "dd712615b3b3670a" + "1" * 48,
+                    "output_hash": "fa0c157dd83dbffb" + "2" * 48,
+                },
+            ],
+            "model": "gemma2:2b",
+            "temperature": 0.7,
+            "max_tokens": 128,
+            "seed": 42,
+            "system_prompt": "Server prompt B: {{profile_summary}}",
+        }
+        meta = self._read_metadata(client, req)
+
+        history = meta["system_prompt_history"]
+        assert len(history) == 2
+        assert {row["system_prompt"] for row in history} == {
+            "Server prompt A: {{profile_summary}}",
+            "Server prompt B: {{profile_summary}}",
+        }
+        assert {row["filename"] for row in history} == {
+            "system_prompt_001.md",
+            "system_prompt_002.md",
+        }
+        assert sorted(history[0]["entry_indices"] + history[1]["entry_indices"]) == [1, 2]
 
     def test_per_entry_hashes_multiple_entries_indexed_correctly(self, client: TestClient) -> None:
         """Row indices must be 1-based and consecutive across all entries."""
@@ -513,6 +611,7 @@ class TestHashesInMetadata:
                     "ch": "a",
                     "channel": "say",
                     "ic_text": "She enters.",
+                    "system_prompt": "Prompt one",
                     "model": "gemma2:2b",
                     "ipc_id": "aaa" + "0" * 61,
                     "input_hash": "bbb" + "0" * 61,
@@ -523,6 +622,7 @@ class TestHashesInMetadata:
                     "ch": "b",
                     "channel": "whisper",
                     "ic_text": "He nods.",
+                    "system_prompt": "Prompt two",
                     "model": "gemma2:2b",
                     "ipc_id": "eee" + "0" * 61,
                     "input_hash": "fff" + "0" * 61,
@@ -565,5 +665,6 @@ class TestHashesInMetadata:
         row = meta["per_entry_hashes"][0]
         assert row["input_hash"] is None
         assert row["system_prompt_hash"] is None
+        assert row["system_prompt"] is None
         assert row["output_hash"] is None
         assert row["ipc_id"] is None

@@ -51,14 +51,15 @@ export const chatState = {
    *   model: string,
    *   status: string,
    *   errorDetail: string|null,
-   *   sentAt: string|null,
-   *   durationMs: number|null,
-   *   ipcId: string|null,
-   *   inputHash: string|null,
-   *   systemPromptHash: string|null,
-   *   outputHash: string|null
-   * }[]}
-   */
+ *   sentAt: string|null,
+ *   durationMs: number|null,
+ *   ipcId: string|null,
+ *   inputHash: string|null,
+ *   systemPromptHash: string|null,
+ *   systemPrompt: string|null,
+ *   outputHash: string|null
+ * }[]}
+ */
   gameLog: [],
 };
 

@@ -82,6 +82,7 @@ export function restoreChatSessionState(data) {
         hashEntry.input_hash ?? null,
         hashEntry.system_prompt_hash ?? null,
         hashEntry.output_hash ?? null,
+        hashEntry.system_prompt ?? null,
       );
     }
 

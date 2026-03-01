@@ -10,7 +10,11 @@
 import { dom } from "./mod-state.js";
 import { setStatus } from "./mod-status.js";
 import { chatState } from "./mod-chat-state.js";
-import { getEffectiveSystemPrompt, isServerMode } from "./mod-chat-server-mode.js";
+import {
+  getCurrentSystemPromptText,
+  getEffectiveSystemPrompt,
+  isServerMode,
+} from "./mod-chat-server-mode.js";
 
 /**
  * Build a compact IPC meta table element from a `ChatTranslationResult`.
@@ -107,18 +111,22 @@ export function renderTranslationResult(outputBox, metaDiv, statusBadge, result,
 /**
  * Append a single in-game log entry to the game output panel.
  *
+ * The saved in-memory entry keeps both the prompt hash and, when available,
+ * the prompt text itself so save/export can preserve prompt changes that
+ * happened mid-conversation.
+ *
  * @returns {void}
  */
 export function appendGameEntry(
   ch, channel, oocMessage, icText, model,
   status = "success", errorDetail = null, sentAt = null, durationMs = null,
-  ipcId = null, inputHash = null, systemPromptHash = null, outputHash = null,
+  ipcId = null, inputHash = null, systemPromptHash = null, outputHash = null, systemPrompt = null,
 ) {
   chatState.logSeq++;
   chatState.gameLog.push({
     ch, channel, oocMessage, icText, model,
     status, errorDetail, sentAt, durationMs,
-    ipcId, inputHash, systemPromptHash, outputHash,
+    ipcId, inputHash, systemPromptHash, outputHash, systemPrompt,
   });
   const placeholder = dom.chatGameOutput.querySelector(".placeholder-text");
   if (placeholder) placeholder.remove();
@@ -236,6 +244,7 @@ export async function saveChatLog() {
       input_hash: e.inputHash ?? null,
       system_prompt_hash: e.systemPromptHash ?? null,
       output_hash: e.outputHash ?? null,
+      system_prompt: e.systemPrompt ?? null,
     })),
     character_a: chatState.a.payload ? chatState.a.payload.axes : null,
     character_b: chatState.b.payload ? chatState.b.payload.axes : null,
@@ -243,8 +252,10 @@ export async function saveChatLog() {
     temperature: parseFloat(dom.chatTempInput.value),
     max_tokens: parseInt(dom.chatTokensInput.value, 10),
     seed: resolveChatSeed(),
+    // Save the prompt currently visible in the UI so system_prompt.md reflects
+    // the present conversation state even when the active server prompt is in use.
     system_prompt: (isServerMode() && chatState.authenticated)
-      ? (dom.chatServerPromptText?.value.trim() || null)
+      ? getCurrentSystemPromptText()
       : getEffectiveSystemPrompt(),
   };
 
