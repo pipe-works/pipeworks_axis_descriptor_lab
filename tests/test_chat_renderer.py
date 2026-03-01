@@ -1,7 +1,8 @@
 """
 Tests for app/chat_renderer.py — unified synchronous Ollama HTTP client.
 
-All tests mock ``httpx.Client`` so no real HTTP connections are made.
+All tests mock ``_get_client`` (the module-level client pool function) so
+no real HTTP connections are made.
 
 Key behaviours verified:
   render():
@@ -10,7 +11,7 @@ Key behaviours verified:
     - All three network failure paths (timeout, connect error, generic) return None.
     - Seed omitted from options when seed=None.
     - Seed included in options when seed is an integer.
-    - Request body structure: model, stream=False, messages array, options.
+    - Request body structure: model, stream=False, keep_alive, messages array, options.
 
   generate():
     - Happy path: (text, usage) returned; text is stripped.
@@ -31,6 +32,14 @@ Key behaviours verified:
     - HTTP error → [] + warning logged.
     - Custom host used in URL.
     - Trailing slash on custom host stripped.
+
+  Shared client pool:
+    - _get_client returns same instance for same key.
+    - close_all_clients clears pool and closes clients.
+
+  keep_alive:
+    - Default "5m" appears in payload.
+    - Custom keep_alive forwarded.
 """
 
 from __future__ import annotations
@@ -41,7 +50,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from app.chat_renderer import ChatRenderer
+from app.chat_renderer import ChatRenderer, _client_pool, _get_client, close_all_clients
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -73,12 +82,17 @@ def _make_renderer(**kwargs) -> ChatRenderer:
 
 
 def _patch_client(mock_response: httpx.Response):
-    """Context manager: patches httpx.Client and configures it to return mock_response."""
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__ = lambda s: s
-    mock_ctx.__exit__ = lambda s, *a: None
-    mock_ctx.post.return_value = mock_response
-    return patch("app.chat_renderer.httpx.Client", return_value=mock_ctx)
+    """Context manager: patches _get_client and configures it to return a mock with mock_response."""
+    mock_client = MagicMock()
+    mock_client.post.return_value = mock_response
+    return patch("app.chat_renderer._get_client", return_value=mock_client)
+
+
+def _make_error_client(side_effect):
+    """Patch _get_client with a mock whose post() raises the given side_effect."""
+    mock_client = MagicMock()
+    mock_client.post.side_effect = side_effect
+    return patch("app.chat_renderer._get_client", return_value=mock_client)
 
 
 # ── render() — Happy path ─────────────────────────────────────────────────────
@@ -135,42 +149,26 @@ class TestNetworkFailures:
 
     def test_timeout_returns_none(self) -> None:
         renderer = _make_renderer()
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.side_effect = httpx.TimeoutException("read timed out")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        with _make_error_client(httpx.TimeoutException("read timed out")):
             result = renderer.render("sys", "msg")
         assert result is None
 
     def test_timeout_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         renderer = _make_renderer()
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.side_effect = httpx.TimeoutException("read timed out")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        with _make_error_client(httpx.TimeoutException("read timed out")):
             with caplog.at_level(logging.WARNING, logger="app.chat_renderer"):
                 renderer.render("sys", "msg")
         assert any("timed out" in r.message for r in caplog.records)
 
     def test_connect_error_returns_none(self) -> None:
         renderer = _make_renderer()
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.side_effect = httpx.ConnectError("connection refused")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        with _make_error_client(httpx.ConnectError("connection refused")):
             result = renderer.render("sys", "msg")
         assert result is None
 
     def test_connect_error_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         renderer = _make_renderer()
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.side_effect = httpx.ConnectError("connection refused")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        with _make_error_client(httpx.ConnectError("connection refused")):
             with caplog.at_level(logging.WARNING, logger="app.chat_renderer"):
                 renderer.render("sys", "msg")
         assert any("cannot connect" in r.message for r in caplog.records)
@@ -190,21 +188,13 @@ class TestNetworkFailures:
     def test_unexpected_exception_returns_none(self) -> None:
         """Unexpected exceptions (e.g. JSON decode error) return None, not raise."""
         renderer = _make_renderer()
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.side_effect = ValueError("unexpected json error")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        with _make_error_client(ValueError("unexpected json error")):
             result = renderer.render("sys", "msg")
         assert result is None
 
     def test_unexpected_exception_logs_error(self, caplog: pytest.LogCaptureFixture) -> None:
         renderer = _make_renderer()
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.side_effect = RuntimeError("boom")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        with _make_error_client(RuntimeError("boom")):
             with caplog.at_level(logging.ERROR, logger="app.chat_renderer"):
                 renderer.render("sys", "msg")
         assert any(r.levelno == logging.ERROR for r in caplog.records)
@@ -218,13 +208,11 @@ class TestSeedHandling:
 
     def _get_posted_body(self, renderer: ChatRenderer) -> dict:
         """Render a request and return the posted JSON body."""
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.return_value = _make_response("ok")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_response("ok")
+        with patch("app.chat_renderer._get_client", return_value=mock_client):
             renderer.render("system", "user")
-        call_args = mock_ctx.post.call_args
+        call_args = mock_client.post.call_args
         return call_args.kwargs.get("json") or call_args[1].get("json")
 
     def test_seed_included_when_provided(self) -> None:
@@ -258,13 +246,11 @@ class TestRequestBodyStructure:
         **renderer_kwargs,
     ) -> dict:
         renderer = _make_renderer(**renderer_kwargs)
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.return_value = _make_response("ok")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_response("ok")
+        with patch("app.chat_renderer._get_client", return_value=mock_client):
             renderer.render(system_prompt, user_message)
-        call_args = mock_ctx.post.call_args
+        call_args = mock_client.post.call_args
         return call_args.kwargs.get("json") or call_args[1].get("json")
 
     def test_stream_is_false(self) -> None:
@@ -301,26 +287,22 @@ class TestRequestBodyStructure:
     def test_post_url_appends_api_chat(self) -> None:
         """The POST is sent to host + /api/chat."""
         renderer = _make_renderer(host="http://myhost:11434")
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.return_value = _make_response("ok")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_response("ok")
+        with patch("app.chat_renderer._get_client", return_value=mock_client):
             renderer.render("sp", "msg")
-        call_args = mock_ctx.post.call_args
+        call_args = mock_client.post.call_args
         posted_url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url")
         assert posted_url == "http://myhost:11434/api/chat"
 
     def test_trailing_slash_on_host_stripped(self) -> None:
         """A trailing slash on the host is normalised before appending /api/chat."""
         renderer = _make_renderer(host="http://myhost:11434/")
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.return_value = _make_response("ok")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_response("ok")
+        with patch("app.chat_renderer._get_client", return_value=mock_client):
             renderer.render("sp", "msg")
-        call_args = mock_ctx.post.call_args
+        call_args = mock_client.post.call_args
         posted_url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url")
         assert posted_url == "http://myhost:11434/api/chat"
 
@@ -375,13 +357,11 @@ class TestGenerate:
     """generate() raises on failure and returns (text, usage) on success."""
 
     def _get_posted_body(self, renderer: ChatRenderer) -> dict:
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.return_value = _make_generate_response("ok")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_generate_response("ok")
+        with patch("app.chat_renderer._get_client", return_value=mock_client):
             renderer.generate("system", "user")
-        call_args = mock_ctx.post.call_args
+        call_args = mock_client.post.call_args
         return call_args.kwargs.get("json") or call_args[1].get("json")
 
     def test_returns_text_and_usage(self) -> None:
@@ -437,11 +417,7 @@ class TestGenerate:
 
     def test_timeout_propagates(self) -> None:
         renderer = _make_renderer()
-        mock_ctx = MagicMock()
-        mock_ctx.__enter__ = lambda s: s
-        mock_ctx.__exit__ = lambda s, *a: None
-        mock_ctx.post.side_effect = httpx.TimeoutException("read timed out")
-        with patch("app.chat_renderer.httpx.Client", return_value=mock_ctx):
+        with _make_error_client(httpx.TimeoutException("read timed out")):
             with pytest.raises(httpx.TimeoutException):
                 renderer.generate("sys", "msg")
 
@@ -481,7 +457,7 @@ class TestGenerate:
 
 
 def _patch_get_client(mock_response: httpx.Response):
-    """Context manager: patches httpx.Client for GET calls."""
+    """Context manager: patches httpx.Client for GET calls (list_models still uses a context manager)."""
     mock_ctx = MagicMock()
     mock_ctx.__enter__ = lambda s: s
     mock_ctx.__exit__ = lambda s, *a: None
@@ -617,3 +593,66 @@ class TestListModels:
         call_args = mock_ctx.get.call_args
         get_url = call_args[0][0] if call_args[0] else call_args.kwargs.get("url")
         assert get_url == "http://myhost:11434/api/tags"
+
+
+# ── Shared client pool ────────────────────────────────────────────────────────
+
+
+class TestClientPool:
+    """Module-level _get_client pool and close_all_clients."""
+
+    def setup_method(self) -> None:
+        """Ensure a clean pool before each test."""
+        close_all_clients()
+
+    def teardown_method(self) -> None:
+        """Clean up after each test."""
+        close_all_clients()
+
+    def test_get_client_returns_same_instance(self) -> None:
+        timeout = httpx.Timeout(120.0, connect=10.0)
+        c1 = _get_client("http://localhost:11434", timeout)
+        c2 = _get_client("http://localhost:11434", timeout)
+        assert c1 is c2
+
+    def test_different_host_gets_different_client(self) -> None:
+        timeout = httpx.Timeout(120.0, connect=10.0)
+        c1 = _get_client("http://localhost:11434", timeout)
+        c2 = _get_client("http://other:11434", timeout)
+        assert c1 is not c2
+
+    def test_close_all_clients_clears_pool(self) -> None:
+        timeout = httpx.Timeout(120.0, connect=10.0)
+        _get_client("http://localhost:11434", timeout)
+        assert len(_client_pool) == 1
+        close_all_clients()
+        assert len(_client_pool) == 0
+
+
+# ── keep_alive ────────────────────────────────────────────────────────────────
+
+
+class TestKeepAlive:
+    """The keep_alive parameter is forwarded to the Ollama request payload."""
+
+    def _get_posted_body(self, **renderer_kwargs) -> dict:
+        renderer = _make_renderer(**renderer_kwargs)
+        mock_client = MagicMock()
+        mock_client.post.return_value = _make_response("ok")
+        with patch("app.chat_renderer._get_client", return_value=mock_client):
+            renderer.render("system", "user")
+        call_args = mock_client.post.call_args
+        return call_args.kwargs.get("json") or call_args[1].get("json")
+
+    def test_default_keep_alive_is_5m(self) -> None:
+        body = self._get_posted_body()
+        assert body["keep_alive"] == "5m"
+
+    def test_custom_keep_alive_forwarded(self) -> None:
+        body = self._get_posted_body(keep_alive="10m")
+        assert body["keep_alive"] == "10m"
+
+    def test_keep_alive_zero_to_unload(self) -> None:
+        """keep_alive='0' tells Ollama to unload the model immediately."""
+        body = self._get_posted_body(keep_alive="0")
+        assert body["keep_alive"] == "0"

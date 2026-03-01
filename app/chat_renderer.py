@@ -19,6 +19,15 @@ production MUD translation layer also uses.  This ensures that any
 model-behaviour differences between ``/api/generate`` (flat prompt) and
 ``/api/chat`` (messages) are visible during lab testing.
 
+Connection pooling
+------------------
+HTTP connections are reused across requests via a module-level client pool
+keyed by ``(host, connect_timeout, read_timeout)``.  This avoids the
+overhead of a fresh TCP handshake + TLS negotiation on every call and
+prevents cold-start failures when Character B fires immediately after
+Character A.  Call :func:`close_all_clients` at shutdown to release
+pooled connections cleanly.
+
 Sync rationale
 --------------
 The lab's route handlers are synchronous (FastAPI runs them in a
@@ -34,6 +43,7 @@ Request structure sent to Ollama
     {
       "model": "<model-tag>",
       "stream": false,
+      "keep_alive": "5m",
       "messages": [
         {"role": "system", "content": "<rendered system prompt>"},
         {"role": "user",   "content": "<ooc message>"}
@@ -48,6 +58,10 @@ Request structure sent to Ollama
 The ``stream: false`` flag is required to get a single JSON response body
 rather than a series of newline-delimited chunks.
 
+The ``keep_alive`` field tells Ollama how long to keep the model loaded in
+memory after responding (default ``"5m"``).  This prevents cold-start
+latency on back-to-back requests (e.g. Character A then Character B).
+
 Environment variables
 ---------------------
 OLLAMA_HOST – Base URL of the Ollama server (default: http://localhost:11434).
@@ -59,6 +73,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 
 import httpx
 from dotenv import load_dotenv
@@ -71,15 +86,51 @@ logger = logging.getLogger(__name__)
 # Exported so main.py can pass the default to the template.
 OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 
+# ── Shared client pool ────────────────────────────────────────────────────────
+# Keyed by (host, connect_timeout, read_timeout) so that requests to the same
+# Ollama instance reuse TCP connections (HTTP Keep-Alive).  Thread-safe via a
+# simple lock — contention is negligible for a single-user tool.
+
+_client_pool: dict[tuple[str, float, float], httpx.Client] = {}
+_pool_lock = threading.Lock()
+
+
+def _get_client(host: str, timeout: httpx.Timeout) -> httpx.Client:
+    """Return a shared ``httpx.Client`` for the given host and timeout.
+
+    Creates a new client on first access; subsequent calls with the same
+    parameters return the cached instance.
+    """
+    key = (host, timeout.connect or 10.0, timeout.read or 120.0)
+    with _pool_lock:
+        client = _client_pool.get(key)
+        if client is None:
+            client = httpx.Client(timeout=timeout)
+            _client_pool[key] = client
+        return client
+
+
+def close_all_clients() -> None:
+    """Close all pooled HTTP clients and clear the pool.
+
+    Call this during application shutdown to release TCP connections cleanly.
+    """
+    with _pool_lock:
+        for client in _client_pool.values():
+            try:
+                client.close()
+            except Exception:  # nosec B110 — best-effort shutdown cleanup
+                pass
+        _client_pool.clear()
+
 
 class ChatRenderer:
     """Synchronous Ollama client that calls the ``/api/chat`` endpoint.
 
-    Each call to :meth:`render` or :meth:`generate` opens a short-lived
-    ``httpx.Client`` context, POSTs the request, and returns the model's
-    response text.  Connection and read timeouts are configured separately
-    so that a slow Ollama instance (long generation) does not fail with a
-    connect timeout.
+    Requests reuse a shared ``httpx.Client`` from a module-level pool keyed
+    by ``(host, connect_timeout, read_timeout)``.  This enables HTTP
+    Keep-Alive across calls and avoids cold-start latency when multiple
+    requests target the same Ollama instance in quick succession.
 
     Args:
         host:            Ollama server base URL, e.g.
@@ -104,6 +155,11 @@ class ChatRenderer:
         max_tokens:      ``num_predict`` ceiling for the generation.  Ollama
                          stops after this many tokens even if the model would
                          continue.
+        keep_alive:      Duration string telling Ollama how long to keep the
+                         model loaded in memory after responding (e.g.
+                         ``"5m"``, ``"1h"``, ``"0"`` to unload immediately).
+                         Defaults to ``"5m"`` to prevent cold-start latency
+                         on back-to-back requests.
     """
 
     def __init__(
@@ -115,8 +171,10 @@ class ChatRenderer:
         temperature: float = 0.7,
         seed: int | None = None,
         max_tokens: int = 128,
+        keep_alive: str = "5m",
     ) -> None:
-        self._endpoint = f"{host.rstrip('/')}/api/chat"
+        self._host = host.rstrip("/")
+        self._endpoint = f"{self._host}/api/chat"
         self._model = model
         # httpx.Timeout(default, connect=...) sets read/write/pool to `default`
         # while overriding just the connect timeout.
@@ -124,6 +182,7 @@ class ChatRenderer:
         self._temperature = temperature
         self._seed = seed
         self._max_tokens = max_tokens
+        self._keep_alive = keep_alive
 
     def _build_payload(self, system_prompt: str, user_message: str) -> dict:
         options: dict = {
@@ -138,6 +197,7 @@ class ChatRenderer:
         return {
             "model": self._model,
             "stream": False,  # single JSON response, not a stream of chunks
+            "keep_alive": self._keep_alive,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
@@ -181,16 +241,16 @@ class ChatRenderer:
             ``"fallback.api_error"`` in the translation result.
         """
         payload = self._build_payload(system_prompt, user_message)
+        client = _get_client(self._host, self._timeout)
 
         try:
-            with httpx.Client(timeout=self._timeout) as client:
-                response = client.post(self._endpoint, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                # Ollama /api/chat response shape:
-                # {"model": ..., "message": {"role": "assistant", "content": "..."}, ...}
-                content = data.get("message", {}).get("content", "").strip()
-                return content or None
+            response = client.post(self._endpoint, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            # Ollama /api/chat response shape:
+            # {"model": ..., "message": {"role": "assistant", "content": "..."}, ...}
+            content = data.get("message", {}).get("content", "").strip()
+            return content or None
 
         except httpx.TimeoutException:
             logger.warning(
@@ -230,11 +290,11 @@ class ChatRenderer:
             ValueError:             Response is missing the ``"message"`` key.
         """
         payload = self._build_payload(system_prompt, user_message)
+        client = _get_client(self._host, self._timeout)
 
-        with httpx.Client(timeout=self._timeout) as client:
-            response = client.post(self._endpoint, json=payload)
-            response.raise_for_status()
-            data = response.json()
+        response = client.post(self._endpoint, json=payload)
+        response.raise_for_status()
+        data = response.json()
 
         if "message" not in data:
             raise ValueError(

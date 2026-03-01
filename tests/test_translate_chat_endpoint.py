@@ -772,7 +772,8 @@ class TestErrorDetail:
             data = client.post("/api/translate_chat", json=base_request).json()
 
         assert data["character_a"]["error_detail"] == (
-            "Remote translation failed (model may be loading)."
+            "Remote translation failed — server returned status 'fallback.api_error'."
+            " The model may still be loading in Ollama."
         )
 
     def test_standalone_success_has_no_error_detail(
