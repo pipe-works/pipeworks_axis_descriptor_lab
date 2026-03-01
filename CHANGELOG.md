@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.7.1...axis-descriptor-lab-v0.8.0) (2026-03-01)
+
+
+### Features
+
+* add "Use address" Ollama toggle for chat translation ([#65](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/65)) ([bbc7497](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/bbc74979fd5599212fc3eca37fa99c201a990c96))
+
 ## [0.7.1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.7.0...axis-descriptor-lab-v0.7.1) (2026-03-01)
 
 
