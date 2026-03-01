@@ -667,6 +667,53 @@ class TestServerModeTranslation:
         assert resp.status_code == 401
 
 
+class TestServerModePromptOverride:
+    """Server mode forwards system_prompt as prompt_template_override."""
+
+    def test_system_prompt_forwarded_as_override(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """When system_prompt is set, it is passed as prompt_template_override."""
+        mock = _mock_mud_client()
+        mock.translate.return_value = {
+            "ic_text": "She nods.",
+            "status": "success",
+            "profile_summary": "test",
+            "rendered_prompt": "Custom prompt rendered",
+            "model": "gemma2:2b",
+            "world_config": {},
+        }
+        request = {**base_request, "system_prompt": "Custom prompt: {{profile_summary}}"}
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            resp = client.post("/api/translate_chat", json=request)
+
+        assert resp.status_code == 200
+        call_kwargs = mock.translate.call_args[1]
+        assert call_kwargs["prompt_template_override"] == "Custom prompt: {{profile_summary}}"
+
+    def test_no_system_prompt_sends_none_override(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """When system_prompt is absent, prompt_template_override is None."""
+        mock = _mock_mud_client()
+        mock.translate.return_value = {
+            "ic_text": "She nods.",
+            "status": "success",
+            "profile_summary": "test",
+            "rendered_prompt": "Default prompt",
+            "model": "gemma2:2b",
+            "world_config": {},
+        }
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            resp = client.post("/api/translate_chat", json=base_request)
+
+        assert resp.status_code == 200
+        call_kwargs = mock.translate.call_args[1]
+        assert call_kwargs["prompt_template_override"] is None
+
+
 class TestServerModeGuards:
     """Server mode rejects requests when auth or world selection is missing."""
 
