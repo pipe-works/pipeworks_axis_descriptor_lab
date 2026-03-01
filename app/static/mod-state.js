@@ -230,6 +230,7 @@ export const dom = {
 
   // ── Chat Translation — Controls ───────────────────────────────────── //
   chatOllamaHost:       $("chat-ollama-host"),
+  chatUseAddress:       $("chat-use-address"),
   chatModelSelect:      $("chat-model-select"),
   chatModelInput:       $("chat-model-input"),
   chatTempRange:        $("chat-temp-range"),

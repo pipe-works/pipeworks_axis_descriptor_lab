@@ -203,6 +203,27 @@
   font-size: var(--text-sm);
 }
 
+/* Dimmed state for the Ollama host input when "Use address" is unchecked.
+   Signals that the URL will not be included in translation requests.
+   The input remains interactive (for model-list refresh) but at reduced
+   opacity.  On focus, opacity increases slightly so the field is still
+   usable when the user wants to change the URL for model refresh. */
+.input--dimmed {
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+}
+.input--dimmed:focus {
+  opacity: 0.7;
+}
+
+/* Compact inline toggle for use inside `.model-row` flex containers.
+   Keeps the label on a single line with tighter spacing than the
+   default block-level `.toggle-label`. */
+.toggle-label--inline {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    OUTPUT PANEL
 ════════════════════════════════════════════════════════════════════════════ */

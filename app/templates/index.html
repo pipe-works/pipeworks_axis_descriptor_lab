@@ -577,10 +577,10 @@
     </div>
 
     <div class="settings-grid" style="margin-top:var(--sp-2);">
-      <div data-server-hide>
+      <div>
         <label for="chat-ollama-host" class="control-label">Ollama</label>
       </div>
-      <div data-server-hide>
+      <div>
         <div class="model-row">
           <input
             id="chat-ollama-host"
@@ -607,6 +607,17 @@
             placeholder="e.g. gemma2:2b"
             aria-label="Model name"
           />
+          <!-- "Use address" toggle — development feature for routing translation
+               requests to a remote Ollama instance on a different network.
+               When unchecked (default), the host URL is only used for model-list
+               refresh and is NOT sent in translation request bodies.
+               In server mode, checking this bypasses the mud server and translates
+               directly via the specified Ollama instance. -->
+          <label class="toggle-label toggle-label--inline"
+                 data-tooltip="When checked, translation requests use the Ollama URL to the left instead of the server default. In server mode this bypasses the mud server and translates directly via the specified Ollama.">
+            <input type="checkbox" id="chat-use-address" role="switch" />
+            <span class="toggle-text">Use address</span>
+          </label>
         </div>
       </div>
 
