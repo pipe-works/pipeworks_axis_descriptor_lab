@@ -878,9 +878,12 @@ class ChatLogEntry(BaseModel):
             "None for entries created before this field was added."
         ),
     )
-    ic_text: str = Field(
-        ...,
-        description="Translated IC dialogue text produced by the translation pipeline.",
+    ic_text: str | None = Field(
+        default=None,
+        description=(
+            "Translated IC dialogue text produced by the translation pipeline.  "
+            "None for failed entries where no IC text was produced."
+        ),
     )
     model: str = Field(
         ...,
@@ -889,6 +892,38 @@ class ChatLogEntry(BaseModel):
     ipc_id: str | None = Field(
         default=None,
         description="IPC identifier from the translation result.  None when unavailable.",
+    )
+    # ── Timing and failure tracking ──────────────────────────────────────────
+    # These fields record the translation outcome and timing so that both
+    # successful and failed translations appear in the game log with full
+    # diagnostic context.  All default to backwards-compatible values.
+    status: str = Field(
+        default="success",
+        description=(
+            "Translation outcome: 'success', 'fallback.validation_failed', "
+            "'fallback.api_error', or 'error' (network/timeout)."
+        ),
+    )
+    error_detail: str | None = Field(
+        default=None,
+        description=(
+            "Human-readable error description when status is not 'success'.  "
+            "None for successful translations."
+        ),
+    )
+    sent_at: str | None = Field(
+        default=None,
+        description=(
+            "ISO-8601 timestamp of when the OOC message was sent (captured "
+            "before the fetch call on the frontend)."
+        ),
+    )
+    duration_ms: int | None = Field(
+        default=None,
+        description=(
+            "Round-trip translation time in milliseconds, measured from "
+            "send to response on the frontend."
+        ),
     )
     # ── IPC provenance hashes ────────────────────────────────────────────────
     # These three fields mirror the hashes computed in _translate_one() and

@@ -1373,13 +1373,12 @@ def _translate_via_server(
             bool(rendered_prompt),
         )
 
-        # Recompute IPC hashes from the server's rendered_prompt.
-        # NOTE: the server path hashes the *rendered* prompt (not the raw
-        # template) because the raw template is not available in the server
-        # response.  This differs from standalone mode (below) which hashes
-        # the raw template so both characters sharing the same prompt file
-        # get the same system_prompt_hash.
-        sp_hash = compute_system_prompt_hash(rendered_prompt) if rendered_prompt else None
+        # Hash the raw template (same as standalone mode) so both characters
+        # sharing the same prompt file get the same system_prompt_hash.
+        # Falls back to rendered_prompt for backward compatibility with older
+        # mud servers that don't return prompt_template yet.
+        prompt_template = data.get("prompt_template") or rendered_prompt
+        sp_hash = compute_system_prompt_hash(prompt_template) if prompt_template else None
 
         # Build the same input_dict shape as standalone for input_hash
         active: set[str] = (
@@ -1687,6 +1686,10 @@ def save_chat(req: ChatSaveRequest) -> ChatSaveResponse:
             "system_prompt_hash": e.get("system_prompt_hash"),
             "output_hash": e.get("output_hash"),
             "ipc_id": e.get("ipc_id"),
+            "status": e.get("status", "success"),
+            "error_detail": e.get("error_detail"),
+            "sent_at": e.get("sent_at"),
+            "duration_ms": e.get("duration_ms"),
         }
         for i, e in enumerate(entries_raw)
     ]

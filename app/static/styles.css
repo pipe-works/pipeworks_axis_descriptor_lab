@@ -1054,6 +1054,11 @@
   flex: 1;
 }
 
+/* Failed translation entries — error-coloured IC text column */
+.game-entry--failed .game-entry__text {
+  color: var(--col-err);
+}
+
 /* Action buttons in the game log header — pushed to the right */
 .game-log-actions {
   display: flex;

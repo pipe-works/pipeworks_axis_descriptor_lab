@@ -436,17 +436,21 @@ def extract_fenced_code(content: str) -> str:
     return extract_body_text(content)
 
 
-def parse_game_log_md(content: str) -> list[dict[str, str]]:
+def parse_game_log_md(content: str) -> list[dict]:
     """
     Parse a ``game_log.md`` file back into a list of entry dicts.
 
     Reads the Markdown table produced by
     :func:`app.save_formatting.build_game_log_md` and reconstructs each
-    log row as a plain dict.  The table format is::
+    log row as a plain dict.  Supports two table formats:
+
+    **5-column (legacy)**::
 
         | # | Char | OOC | Channel | IC Text |
-        | --- | --- | --- | --- | --- |
-        | 1 | A | OOC text | say | IC text |
+
+    **9-column (current)**::
+
+        | # | Char | OOC | Channel | IC Text | Status | Duration | Sent | Gap |
 
     Pipe characters inside OOC and IC text cells were escaped as ``\\|``
     when the file was written; this function reverses that escaping.
@@ -457,12 +461,13 @@ def parse_game_log_md(content: str) -> list[dict[str, str]]:
 
     Returns
     -------
-    list[dict[str, str]] : One dict per data row with keys
-        ``ch`` (lowercase "a"/"b"), ``channel``, ``ooc_message``,
-        ``ic_text``.  Header and separator rows are skipped.
+    list[dict] : One dict per data row with keys ``ch`` (lowercase "a"/"b"),
+        ``channel``, ``ooc_message``, ``ic_text``.  When the 9-column format
+        is detected, also includes ``status``, ``duration_ms``, ``sent_at``.
+        Header and separator rows are skipped.
         Returns an empty list if no data rows are found.
     """
-    entries: list[dict[str, str]] = []
+    entries: list[dict] = []
     for line in content.splitlines():
         line = line.strip()
         if not line.startswith("|"):
@@ -483,12 +488,40 @@ def parse_game_log_md(content: str) -> list[dict[str, str]]:
         # Only process rows whose first cell is a positive integer.
         if not idx_str.isdigit():
             continue
-        entries.append(
-            {
-                "ch": char.lower(),
-                "channel": channel,
-                "ooc_message": ooc.replace("\\|", "|"),
-                "ic_text": ic_text.replace("\\|", "|"),
-            }
-        )
+
+        row: dict = {
+            "ch": char.lower(),
+            "channel": channel,
+            "ooc_message": ooc.replace("\\|", "|"),
+            "ic_text": ic_text.replace("\\|", "|"),
+        }
+
+        # 9-column format: parse timing/status fields when present.
+        if len(cells) >= 9:
+            status_raw = cells[5].strip()
+            row["status"] = (
+                "success"
+                if status_raw == "ok"
+                else (
+                    f"fallback.{status_raw}"
+                    if status_raw
+                    and status_raw != "error"
+                    and "." not in status_raw
+                    and status_raw != "ok"
+                    else status_raw or "success"
+                )
+            )
+
+            duration_raw = cells[6].strip()
+            if duration_raw.endswith("s"):
+                try:
+                    row["duration_ms"] = int(float(duration_raw[:-1]) * 1000)
+                except ValueError:
+                    pass
+
+            sent_raw = cells[7].strip()
+            if sent_raw:
+                row["sent_at"] = sent_raw  # HH:MM:SS — partial, but preserves the data
+
+        entries.append(row)
     return entries
