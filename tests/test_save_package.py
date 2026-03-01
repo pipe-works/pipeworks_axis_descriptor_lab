@@ -667,3 +667,78 @@ class TestParseGameLogMd:
         """Rows whose first cell is not a digit (e.g. text) are skipped."""
         content = "| x | A | msg | say | IC |\n"
         assert parse_game_log_md(content) == []
+
+    # ── 9-column format tests ─────────────────────────────────────────── #
+
+    def test_parses_nine_column_format(self) -> None:
+        """Nine-column rows include status, duration_ms, and sent_at."""
+        content = (
+            "| # | Char | OOC | Channel | IC Text | Status | Duration | Sent | Gap |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| 1 | A | Hello | say | Good day. | ok | 1.2s | 14:30:45 |  |\n"
+        )
+        result = parse_game_log_md(content)
+        assert len(result) == 1
+        assert result[0]["status"] == "success"
+        assert result[0]["duration_ms"] == 1200
+        assert result[0]["sent_at"] == "14:30:45"
+
+    def test_parses_fallback_status(self) -> None:
+        """Fallback status labels are re-prefixed with 'fallback.'."""
+        content = (
+            "| # | Char | OOC | Channel | IC Text | Status | Duration | Sent | Gap |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| 1 | A | Hi | say | Model not loaded | api_error | 0.5s |  |  |\n"
+        )
+        result = parse_game_log_md(content)
+        assert result[0]["status"] == "fallback.api_error"
+
+    def test_parses_error_status(self) -> None:
+        """The literal 'error' status is preserved as-is (not prefixed)."""
+        content = (
+            "| # | Char | OOC | Channel | IC Text | Status | Duration | Sent | Gap |\n"
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n"
+            "| 1 | A | Hi | say | Timeout | error |  |  |  |\n"
+        )
+        result = parse_game_log_md(content)
+        assert result[0]["status"] == "error"
+
+    def test_round_trip_nine_column_format(self) -> None:
+        """parse_game_log_md round-trips the 9-column format from build_game_log_md."""
+        from datetime import datetime, timezone
+
+        from app.save_formatting import build_game_log_md
+
+        entries = [
+            {
+                "ch": "a",
+                "channel": "say",
+                "ooc_message": "Hello",
+                "ic_text": "Greetings.",
+                "model": "gemma2:2b",
+                "ipc_id": None,
+                "status": "success",
+                "duration_ms": 1200,
+                "sent_at": "2026-02-26T14:00:00+00:00",
+            },
+            {
+                "ch": "b",
+                "channel": "whisper",
+                "ooc_message": "Reply",
+                "ic_text": "",
+                "model": "gemma2:2b",
+                "ipc_id": None,
+                "status": "fallback.api_error",
+                "error_detail": "Model not loaded",
+                "duration_ms": 500,
+                "sent_at": "2026-02-26T14:00:05+00:00",
+            },
+        ]
+        md = build_game_log_md(entries, "gemma2:2b", 0.0, 128, 42, datetime.now(timezone.utc))
+        result = parse_game_log_md(md)
+
+        assert len(result) == 2
+        assert result[0]["status"] == "success"
+        assert result[0]["duration_ms"] == 1200
+        assert result[1]["status"] == "fallback.api_error"
+        assert result[1]["duration_ms"] == 500
