@@ -138,6 +138,10 @@ const chatState = {
   worldConfig: null,
   /** True while selectWorld() is in-flight (prevents translate race). */
   worldConfigLoading: false,
+  /** @type {{filename: string, content: string, is_active: boolean}[]} */
+  worldPrompts: [],
+  /** Original content of the currently selected server prompt file (for reset/modified detection). */
+  serverPromptOriginal: "",
   /**
    * @type {{
    *   ch: string,
@@ -984,6 +988,8 @@ async function doLogout() {
   chatState.worlds = [];
   chatState.worldId = null;
   chatState.worldConfig = null;
+  chatState.worldPrompts = [];
+  chatState.serverPromptOriginal = "";
   clearActiveAxesIndicators();
   dom.chatServerConfigInfo.classList.add("hidden");
   showLoginPanel();
@@ -1091,6 +1097,7 @@ async function selectWorld(worldId) {
     chatState.worldConfig = config;
     applyActiveAxesIndicators();
     updateServerConfigDisplay();
+    await fetchWorldPrompts(worldId);
     setStatus(`World "${worldId}" selected.`);
   } catch (err) {
     setStatus(`World selection error: ${err.message}`);
@@ -1196,6 +1203,113 @@ function updateServerConfigDisplay() {
       : "--";
   }
   dom.chatServerConfigInfo.classList.remove("hidden");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Server prompt selector
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch prompt template files from the server for the given world.
+ *
+ * GETs `/api/mud/world-prompts/{worldId}`, stores the result in
+ * `chatState.worldPrompts`, and populates the server prompt dropdown.
+ *
+ * @param {string} worldId - The world ID to fetch prompts for.
+ */
+async function fetchWorldPrompts(worldId) {
+  try {
+    const res = await fetch(`/api/mud/world-prompts/${encodeURIComponent(worldId)}`);
+    if (!res.ok) {
+      if (res.status === 401) { handleSessionExpired(); return; }
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    chatState.worldPrompts = data.prompts || [];
+    populateServerPromptSelect();
+  } catch (err) {
+    chatState.worldPrompts = [];
+    setStatus(`Failed to fetch prompts: ${err.message}`);
+  }
+}
+
+/**
+ * Rebuild the server prompt `<select>` from `chatState.worldPrompts`.
+ *
+ * Auto-selects the active prompt (the one matching the world's
+ * `prompt_template_path`) and loads its content into the textarea.
+ */
+function populateServerPromptSelect() {
+  const sel = dom.chatServerPromptSelect;
+  if (!sel) return;
+  sel.innerHTML = "";
+  for (const p of chatState.worldPrompts) {
+    const opt = document.createElement("option");
+    opt.value = p.filename;
+    opt.textContent = p.is_active ? `${p.filename} (active)` : p.filename;
+    sel.appendChild(opt);
+  }
+  // Auto-select the active prompt, or the first one.
+  const active = chatState.worldPrompts.find(p => p.is_active);
+  if (active) {
+    sel.value = active.filename;
+    loadServerPrompt(active.filename);
+  } else if (chatState.worldPrompts.length > 0) {
+    sel.value = chatState.worldPrompts[0].filename;
+    loadServerPrompt(chatState.worldPrompts[0].filename);
+  }
+}
+
+/**
+ * Load a server prompt's content into the server prompt textarea.
+ *
+ * @param {string} filename - The filename to load from `chatState.worldPrompts`.
+ */
+function loadServerPrompt(filename) {
+  const prompt = chatState.worldPrompts.find(p => p.filename === filename);
+  if (!prompt) return;
+  const textarea = dom.chatServerPromptText;
+  if (textarea) textarea.value = prompt.content;
+  chatState.serverPromptOriginal = prompt.content;
+  updateServerPromptBadge();
+}
+
+/**
+ * Update the server prompt badge to show "modified" when the textarea
+ * content differs from the original file content.
+ */
+function updateServerPromptBadge() {
+  const badge = dom.chatServerPromptBadge;
+  if (!badge) return;
+  const textarea = dom.chatServerPromptText;
+  if (!textarea) return;
+  const modified = textarea.value !== chatState.serverPromptOriginal;
+  badge.textContent = modified ? "modified" : "server";
+  badge.classList.toggle("badge--warn", modified);
+  badge.classList.toggle("badge--muted", !modified);
+}
+
+/**
+ * Return the effective system prompt for translation requests.
+ *
+ * In server mode: returns the server prompt textarea content (which may be
+ * modified by the user).  When unmodified from the active prompt, returns
+ * null so the server uses its default.
+ *
+ * In standalone mode: returns the IC prompt textarea value (existing behaviour).
+ *
+ * @returns {string|null}
+ */
+function getEffectiveSystemPrompt() {
+  if (isServerMode() && chatState.authenticated) {
+    const textarea = dom.chatServerPromptText;
+    if (!textarea) return null;
+    const text = textarea.value;
+    // Only send override when the user has actually modified the prompt.
+    if (text === chatState.serverPromptOriginal) return null;
+    return text.trim() || null;
+  }
+  return dom.chatSystemPrompt.value.trim() || null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1359,7 +1473,7 @@ async function sendForChar(ch) {
     seed: resolveChatSeed(),
     strict_mode: dom.chatStrictMode.checked,
     max_output_chars: parseInt(dom.chatMaxChars.value, 10),
-    system_prompt: dom.chatSystemPrompt.value.trim() || null,
+    system_prompt: getEffectiveSystemPrompt(),
     world_id: chatState.worldId || dom.chatWorldSelect?.value || null,
   };
 
@@ -1474,7 +1588,9 @@ export async function translate() {
   const strict_mode = dom.chatStrictMode.checked;
   const max_output_chars = parseInt(dom.chatMaxChars.value, 10);
   // Empty prompt textarea → send null → server uses default IC prompt.
-  const system_prompt = dom.chatSystemPrompt.value.trim() || null;
+  // In server mode, getEffectiveSystemPrompt() returns the server prompt
+  // textarea content (override) or null when unmodified from the active file.
+  const system_prompt = getEffectiveSystemPrompt();
 
   // ── Validate Character A (required) ─────────────────────────────────── //
   const axesA = buildAxesForRequest("a");
@@ -1693,7 +1809,9 @@ async function saveChatLog() {
     temperature: parseFloat(dom.chatTempInput.value),
     max_tokens: parseInt(dom.chatTokensInput.value, 10),
     seed: resolveChatSeed(),
-    system_prompt: dom.chatSystemPrompt.value.trim() || null,
+    system_prompt: (isServerMode() && chatState.authenticated)
+      ? (dom.chatServerPromptText?.value.trim() || null)
+      : (dom.chatSystemPrompt.value.trim() || null),
   };
 
   dom.chatSaveLog.disabled = true;
@@ -2086,6 +2204,22 @@ export function wireChatTranslationEvents() {
     chatState.worldId = val || null;
     selectWorld(val);
   });
+
+  // ── Server prompt selector ─────────────────────────────────────── //
+  if (dom.chatServerPromptSelect) {
+    dom.chatServerPromptSelect.addEventListener("change", () => {
+      loadServerPrompt(dom.chatServerPromptSelect.value);
+    });
+  }
+  if (dom.chatServerPromptText) {
+    dom.chatServerPromptText.addEventListener("input", () => updateServerPromptBadge());
+  }
+  if (dom.chatBtnResetPrompt) {
+    dom.chatBtnResetPrompt.addEventListener("click", () => {
+      const sel = dom.chatServerPromptSelect;
+      if (sel && sel.value) loadServerPrompt(sel.value);
+    });
+  }
 
   // Re-check session when the user navigates to the Chat Translation page.
   document.addEventListener("chat-translation-activated", () => {

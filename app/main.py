@@ -1224,6 +1224,23 @@ def mud_world_config(world_id: str) -> dict:
         raise HTTPException(status_code=502, detail="Cannot connect to mud server.")
 
 
+@app.get("/api/mud/world-prompts/{world_id}", summary="Get world prompt templates")
+def mud_world_prompts(world_id: str) -> dict:
+    """Proxy to ``GET /api/lab/world-prompts/{world_id}`` on the mud server."""
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    try:
+        return client.world_prompts(world_id)
+    except MudServerSessionExpiredError:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        )
+    except MudServerConnectionError:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.")
+
+
 @app.post("/api/mud/select-world", summary="Select world for translation")
 def mud_select_world(req: MudSelectWorldRequest) -> dict:
     """Store the selected world_id in the MudServerClient's memory."""
@@ -1317,6 +1334,7 @@ def _translate_via_server(
                 ooc_message=char.ooc_message,
                 seed=req.seed,
                 temperature=req.temperature,
+                prompt_template_override=req.system_prompt or None,
             )
         except MudServerSessionExpiredError:
             raise HTTPException(

@@ -207,6 +207,18 @@ class MudServerClient:
             raise TypeError(f"Expected dict from world-config, got {type(result).__name__}")
         return result
 
+    def world_prompts(self, world_id: str) -> dict:
+        """GET /api/lab/world-prompts/{world_id} → return prompts list.
+
+        Raises:
+            MudServerSessionExpiredError: Session invalid/expired.
+            MudServerConnectionError: Server unreachable or timed out.
+        """
+        result = self._get(f"/api/lab/world-prompts/{world_id}")
+        if not isinstance(result, dict):  # pragma: no cover
+            raise TypeError(f"Expected dict from world-prompts, got {type(result).__name__}")
+        return result
+
     def translate(
         self,
         *,
@@ -217,6 +229,7 @@ class MudServerClient:
         character_name: str = "Lab Subject",
         seed: int = -1,
         temperature: float = 0.7,
+        prompt_template_override: str | None = None,
     ) -> dict:
         """POST /api/lab/translate → return LabTranslateResponse dict.
 
@@ -234,6 +247,8 @@ class MudServerClient:
             "seed": seed,
             "temperature": temperature,
         }
+        if prompt_template_override is not None:
+            body["prompt_template_override"] = prompt_template_override
         return self._post("/api/lab/translate", body)
 
     # -- Internal HTTP helpers ---------------------------------------------

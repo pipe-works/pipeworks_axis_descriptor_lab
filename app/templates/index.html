@@ -567,6 +567,23 @@
         <span class="control-label">Active axes</span>
         <span id="chat-server-active-axes" class="server-config-value">--</span>
       </div>
+
+      <!-- Server prompt selector — shows prompts from the world's policies/ directory -->
+      <div class="control-row" style="margin-top:var(--sp-2);">
+        <label for="chat-server-prompt-select" class="control-label">Prompt</label>
+        <select id="chat-server-prompt-select" class="select">
+          <option value="">— loading —</option>
+        </select>
+        <span class="badge badge--muted" id="chat-server-prompt-badge">server</span>
+        <button id="chat-btn-reset-prompt" class="btn btn--secondary btn--xs" type="button" title="Reset to file content">Reset</button>
+      </div>
+      <textarea
+        id="chat-server-prompt-text"
+        class="code-editor code-editor--sm"
+        rows="8"
+        spellcheck="false"
+        placeholder="(select a world to load prompts)"
+      ></textarea>
     </div>
 
     <div class="settings-grid" style="margin-top:var(--sp-2);">
