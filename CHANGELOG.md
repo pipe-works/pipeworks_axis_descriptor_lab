@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.6.0...axis-descriptor-lab-v0.6.1) (2026-03-01)
+
+
+### Bug Fixes
+
+* chat translation cold-start resilience and connection pooling ([#59](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/59)) ([e4fcd17](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/e4fcd172a1ea28fce33c995d98cd0d7c14a91eae))
+
 ## [0.6.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.5.0...axis-descriptor-lab-v0.6.0) (2026-03-01)
 
 
