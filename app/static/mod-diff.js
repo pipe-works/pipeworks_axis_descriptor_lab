@@ -592,4 +592,30 @@ export function wireDiffEvents() {
       setTimeout(() => { dom.btnTmapCopyMd.textContent = "Copy MD"; }, 1200);
     });
   });
+
+  // ── Copy A · Baseline ───────────────────────────────────────────── //
+  dom.btnCopyA.addEventListener("click", () => {
+    const text = state.baseline;
+    if (!text) {
+      setStatus("No baseline text to copy.");
+      return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+      dom.btnCopyA.textContent = "Copied";
+      setTimeout(() => { dom.btnCopyA.textContent = "Copy"; }, 1200);
+    });
+  });
+
+  // ── Copy B · Current ────────────────────────────────────────────── //
+  dom.btnCopyB.addEventListener("click", () => {
+    const text = state.current;
+    if (!text) {
+      setStatus("No current output to copy.");
+      return;
+    }
+    navigator.clipboard.writeText(text).then(() => {
+      dom.btnCopyB.textContent = "Copied";
+      setTimeout(() => { dom.btnCopyB.textContent = "Copy"; }, 1200);
+    });
+  });
 }

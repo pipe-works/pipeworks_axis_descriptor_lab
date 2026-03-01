@@ -772,7 +772,7 @@ function buildAxesForRequest(ch) {
 /**
  * Build a compact IPC meta table element from a `ChatTranslationResult`.
  *
- * Renders four rows (input, prompt, output, ipc) showing the first 16
+ * Renders four rows (input, sys prompt, output, ipc) showing the first 16
  * characters of each hash followed by an ellipsis.  The table uses the
  * existing `.meta-table` / `.meta-key` / `.meta-val` styles from the
  * Character Description page.
@@ -780,22 +780,35 @@ function buildAxesForRequest(ch) {
  * Rows for hashes that are `null` or `undefined` (e.g. `output_hash` and
  * `ipc_id` on a failed translation) are omitted entirely.
  *
- * @param {Object} result - `ChatTranslationResult` object from the API,
- *                           containing `input_hash`, `system_prompt_hash`,
- *                           `output_hash`, and `ipc_id`.
+ * The "sys prompt" row is coloured green (`--col-ok`) when both characters
+ * share the same template hash, or red (`--col-err`) when they differ.
+ * When only one character was translated, no colour is applied.
+ *
+ * @param {Object}      result           - `ChatTranslationResult` object from the API.
+ * @param {string|null} [otherSpHash]    - The other character's `system_prompt_hash`,
+ *                                          used for match/mismatch colouring.
  * @returns {HTMLTableElement} A populated `<table class="meta-table">`.
  */
-function buildIpcMetaTable(result) {
+function buildIpcMetaTable(result, otherSpHash = null) {
+  // Each entry: [label, displayValue, trCssClass|null]
   const rows = [];
-  if (result.input_hash)         rows.push(["input",  result.input_hash.slice(0, 16) + "\u2026"]);
-  if (result.system_prompt_hash) rows.push(["prompt", result.system_prompt_hash.slice(0, 16) + "\u2026"]);
-  if (result.output_hash)        rows.push(["output", result.output_hash.slice(0, 16) + "\u2026"]);
-  if (result.ipc_id)             rows.push(["ipc",    result.ipc_id.slice(0, 16) + "\u2026"]);
+  if (result.input_hash)         rows.push(["input",      result.input_hash.slice(0, 16) + "\u2026", null]);
+  if (result.system_prompt_hash) {
+    let cssClass = null;
+    if (otherSpHash != null) {
+      cssClass = result.system_prompt_hash === otherSpHash
+        ? "sp-match" : "sp-mismatch";
+    }
+    rows.push(["sys prompt", result.system_prompt_hash.slice(0, 16) + "\u2026", cssClass]);
+  }
+  if (result.output_hash)        rows.push(["output",     result.output_hash.slice(0, 16) + "\u2026", null]);
+  if (result.ipc_id)             rows.push(["ipc",        result.ipc_id.slice(0, 16) + "\u2026", null]);
 
   const table = document.createElement("table");
   table.className = "meta-table";
-  for (const [k, v] of rows) {
+  for (const [k, v, cssClass] of rows) {
     const tr = document.createElement("tr");
+    if (cssClass) tr.className = cssClass;
     const tdKey = document.createElement("td");
     tdKey.className = "meta-key";
     tdKey.textContent = k;
@@ -827,7 +840,7 @@ function buildIpcMetaTable(result) {
  *                                         or `null` if not requested.
  * @returns {void}
  */
-function renderTranslationResult(outputBox, metaDiv, statusBadge, result) {
+function renderTranslationResult(outputBox, metaDiv, statusBadge, result, otherSpHash = null) {
   outputBox.textContent = "";
   metaDiv.textContent = "";
   metaDiv.classList.add("hidden");
@@ -854,7 +867,7 @@ function renderTranslationResult(outputBox, metaDiv, statusBadge, result) {
 
   if (result.ic_text) {
     outputBox.textContent = result.ic_text;
-    const metaTable = buildIpcMetaTable(result);
+    const metaTable = buildIpcMetaTable(result, otherSpHash);
     metaDiv.appendChild(metaTable);
     metaDiv.classList.remove("hidden");
   } else {
@@ -1558,7 +1571,14 @@ async function sendForChar(ch) {
     const data = await res.json();
     const durationMs = Date.now() - startTime;
     const result = ch === "a" ? data.character_a : data.character_b;
-    renderTranslationResult(outputBox, metaDiv, badge, result);
+
+    // Look up the other character's last system_prompt_hash from the game log
+    // so we can show match/mismatch colouring in the IPC meta table.
+    const otherCh = ch === "a" ? "b" : "a";
+    const otherLastEntry = [...chatState.gameLog].reverse().find(e => e.ch === otherCh);
+    const otherSpHash = otherLastEntry?.systemPromptHash ?? null;
+
+    renderTranslationResult(outputBox, metaDiv, badge, result, otherSpHash);
 
     const usedModel = (result && result.model) || model;
     if (result) {
@@ -1574,6 +1594,23 @@ async function sendForChar(ch) {
         result.system_prompt_hash ?? null,
         result.output_hash        ?? null,
       );
+
+      // Re-render the other character's meta table so it also picks up the
+      // match/mismatch colour now that this character's hash is known.
+      if (result.system_prompt_hash && otherLastEntry?.systemPromptHash) {
+        const oBox  = otherCh === "a" ? dom.chatAOutput : dom.chatBOutput;
+        const oMeta = otherCh === "a" ? dom.chatAMeta   : dom.chatBMeta;
+        const oBadge = otherCh === "a" ? dom.chatAStatusBadge : dom.chatBStatusBadge;
+        const otherResult = {
+          status:             "success",
+          ic_text:            otherLastEntry.icText,
+          input_hash:         otherLastEntry.inputHash,
+          system_prompt_hash: otherLastEntry.systemPromptHash,
+          output_hash:        otherLastEntry.outputHash,
+          ipc_id:             otherLastEntry.ipcId,
+        };
+        renderTranslationResult(oBox, oMeta, oBadge, otherResult, result.system_prompt_hash);
+      }
     }
     setStatus(`${ch.toUpperCase()} sent (${usedModel}) — ${result ? result.status : "no result"}.`);
   } catch (err) {
@@ -1738,10 +1775,12 @@ export async function translate() {
     renderTranslationResult(
       dom.chatAOutput, dom.chatAMeta, dom.chatAStatusBadge,
       data.character_a,
+      data.character_b?.system_prompt_hash ?? null,
     );
     renderTranslationResult(
       dom.chatBOutput, dom.chatBMeta, dom.chatBStatusBadge,
       data.character_b,
+      data.character_a?.system_prompt_hash ?? null,
     );
 
     // Summarise both status fields in the global status bar.
@@ -2032,15 +2071,19 @@ function restoreChatSessionState(data) {
 
     // Populate each character's output box + IPC meta table with their most
     // recent entry's data, mirroring what renderTranslationResult() does after
-    // a live translation.
+    // a live translation.  Collect both last entries upfront so we can
+    // cross-reference system_prompt_hash for match/mismatch colouring.
+    const lastA = [...chatState.gameLog].reverse().find(e => e.ch === "a");
+    const lastB = [...chatState.gameLog].reverse().find(e => e.ch === "b");
+
     for (const ch of ["a", "b"]) {
-      // Find the last game log entry for this character.
-      const lastEntry = [...chatState.gameLog].reverse().find(e => e.ch === ch);
+      const lastEntry = ch === "a" ? lastA : lastB;
       if (!lastEntry) continue;
 
       const outputBox = ch === "a" ? dom.chatAOutput   : dom.chatBOutput;
       const metaDiv   = ch === "a" ? dom.chatAMeta     : dom.chatBMeta;
       const badge     = ch === "a" ? dom.chatAStatusBadge : dom.chatBStatusBadge;
+      const otherHash = (ch === "a" ? lastB : lastA)?.systemPromptHash ?? null;
 
       renderTranslationResult(outputBox, metaDiv, badge, {
         status:             "success",
@@ -2049,7 +2092,7 @@ function restoreChatSessionState(data) {
         system_prompt_hash: lastEntry.systemPromptHash,
         output_hash:        lastEntry.outputHash,
         ipc_id:             lastEntry.ipcId,
-      });
+      }, otherHash);
     }
 
     // Make the game section visible so the restored log is immediately readable.

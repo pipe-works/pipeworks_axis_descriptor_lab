@@ -256,7 +256,12 @@
     <div class="diff-stack">
       <!-- Baseline A -->
       <div>
-        <div class="diff-label">A · Baseline</div>
+        <div class="diff-label">A · Baseline
+          <button id="btn-copy-a" class="btn btn--secondary btn--sm" type="button"
+                  data-tooltip="Copy the Baseline A text to the clipboard.">
+            Copy
+          </button>
+        </div>
         <div id="diff-a" class="diff-box diff-box--a">
           <span class="placeholder-text">No baseline set.</span>
         </div>
@@ -264,6 +269,10 @@
       <!-- Current B -->
       <div>
         <div class="diff-label">B · Current
+          <button id="btn-copy-b" class="btn btn--secondary btn--sm" type="button"
+                  data-tooltip="Copy the Current B text to the clipboard.">
+            Copy
+          </button>
           <!-- "Set as A" promotes the current output (B) to become the
                baseline (A).  Placed here so its action is visually tied
                to the text it operates on. -->

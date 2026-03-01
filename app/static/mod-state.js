@@ -155,6 +155,8 @@ export const dom = {
   // ── Centre panel: A/B diff boxes ──────────────────────────────────── //
   diffA:                $("diff-a"),
   diffB:                $("diff-b"),
+  btnCopyA:             $("btn-copy-a"),
+  btnCopyB:             $("btn-copy-b"),
   tmapPanel:            $("tmap-panel"),
   btnTmapMode:          $("btn-tmap-mode"),
   btnTmapCopy:          $("btn-tmap-copy"),
