@@ -383,6 +383,77 @@ class TestTimeoutHandling:
 # ---------------------------------------------------------------------------
 
 
+class TestWorldPrompts:
+    """world_prompts returns the server's prompt template files."""
+
+    def test_world_prompts_returns_dict(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "world_id": "pipeworks_web",
+            "prompts": [
+                {"filename": "ic_prompt.txt", "content": "template text", "is_active": True},
+            ],
+        }
+        client._client.get.return_value = mock_resp
+
+        result = client.world_prompts("pipeworks_web")
+
+        assert isinstance(result, dict)
+        assert result["world_id"] == "pipeworks_web"
+        assert len(result["prompts"]) == 1
+        assert result["prompts"][0]["is_active"] is True
+
+    def test_world_prompts_not_authenticated_raises(self, client: MudServerClient) -> None:
+        with pytest.raises(MudServerSessionExpiredError):
+            client.world_prompts("pipeworks_web")
+
+
+class TestTranslatePromptOverride:
+    """translate() with prompt_template_override."""
+
+    def test_translate_includes_override_in_body(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"ic_text": "ok", "status": "success"}
+        mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
+
+        client.translate(
+            world_id="pipeworks_web",
+            axes={},
+            channel="say",
+            ooc_message="test",
+            prompt_template_override="Custom prompt: {{profile_summary}}",
+        )
+
+        body = client._client.post.call_args[1]["json"]
+        assert body["prompt_template_override"] == "Custom prompt: {{profile_summary}}"
+
+    def test_translate_omits_override_when_none(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"ic_text": "ok", "status": "success"}
+        mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
+
+        client.translate(
+            world_id="pipeworks_web",
+            axes={},
+            channel="say",
+            ooc_message="test",
+        )
+
+        body = client._client.post.call_args[1]["json"]
+        assert "prompt_template_override" not in body
+
+
 class TestWorldSelection:
     """select_world stores world_id in memory."""
 

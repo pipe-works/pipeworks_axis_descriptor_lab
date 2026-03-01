@@ -220,6 +220,10 @@ export const dom = {
   chatServerModel:      $("chat-server-model"),
   chatServerActiveAxes: $("chat-server-active-axes"),
   chatIcPromptDetails:  $("chat-ic-prompt-details"),
+  chatServerPromptSelect: $("chat-server-prompt-select"),
+  chatServerPromptText:   $("chat-server-prompt-text"),
+  chatServerPromptBadge:  $("chat-server-prompt-badge"),
+  chatBtnResetPrompt:     $("chat-btn-reset-prompt"),
 
   // ── Chat Translation — Controls ───────────────────────────────────── //
   chatOllamaHost:       $("chat-ollama-host"),

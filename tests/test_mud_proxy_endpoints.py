@@ -284,6 +284,56 @@ class TestMudWorldConfig:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/mud/world-prompts/{world_id}
+# ---------------------------------------------------------------------------
+
+
+class TestMudWorldPrompts:
+    """World prompts proxy endpoint tests."""
+
+    def test_world_prompts_success(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.world_prompts.return_value = {
+            "world_id": "pipeworks_web",
+            "prompts": [
+                {"filename": "ic_prompt.txt", "content": "template", "is_active": True},
+            ],
+        }
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/world-prompts/pipeworks_web")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["world_id"] == "pipeworks_web"
+        assert len(data["prompts"]) == 1
+
+    def test_world_prompts_auth_expired(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.world_prompts.side_effect = MudServerSessionExpiredError("expired")
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/world-prompts/pipeworks_web")
+
+        assert resp.status_code == 401
+
+    def test_world_prompts_connection_error(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.world_prompts.side_effect = MudServerConnectionError("down")
+
+        with patch("app.main.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/world-prompts/pipeworks_web")
+
+        assert resp.status_code == 502
+
+    def test_world_prompts_standalone_503(self, test_client: TestClient) -> None:
+        with patch("app.main.get_mud_client", return_value=None):
+            resp = test_client.get("/api/mud/world-prompts/pipeworks_web")
+
+        assert resp.status_code == 503
+
+
+# ---------------------------------------------------------------------------
 # POST /api/mud/select-world
 # ---------------------------------------------------------------------------
 
