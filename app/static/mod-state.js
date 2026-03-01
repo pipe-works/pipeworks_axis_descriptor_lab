@@ -155,6 +155,8 @@ export const dom = {
   // ── Centre panel: A/B diff boxes ──────────────────────────────────── //
   diffA:                $("diff-a"),
   diffB:                $("diff-b"),
+  btnCopyA:             $("btn-copy-a"),
+  btnCopyB:             $("btn-copy-b"),
   tmapPanel:            $("tmap-panel"),
   btnTmapMode:          $("btn-tmap-mode"),
   btnTmapCopy:          $("btn-tmap-copy"),
@@ -219,11 +221,12 @@ export const dom = {
   chatServerConfigInfo: $("chat-server-config-info"),
   chatServerModel:      $("chat-server-model"),
   chatServerActiveAxes: $("chat-server-active-axes"),
-  chatIcPromptDetails:  $("chat-ic-prompt-details"),
-  chatServerPromptSelect: $("chat-server-prompt-select"),
-  chatServerPromptText:   $("chat-server-prompt-text"),
-  chatServerPromptBadge:  $("chat-server-prompt-badge"),
-  chatBtnResetPrompt:     $("chat-btn-reset-prompt"),
+  chatIcPromptDetails:      $("chat-ic-prompt-details"),
+  chatServerPromptDetails:  $("chat-server-prompt-details"),
+  chatServerPromptSelect:   $("chat-server-prompt-select"),
+  chatServerPromptText:     $("chat-server-prompt-text"),
+  chatServerPromptBadge:    $("chat-server-prompt-badge"),
+  chatBtnResetPrompt:       $("chat-btn-reset-prompt"),
 
   // ── Chat Translation — Controls ───────────────────────────────────── //
   chatOllamaHost:       $("chat-ollama-host"),

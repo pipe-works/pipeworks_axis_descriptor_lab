@@ -344,3 +344,115 @@ class TestBuildGameLogMd:
         assert "walks in" in md
         assert "nods at her" in md
         assert "smiles back" in md
+
+    # ── 9-column timing / status tests ────────────────────────────────── #
+
+    def test_nine_column_header_present(self) -> None:
+        """Table header must include all nine columns."""
+        md = build_game_log_md(
+            entries=[self._entry()],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=42,
+            timestamp=self._ts(),
+        )
+        assert "| # | Char | OOC | Channel | IC Text | Status | Duration | Sent | Gap |" in md
+
+    def test_success_entry_shows_ok_status(self) -> None:
+        """A successful entry renders 'ok' in the Status column."""
+        entry = {**self._entry(), "status": "success", "duration_ms": 800}
+        md = build_game_log_md(
+            entries=[entry],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+        assert "| ok |" in md
+        assert "| 0.8s |" in md
+
+    def test_failed_entry_shows_error_detail_in_ic_column(self) -> None:
+        """A failed entry with no ic_text shows error_detail in the IC column."""
+        entry = {
+            **self._entry(),
+            "ic_text": "",
+            "status": "fallback.api_error",
+            "error_detail": "Model not loaded",
+        }
+        md = build_game_log_md(
+            entries=[entry],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+        assert "| Model not loaded |" in md
+        assert "| api_error |" in md
+
+    def test_sent_at_renders_hms(self) -> None:
+        """sent_at ISO timestamp renders as HH:MM:SS in the Sent column."""
+        entry = {**self._entry(), "sent_at": "2026-02-26T14:30:45+00:00"}
+        md = build_game_log_md(
+            entries=[entry],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+        assert "14:30:45" in md
+
+    def test_gap_column_shows_delta_between_entries(self) -> None:
+        """Gap column shows seconds between consecutive sent_at timestamps."""
+        entries = [
+            {**self._entry(), "sent_at": "2026-02-26T14:00:00+00:00"},
+            {**self._entry(ch="b"), "sent_at": "2026-02-26T14:00:05+00:00"},
+        ]
+        md = build_game_log_md(
+            entries=entries,
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+        # First row has no gap, second row has 5.0s gap.
+        lines = [row for row in md.splitlines() if row.startswith("| 2 ")]
+        assert len(lines) == 1
+        assert "5.0s" in lines[0]
+
+    def test_missing_timing_fields_render_as_empty(self) -> None:
+        """Entries without timing fields render empty Duration/Sent/Gap cells."""
+        entry = self._entry()  # No status/duration_ms/sent_at keys
+        md = build_game_log_md(
+            entries=[entry],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+        # The row should end with empty cells for Duration, Sent, Gap.
+        lines = [row for row in md.splitlines() if row.startswith("| 1 ")]
+        assert len(lines) == 1
+        assert "| ok |  |  |  |" in lines[0]
+
+    def test_invalid_sent_at_renders_empty(self) -> None:
+        """An unparsable sent_at value renders an empty Sent cell."""
+        entry = {**self._entry(), "sent_at": "not-a-timestamp"}
+        md = build_game_log_md(
+            entries=[entry],
+            model="gemma2:2b",
+            temperature=0.7,
+            max_tokens=128,
+            seed=0,
+            timestamp=self._ts(),
+        )
+        # The Sent cell should be empty — "not-a-timestamp" is not valid ISO.
+        lines = [row for row in md.splitlines() if row.startswith("| 1 ")]
+        assert len(lines) == 1
+        # Sent column (8th) should be empty between its delimiters.
+        assert "| not-a-timestamp |" not in lines[0]

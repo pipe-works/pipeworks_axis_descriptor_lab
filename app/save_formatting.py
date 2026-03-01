@@ -178,17 +178,23 @@ def build_game_log_md(
 
     Table columns
     -------------
-    ``#``       — 1-based row index.
-    ``Char``    — Character key uppercased ("A" or "B").
-    ``OOC``     — Original out-of-character message (empty cell if absent).
-    ``Channel`` — Chat channel ("say", "yell", "whisper").
-    ``IC Text`` — Translated in-character dialogue.
+    ``#``        — 1-based row index.
+    ``Char``     — Character key uppercased ("A" or "B").
+    ``OOC``      — Original out-of-character message (empty cell if absent).
+    ``Channel``  — Chat channel ("say", "yell", "whisper").
+    ``IC Text``  — Translated in-character dialogue (error detail for failures).
+    ``Status``   — ``ok`` for success, short failure reason otherwise.
+    ``Duration`` — Round-trip time in seconds (e.g. ``0.8s``), blank if unknown.
+    ``Sent``     — ``HH:MM:SS`` from ``sent_at``, blank if unknown.
+    ``Gap``      — Seconds since previous entry's ``sent_at``, blank for row 1.
 
     Parameters
     ----------
     entries     : Serialised ``ChatLogEntry`` dicts (keys: ch, channel,
-                  ooc_message, ic_text, model, ipc_id).  ``ooc_message``
-                  may be absent or ``None`` for legacy entries.
+                  ooc_message, ic_text, model, ipc_id, status, error_detail,
+                  sent_at, duration_ms).  ``ooc_message`` may be absent or
+                  ``None`` for legacy entries.  Timing/status fields default
+                  to success/None for backward compatibility.
     model       : Ollama model tag used during the session.
     temperature : Sampling temperature used.
     max_tokens  : Token budget used.
@@ -206,17 +212,54 @@ def build_game_log_md(
         f"<!-- saved: {timestamp.isoformat()} -->",
         f"<!-- model: {model} | temp: {temperature} | max_tokens: {max_tokens} | seed: {seed} -->",
         "",
-        "| # | Char | OOC | Channel | IC Text |",
-        "| --- | --- | --- | --- | --- |",
+        "| # | Char | OOC | Channel | IC Text | Status | Duration | Sent | Gap |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
+    prev_sent_at: str | None = None
     for i, entry in enumerate(entries, start=1):
         # Escape pipe characters in both OOC and IC text to avoid breaking
         # the Markdown table structure.
         ooc_raw = entry.get("ooc_message") or ""
         ooc_escaped = ooc_raw.replace("|", "\\|")
-        ic_escaped = entry["ic_text"].replace("|", "\\|")
+
+        status = entry.get("status") or "success"
+        ic_raw = entry.get("ic_text") or ""
+        # For failed entries, show the error detail in the IC Text column.
+        if status != "success" and not ic_raw:
+            ic_raw = entry.get("error_detail") or ""
+        ic_escaped = ic_raw.replace("|", "\\|")
+
+        # Status column: short label.
+        status_label = "ok" if status == "success" else status.replace("fallback.", "")
+
+        # Duration column: seconds with 1 decimal.
+        duration_ms = entry.get("duration_ms")
+        duration_str = f"{duration_ms / 1000:.1f}s" if duration_ms is not None else ""
+
+        # Sent column: HH:MM:SS from sent_at ISO timestamp.
+        sent_at = entry.get("sent_at")
+        sent_str = ""
+        if sent_at:
+            try:
+                sent_str = datetime.fromisoformat(sent_at).strftime("%H:%M:%S")
+            except (ValueError, TypeError):
+                sent_str = ""
+
+        # Gap column: seconds since previous entry's sent_at.
+        gap_str = ""
+        if sent_at and prev_sent_at:
+            try:
+                curr = datetime.fromisoformat(sent_at)
+                prev = datetime.fromisoformat(prev_sent_at)
+                gap_secs = (curr - prev).total_seconds()
+                gap_str = f"{gap_secs:.1f}s"
+            except (ValueError, TypeError):
+                gap_str = ""
+        prev_sent_at = sent_at
+
         lines.append(
-            f"| {i} | {entry['ch'].upper()} | {ooc_escaped} | {entry['channel']} | {ic_escaped} |"
+            f"| {i} | {entry['ch'].upper()} | {ooc_escaped} | {entry['channel']}"
+            f" | {ic_escaped} | {status_label} | {duration_str} | {sent_str} | {gap_str} |"
         )
     lines.append("")
     return "\n".join(lines)

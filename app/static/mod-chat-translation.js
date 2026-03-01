@@ -89,7 +89,7 @@ const TRANSLATE_TIMEOUT_MS = 120_000;
  *   busy:     boolean,
  *   liveMode: boolean,
  *   logSeq:   number,
- *   gameLog:  Array<{ch: string, channel: string, oocMessage: string, icText: string, model: string, ipcId: string|null, inputHash: string|null, systemPromptHash: string|null, outputHash: string|null}>
+ *   gameLog:  Array<{ch: string, channel: string, oocMessage: string, icText: string|null, model: string, status: string, errorDetail: string|null, sentAt: string|null, durationMs: number|null, ipcId: string|null, inputHash: string|null, systemPromptHash: string|null, outputHash: string|null}>
  * }}
  *
  * @property {Object|null}      [a|b].payload      - Parsed AxisPayload for the character,
@@ -147,8 +147,12 @@ const chatState = {
    *   ch: string,
    *   channel: string,
    *   oocMessage: string,
-   *   icText: string,
+   *   icText: string|null,
    *   model: string,
+   *   status: string,
+   *   errorDetail: string|null,
+   *   sentAt: string|null,
+   *   durationMs: number|null,
    *   ipcId: string|null,
    *   inputHash: string|null,
    *   systemPromptHash: string|null,
@@ -768,7 +772,7 @@ function buildAxesForRequest(ch) {
 /**
  * Build a compact IPC meta table element from a `ChatTranslationResult`.
  *
- * Renders four rows (input, prompt, output, ipc) showing the first 16
+ * Renders four rows (input, sys prompt, output, ipc) showing the first 16
  * characters of each hash followed by an ellipsis.  The table uses the
  * existing `.meta-table` / `.meta-key` / `.meta-val` styles from the
  * Character Description page.
@@ -776,22 +780,35 @@ function buildAxesForRequest(ch) {
  * Rows for hashes that are `null` or `undefined` (e.g. `output_hash` and
  * `ipc_id` on a failed translation) are omitted entirely.
  *
- * @param {Object} result - `ChatTranslationResult` object from the API,
- *                           containing `input_hash`, `system_prompt_hash`,
- *                           `output_hash`, and `ipc_id`.
+ * The "sys prompt" row is coloured green (`--col-ok`) when both characters
+ * share the same template hash, or red (`--col-err`) when they differ.
+ * When only one character was translated, no colour is applied.
+ *
+ * @param {Object}      result           - `ChatTranslationResult` object from the API.
+ * @param {string|null} [otherSpHash]    - The other character's `system_prompt_hash`,
+ *                                          used for match/mismatch colouring.
  * @returns {HTMLTableElement} A populated `<table class="meta-table">`.
  */
-function buildIpcMetaTable(result) {
+function buildIpcMetaTable(result, otherSpHash = null) {
+  // Each entry: [label, displayValue, trCssClass|null]
   const rows = [];
-  if (result.input_hash)         rows.push(["input",  result.input_hash.slice(0, 16) + "\u2026"]);
-  if (result.system_prompt_hash) rows.push(["prompt", result.system_prompt_hash.slice(0, 16) + "\u2026"]);
-  if (result.output_hash)        rows.push(["output", result.output_hash.slice(0, 16) + "\u2026"]);
-  if (result.ipc_id)             rows.push(["ipc",    result.ipc_id.slice(0, 16) + "\u2026"]);
+  if (result.input_hash)         rows.push(["input",      result.input_hash.slice(0, 16) + "\u2026", null]);
+  if (result.system_prompt_hash) {
+    let cssClass = null;
+    if (otherSpHash != null) {
+      cssClass = result.system_prompt_hash === otherSpHash
+        ? "sp-match" : "sp-mismatch";
+    }
+    rows.push(["sys prompt", result.system_prompt_hash.slice(0, 16) + "\u2026", cssClass]);
+  }
+  if (result.output_hash)        rows.push(["output",     result.output_hash.slice(0, 16) + "\u2026", null]);
+  if (result.ipc_id)             rows.push(["ipc",        result.ipc_id.slice(0, 16) + "\u2026", null]);
 
   const table = document.createElement("table");
   table.className = "meta-table";
-  for (const [k, v] of rows) {
+  for (const [k, v, cssClass] of rows) {
     const tr = document.createElement("tr");
+    if (cssClass) tr.className = cssClass;
     const tdKey = document.createElement("td");
     tdKey.className = "meta-key";
     tdKey.textContent = k;
@@ -823,7 +840,7 @@ function buildIpcMetaTable(result) {
  *                                         or `null` if not requested.
  * @returns {void}
  */
-function renderTranslationResult(outputBox, metaDiv, statusBadge, result) {
+function renderTranslationResult(outputBox, metaDiv, statusBadge, result, otherSpHash = null) {
   outputBox.textContent = "";
   metaDiv.textContent = "";
   metaDiv.classList.add("hidden");
@@ -850,7 +867,7 @@ function renderTranslationResult(outputBox, metaDiv, statusBadge, result) {
 
   if (result.ic_text) {
     outputBox.textContent = result.ic_text;
-    const metaTable = buildIpcMetaTable(result);
+    const metaTable = buildIpcMetaTable(result, otherSpHash);
     metaDiv.appendChild(metaTable);
     metaDiv.classList.remove("hidden");
   } else {
@@ -1140,11 +1157,14 @@ function toggleServerControls(auth) {
       el.classList.toggle("hidden", auth);
     }
   }
-  // Toggle IC prompt section.
+  // Toggle IC prompt section (standalone) vs server world prompt section.
   if (dom.chatIcPromptDetails) {
     dom.chatIcPromptDetails.classList.toggle("hidden", auth);
   }
-  // Toggle server config info.
+  if (dom.chatServerPromptDetails) {
+    dom.chatServerPromptDetails.classList.toggle("hidden", !auth);
+  }
+  // Toggle server config info (model label inside Ollama Settings).
   if (dom.chatServerConfigInfo) {
     dom.chatServerConfigInfo.classList.toggle("hidden", !auth);
   }
@@ -1386,37 +1406,43 @@ function updateLiveModeUI() {
  * The entry is also pushed to `chatState.gameLog` so that clipboard copy
  * and save functions can access the full log without scraping the DOM.
  *
+ * Failed entries (status !== "success") are rendered with `.game-entry--failed`
+ * class and show the error detail in the IC text column styled with `--col-err`.
+ *
  * @param {"a"|"b"} ch                     - Character identifier.
  * @param {string}  channel                - Channel name (e.g. "say", "yell", "whisper").
  * @param {string}  oocMessage             - Original out-of-character text typed by the player.
  *                                           Displayed in the OOC column; included in copy/save.
- * @param {string}  icText                 - The translated IC text to display.
+ * @param {string|null} icText             - The translated IC text, or null for failures.
  * @param {string}  model                  - Ollama model tag used for this translation.
- * @param {string|null} [ipcId]            - IPC ID from the translation result (the 'ipc' row
- *                                           in the in-browser IPC meta table), or null if not
- *                                           available.
- * @param {string|null} [inputHash]        - SHA-256 of the canonical input dict (the 'input'
- *                                           row in the IPC meta table), or null if unavailable.
- * @param {string|null} [systemPromptHash] - SHA-256 of the fully-rendered IC system prompt
- *                                           (the 'prompt' row in the IPC meta table).
- * @param {string|null} [outputHash]       - SHA-256 of the normalised IC output text (the
- *                                           'output' row in the IPC meta table).
+ * @param {string}  [status="success"]     - Translation outcome ("success",
+ *                                           "fallback.validation_failed", etc.).
+ * @param {string|null} [errorDetail]      - Error description for non-success entries.
+ * @param {string|null} [sentAt]           - ISO timestamp when the message was sent.
+ * @param {number|null} [durationMs]       - Round-trip time in milliseconds.
+ * @param {string|null} [ipcId]            - IPC ID from the translation result.
+ * @param {string|null} [inputHash]        - SHA-256 of the canonical input dict.
+ * @param {string|null} [systemPromptHash] - SHA-256 of the fully-rendered IC system prompt.
+ * @param {string|null} [outputHash]       - SHA-256 of the normalised IC output text.
  * @returns {void}
  */
 function appendGameEntry(
   ch, channel, oocMessage, icText, model,
+  status = "success", errorDetail = null, sentAt = null, durationMs = null,
   ipcId = null, inputHash = null, systemPromptHash = null, outputHash = null,
 ) {
   chatState.logSeq++;
   chatState.gameLog.push({
     ch, channel, oocMessage, icText, model,
+    status, errorDetail, sentAt, durationMs,
     ipcId, inputHash, systemPromptHash, outputHash,
   });
   const placeholder = dom.chatGameOutput.querySelector(".placeholder-text");
   if (placeholder) placeholder.remove();
 
+  const isFailed = status !== "success";
   const entry = document.createElement("div");
-  entry.className = `game-entry game-entry--${ch}`;
+  entry.className = `game-entry game-entry--${ch}${isFailed ? " game-entry--failed" : ""}`;
 
   // ── Column 1: character letter (A / B) ─────────────────────────────── //
   const charEl = document.createElement("span");
@@ -1437,10 +1463,14 @@ function appendGameEntry(
   channelEl.className = "game-entry__channel";
   channelEl.textContent = `[${channel}]`;
 
-  // ── Column 4: translated IC text ───────────────────────────────────── //
+  // ── Column 4: translated IC text (or error detail for failures) ───── //
   const textEl = document.createElement("span");
   textEl.className = "game-entry__text";
-  textEl.textContent = icText;
+  if (isFailed) {
+    textEl.textContent = errorDetail || status;
+  } else {
+    textEl.textContent = icText || "";
+  }
 
   entry.appendChild(charEl);
   entry.appendChild(oocEl);
@@ -1519,6 +1549,10 @@ async function sendForChar(ch) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), TRANSLATE_TIMEOUT_MS);
 
+  // ── Timing capture ────────────────────────────────────────────────── //
+  const sentAt = new Date().toISOString();
+  const startTime = Date.now();
+
   try {
     const res = await fetch("/api/translate_chat", {
       method: "POST",
@@ -1535,28 +1569,61 @@ async function sendForChar(ch) {
       throw new Error(errData.detail || `HTTP ${res.status}`);
     }
     const data = await res.json();
+    const durationMs = Date.now() - startTime;
     const result = ch === "a" ? data.character_a : data.character_b;
-    renderTranslationResult(outputBox, metaDiv, badge, result);
+
+    // Look up the other character's last system_prompt_hash from the game log
+    // so we can show match/mismatch colouring in the IPC meta table.
+    const otherCh = ch === "a" ? "b" : "a";
+    const otherLastEntry = [...chatState.gameLog].reverse().find(e => e.ch === otherCh);
+    const otherSpHash = otherLastEntry?.systemPromptHash ?? null;
+
+    renderTranslationResult(outputBox, metaDiv, badge, result, otherSpHash);
 
     const usedModel = (result && result.model) || model;
-    if (result && result.status === "success" && result.ic_text) {
-      // Pass all four IPC provenance hashes from the translation result so they
-      // are stored in chatState.gameLog and included in copy/save output.
-      // These match the four rows shown in the in-browser IPC meta table.
+    if (result) {
+      // Always log the entry — both success and failure — with timing data.
       appendGameEntry(
-        ch, channel, ooc, result.ic_text, usedModel,
+        ch, channel, ooc, result.ic_text ?? null, usedModel,
+        result.status            ?? "success",
+        result.error_detail      ?? null,
+        sentAt,
+        durationMs,
         result.ipc_id            ?? null,
         result.input_hash        ?? null,
         result.system_prompt_hash ?? null,
         result.output_hash        ?? null,
       );
+
+      // Re-render the other character's meta table so it also picks up the
+      // match/mismatch colour now that this character's hash is known.
+      if (result.system_prompt_hash && otherLastEntry?.systemPromptHash) {
+        const oBox  = otherCh === "a" ? dom.chatAOutput : dom.chatBOutput;
+        const oMeta = otherCh === "a" ? dom.chatAMeta   : dom.chatBMeta;
+        const oBadge = otherCh === "a" ? dom.chatAStatusBadge : dom.chatBStatusBadge;
+        const otherResult = {
+          status:             "success",
+          ic_text:            otherLastEntry.icText,
+          input_hash:         otherLastEntry.inputHash,
+          system_prompt_hash: otherLastEntry.systemPromptHash,
+          output_hash:        otherLastEntry.outputHash,
+          ipc_id:             otherLastEntry.ipcId,
+        };
+        renderTranslationResult(oBox, oMeta, oBadge, otherResult, result.system_prompt_hash);
+      }
     }
     setStatus(`${ch.toUpperCase()} sent (${usedModel}) — ${result ? result.status : "no result"}.`);
   } catch (err) {
+    const durationMs = Date.now() - startTime;
     const msg = err.name === "AbortError"
       ? `Request timed out after ${TRANSLATE_TIMEOUT_MS / 1000}s — is the model loaded in Ollama?`
       : err.message;
     outputBox.innerHTML = `<span style="color:var(--col-err)">Error: ${msg}</span>`;
+    // Log the network/timeout error into the game log so it is visible.
+    appendGameEntry(
+      ch, channel, ooc, null, model,
+      "error", msg, sentAt, durationMs,
+    );
     setStatus(`Send error (${ch.toUpperCase()}): ${msg}`);
   } finally {
     clearTimeout(timer);
@@ -1708,10 +1775,12 @@ export async function translate() {
     renderTranslationResult(
       dom.chatAOutput, dom.chatAMeta, dom.chatAStatusBadge,
       data.character_a,
+      data.character_b?.system_prompt_hash ?? null,
     );
     renderTranslationResult(
       dom.chatBOutput, dom.chatBMeta, dom.chatBStatusBadge,
       data.character_b,
+      data.character_a?.system_prompt_hash ?? null,
     );
 
     // Summarise both status fields in the global status bar.
@@ -1762,7 +1831,12 @@ export async function translate() {
 function copyGameLogTxt() {
   if (chatState.gameLog.length === 0) { setStatus("No entries to copy."); return; }
   const text = chatState.gameLog
-    .map(e => `${e.ch.toUpperCase()} | ${e.oocMessage} | [${e.channel}]: ${e.icText}`)
+    .map(e => {
+      const dur = e.durationMs != null ? `${(e.durationMs / 1000).toFixed(1)}s` : "?";
+      const tag = e.status === "success" ? "ok" : "FAILED";
+      const display = e.status === "success" ? (e.icText || "") : (e.errorDetail || e.status);
+      return `${e.ch.toUpperCase()} | ${e.oocMessage} | [${e.channel}]: ${display} (${dur}, ${tag})`;
+    })
     .join("\n");
   navigator.clipboard.writeText(text).then(() => {
     dom.chatCopyLogTxt.textContent = "Copied!";
@@ -1786,14 +1860,33 @@ function copyGameLogTxt() {
 function copyGameLogMd() {
   if (chatState.gameLog.length === 0) { setStatus("No entries to copy."); return; }
   const lines = [
-    "| # | Char | OOC | Channel | IC Text |",
-    "| --- | --- | --- | --- | --- |",
+    "| # | Char | OOC | Channel | IC Text | Status | Duration | Sent | Gap |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
   ];
+  let prevSentAt = null;
   chatState.gameLog.forEach((e, i) => {
     // Escape pipe characters in both fields so the MD table stays well-formed.
-    const oocEscaped = e.oocMessage.replace(/\|/g, "\\|");
-    const icEscaped  = e.icText.replace(/\|/g, "\\|");
-    lines.push(`| ${i + 1} | ${e.ch.toUpperCase()} | ${oocEscaped} | ${e.channel} | ${icEscaped} |`);
+    const oocEscaped = (e.oocMessage || "").replace(/\|/g, "\\|");
+    const icRaw = e.status === "success" ? (e.icText || "") : (e.errorDetail || "");
+    const icEscaped = icRaw.replace(/\|/g, "\\|");
+    const statusLabel = e.status === "success" ? "ok" : e.status.replace("fallback.", "");
+    const durStr = e.durationMs != null ? `${(e.durationMs / 1000).toFixed(1)}s` : "";
+    let sentStr = "";
+    if (e.sentAt) {
+      try { sentStr = new Date(e.sentAt).toISOString().slice(11, 19); } catch { /* */ }
+    }
+    let gapStr = "";
+    if (e.sentAt && prevSentAt) {
+      try {
+        const gap = (new Date(e.sentAt) - new Date(prevSentAt)) / 1000;
+        gapStr = `${gap.toFixed(1)}s`;
+      } catch { /* */ }
+    }
+    prevSentAt = e.sentAt;
+    lines.push(
+      `| ${i + 1} | ${e.ch.toUpperCase()} | ${oocEscaped} | ${e.channel}`
+      + ` | ${icEscaped} | ${statusLabel} | ${durStr} | ${sentStr} | ${gapStr} |`
+    );
   });
   navigator.clipboard.writeText(lines.join("\n")).then(() => {
     dom.chatCopyLogMd.textContent = "Copied!";
@@ -1823,8 +1916,13 @@ async function saveChatLog() {
       channel: e.channel,
       // ooc_message serialises to the ChatLogEntry schema field of the same name.
       ooc_message: e.oocMessage ?? "",
-      ic_text: e.icText,
+      ic_text: e.icText ?? null,
       model: e.model,
+      // Timing and failure tracking fields.
+      status:             e.status       ?? "success",
+      error_detail:       e.errorDetail  ?? null,
+      sent_at:            e.sentAt       ?? null,
+      duration_ms:        e.durationMs   ?? null,
       // All four IPC provenance hashes are included so the server can write a
       // complete provenance record to metadata.json without re-computing them.
       // These match the four rows displayed in the in-browser IPC meta table.
@@ -1960,24 +2058,32 @@ function restoreChatSessionState(data) {
       const h = hashByIdx[i + 1] ?? {};
       appendGameEntry(
         e.ch, e.channel, e.ooc_message, e.ic_text, data.model,
-        h.ipc_id            ?? null,
-        h.input_hash        ?? null,
+        h.status             ?? e.status ?? "success",
+        h.error_detail       ?? e.error_detail ?? null,
+        h.sent_at            ?? e.sent_at ?? null,
+        h.duration_ms        ?? e.duration_ms ?? null,
+        h.ipc_id             ?? null,
+        h.input_hash         ?? null,
         h.system_prompt_hash ?? null,
-        h.output_hash       ?? null,
+        h.output_hash        ?? null,
       );
     }
 
     // Populate each character's output box + IPC meta table with their most
     // recent entry's data, mirroring what renderTranslationResult() does after
-    // a live translation.
+    // a live translation.  Collect both last entries upfront so we can
+    // cross-reference system_prompt_hash for match/mismatch colouring.
+    const lastA = [...chatState.gameLog].reverse().find(e => e.ch === "a");
+    const lastB = [...chatState.gameLog].reverse().find(e => e.ch === "b");
+
     for (const ch of ["a", "b"]) {
-      // Find the last game log entry for this character.
-      const lastEntry = [...chatState.gameLog].reverse().find(e => e.ch === ch);
+      const lastEntry = ch === "a" ? lastA : lastB;
       if (!lastEntry) continue;
 
       const outputBox = ch === "a" ? dom.chatAOutput   : dom.chatBOutput;
       const metaDiv   = ch === "a" ? dom.chatAMeta     : dom.chatBMeta;
       const badge     = ch === "a" ? dom.chatAStatusBadge : dom.chatBStatusBadge;
+      const otherHash = (ch === "a" ? lastB : lastA)?.systemPromptHash ?? null;
 
       renderTranslationResult(outputBox, metaDiv, badge, {
         status:             "success",
@@ -1986,7 +2092,7 @@ function restoreChatSessionState(data) {
         system_prompt_hash: lastEntry.systemPromptHash,
         output_hash:        lastEntry.outputHash,
         ipc_id:             lastEntry.ipcId,
-      });
+      }, otherHash);
     }
 
     // Make the game section visible so the restored log is immediately readable.
@@ -2058,6 +2164,19 @@ export async function initChatTranslation() {
     loadChatExampleList(),
     loadChatIcPromptList(),
   ]);
+
+  // Auto-load default examples for both characters.
+  await Promise.all([
+    loadChatExample("a", "example_a").then(() => relabelChatChar("a")),
+    loadChatExample("b", "example_b").then(() => relabelChatChar("b")),
+  ]);
+  // Set the dropdowns to reflect the loaded defaults.
+  charDom("a").exampleSelect.value = "example_a";
+  charDom("b").exampleSelect.value = "example_b";
+
+  // Sync live mode state from the checkbox (checked by default in HTML).
+  chatState.liveMode = dom.chatLiveToggle.checked;
+  updateLiveModeUI();
 
   // In server mode, check for an existing session.
   if (isServerMode()) {

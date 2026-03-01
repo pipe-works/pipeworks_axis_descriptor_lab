@@ -286,6 +286,20 @@
   opacity: 1;
 }
 
+/* System-prompt hash match / mismatch colouring (chat translation page).
+   Uses higher specificity to override .meta-key / .meta-val opacity. */
+.meta-table tr.sp-match .meta-key,
+.meta-table tr.sp-match .meta-val {
+  color: var(--col-ok);
+  opacity: 1;
+}
+
+.meta-table tr.sp-mismatch .meta-key,
+.meta-table tr.sp-mismatch .meta-val {
+  color: var(--col-err);
+  opacity: 1;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    DIFF VIEW
 ════════════════════════════════════════════════════════════════════════════ */
@@ -1052,6 +1066,11 @@
   color: var(--col-text);
   word-break: break-word;
   flex: 1;
+}
+
+/* Failed translation entries — error-coloured IC text column */
+.game-entry--failed .game-entry__text {
+  color: var(--col-err);
 }
 
 /* Action buttons in the game log header — pushed to the right */
