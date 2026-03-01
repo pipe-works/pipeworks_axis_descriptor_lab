@@ -59,6 +59,12 @@ import { dom } from "./mod-state.js";
 import { clamp, debounce, safeParse, cryptoRandomFloat } from "./mod-utils.js";
 import { setStatus } from "./mod-status.js";
 
+/** Timeout (ms) for /api/translate_chat fetch calls.  Prevents users from
+ *  waiting for the browser's default timeout (2–5 min) with no feedback.
+ *  Matches the backend's httpx read timeout (120s) so the frontend never
+ *  gives up before the server does. */
+const TRANSLATE_TIMEOUT_MS = 120_000;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal state (chat page only)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1366,11 +1372,15 @@ async function sendForChar(ch) {
   const badge       = ch === "a" ? dom.chatAStatusBadge : dom.chatBStatusBadge;
   outputBox.innerHTML = '<span class="placeholder-text">Translating…</span>';
 
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), TRANSLATE_TIMEOUT_MS);
+
   try {
     const res = await fetch("/api/translate_chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(reqBody),
+      signal: ac.signal,
     });
     if (!res.ok) {
       if (res.status === 401 && isServerMode()) {
@@ -1399,9 +1409,13 @@ async function sendForChar(ch) {
     }
     setStatus(`${ch.toUpperCase()} sent (${usedModel}) — ${result ? result.status : "no result"}.`);
   } catch (err) {
-    outputBox.innerHTML = `<span style="color:var(--col-err)">Error: ${err.message}</span>`;
-    setStatus(`Send error (${ch.toUpperCase()}): ${err.message}`);
+    const msg = err.name === "AbortError"
+      ? `Request timed out after ${TRANSLATE_TIMEOUT_MS / 1000}s — is the model loaded in Ollama?`
+      : err.message;
+    outputBox.innerHTML = `<span style="color:var(--col-err)">Error: ${msg}</span>`;
+    setStatus(`Send error (${ch.toUpperCase()}): ${msg}`);
   } finally {
+    clearTimeout(timer);
     chatState.busy = false;
     charDom(ch).btnSend.disabled = false;
     dom.spinner.classList.add("hidden");
@@ -1525,11 +1539,15 @@ export async function translate() {
   dom.chatBMeta.textContent = "";
   dom.chatBMeta.classList.add("hidden");
 
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), TRANSLATE_TIMEOUT_MS);
+
   try {
     const res = await fetch("/api/translate_chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(reqBody),
+      signal: ac.signal,
     });
     if (!res.ok) {
       if (res.status === 401 && isServerMode()) {
@@ -1558,13 +1576,17 @@ export async function translate() {
 
   } catch (err) {
     // Show the error message in Character A's output box and status bar.
+    const msg = err.name === "AbortError"
+      ? `Request timed out after ${TRANSLATE_TIMEOUT_MS / 1000}s — is the model loaded in Ollama?`
+      : err.message;
     const errSpan = document.createElement("span");
     errSpan.style.color = "var(--col-err)";
-    errSpan.textContent = `Error: ${err.message}`;
+    errSpan.textContent = `Error: ${msg}`;
     dom.chatAOutput.textContent = "";
     dom.chatAOutput.appendChild(errSpan.cloneNode(true));
-    setStatus(`Translation error: ${err.message}`);
+    setStatus(`Translation error: ${msg}`);
   } finally {
+    clearTimeout(timer);
     chatState.busy = false;
     dom.btnTranslate.disabled = false;
     dom.spinner.classList.add("hidden");

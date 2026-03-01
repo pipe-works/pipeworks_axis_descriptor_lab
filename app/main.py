@@ -11,7 +11,7 @@ Domain modules
 ~~~~~~~~~~~~~~
 - ``pipeworks_ipc``        – IPC normalisation and SHA-256 hash functions (shared library).
 - ``app.schema``           – Pydantic v2 request / response models.
-- ``app.ollama_client``    – Synchronous HTTP wrapper around Ollama.
+- ``app.chat_renderer``    – Synchronous HTTP wrapper around Ollama.
 - ``app.signal_isolation`` – NLP pipeline for content-word delta.
 - ``app.transformation_map`` – Clause-level sentence alignment and diffing.
 - ``app.micro_indicators`` – Structural pattern indicators for transformation map rows.
@@ -94,7 +94,7 @@ from app.file_loaders import (
     load_example,
     load_prompt,
 )
-from app.chat_renderer import OLLAMA_HOST, ChatRenderer
+from app.chat_renderer import OLLAMA_HOST, ChatRenderer, close_all_clients
 from app.relabel_policy import apply_relabel_policy
 from app.save_formatting import (
     build_baseline_md,
@@ -190,6 +190,9 @@ app = FastAPI(
     ),
     version=_APP_VERSION,
 )
+
+# Close shared HTTP client pool on shutdown to release TCP connections cleanly.
+app.add_event_handler("shutdown", close_all_clients)
 
 # Serve everything under /static/ directly from the filesystem.
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
@@ -1343,7 +1346,8 @@ def _translate_via_server(
         rendered_prompt = data.get("rendered_prompt", "")
         model = data.get("model", req.model)
 
-        logger.debug(
+        log_fn = logger.debug if (ic_text and status == "success") else logger.warning
+        log_fn(
             "Server translate response: status=%r, ic_text=%s, model=%r, has_prompt=%s",
             status,
             f"<{len(ic_text)} chars>" if ic_text else None,
@@ -1371,13 +1375,18 @@ def _translate_via_server(
         input_hash = compute_payload_hash(input_dict)
 
         if ic_text is None or status != "success":
+            # Surface the server's status so the user can diagnose the failure
+            # (e.g. "fallback.api_error" vs "fallback.timeout" vs a custom status).
+            detail = f"Remote translation failed — server returned status '{status}'."
+            if status in ("fallback.api_error", "fallback.timeout"):
+                detail += " The model may still be loading in Ollama."
             return ChatTranslationResult(
                 ic_text=None,
                 status=status,
                 input_hash=input_hash,
                 system_prompt_hash=sp_hash,
                 model=model,
-                error_detail="Remote translation failed (model may be loading).",
+                error_detail=detail,
             )
 
         out_hash = compute_output_hash(ic_text)

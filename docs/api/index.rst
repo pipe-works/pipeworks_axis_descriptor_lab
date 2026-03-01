@@ -13,5 +13,6 @@ API Reference
    save_formatting
    save_package
    file_loaders
-   ollama_client
+   chat_renderer
+   mud_server_client
    main
