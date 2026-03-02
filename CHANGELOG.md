@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.4](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.3...axis-descriptor-lab-v0.8.4) (2026-03-02)
+
+
+### Bug Fixes
+
+* **data:** align archetype labels with policy ([2714064](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/2714064dc3b39d57961c83f2029118e0f66c727a))
+* **data:** replace placeholder example payloads ([52b4d6c](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/52b4d6cfd3cfe2410a02020a98a87015aabf5dae))
+* **data:** replace placeholder example payloads ([80a81f5](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/80a81f5dab3b275ed85dfa7b4998ed0603c8d54b))
+
 ## [0.8.3](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.2...axis-descriptor-lab-v0.8.3) (2026-03-02)
 
 
