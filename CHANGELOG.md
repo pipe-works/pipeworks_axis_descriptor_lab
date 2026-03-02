@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.2](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.1...axis-descriptor-lab-v0.8.2) (2026-03-02)
+
+
+### Bug Fixes
+
+* **axis:** sync mud-server labels and preserve chat toggles ([03ad374](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/03ad374a89ee82d856aeb92752554afaa7351ac6))
+* **axis:** sync mud-server labels and preserve chat toggles ([2495eb4](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/2495eb4b2e685d67d144c7feaa15f20b04d23c43))
+
 ## [0.8.1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.0...axis-descriptor-lab-v0.8.1) (2026-03-01)
 
 
