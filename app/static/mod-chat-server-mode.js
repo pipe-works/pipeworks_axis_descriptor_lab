@@ -16,6 +16,7 @@ import { chatState, charDom } from "./mod-chat-state.js";
 
 const CHAT_MODE_STORAGE_KEY = "padl-chat-mode";
 const CHAT_MODE_DEV_URL_STORAGE_KEY = "padl-chat-dev-server-url";
+const LAB_ALLOWED_ROLES = new Set(["admin", "superuser"]);
 
 /**
  * Return true when the chat page is currently targeting a mud server.
@@ -24,6 +25,10 @@ const CHAT_MODE_DEV_URL_STORAGE_KEY = "padl-chat-dev-server-url";
  */
 export function isServerMode() {
   return chatState.translationMode !== "standalone";
+}
+
+function isAuthorizedLabRole(role) {
+  return LAB_ALLOWED_ROLES.has(role || "");
 }
 
 /**
@@ -282,8 +287,11 @@ export async function checkSession() {
     applySessionModeState(data);
     chatState.authenticated = Boolean(data.authenticated);
     chatState.worldId = data.selected_world_id || null;
-    if (data.authenticated) {
+    if (data.authenticated && isAuthorizedLabRole(data.role)) {
       await onAuthenticated();
+    } else if (data.authenticated) {
+      resetServerState();
+      showLoginPanel("This mud server account is not authorised for the Axis Lab. Admin or superuser access is required.");
     } else {
       showLoginPanel();
     }
@@ -292,7 +300,7 @@ export async function checkSession() {
   }
 }
 
-function showLoginPanel() {
+function showLoginPanel(message = "") {
   if (!isServerMode()) {
     hideLoginPanel();
     return;
@@ -301,6 +309,13 @@ function showLoginPanel() {
   dom.chatBtnDisconnect.classList.add("hidden");
   dom.chatWorldSelector.classList.add("hidden");
   toggleServerControls(false);
+  if (message) {
+    dom.chatLoginError.textContent = message;
+    dom.chatLoginError.classList.remove("hidden");
+  } else {
+    dom.chatLoginError.classList.add("hidden");
+    dom.chatLoginError.textContent = "";
+  }
 }
 
 function hideLoginPanel() {
@@ -325,9 +340,19 @@ export async function doLogin() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
     });
+    const data = await res.json().catch(() => null);
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || `HTTP ${res.status}`);
+      throw new Error(data?.detail || res.statusText || `HTTP ${res.status}`);
+    }
+    if (!data?.authenticated) {
+      resetServerState();
+      showLoginPanel(data?.message || "Login failed.");
+      return;
+    }
+    if (!isAuthorizedLabRole(data.role)) {
+      resetServerState();
+      showLoginPanel("This mud server account is not authorised for the Axis Lab. Admin or superuser access is required.");
+      return;
     }
     await onAuthenticated();
   } catch (err) {
@@ -350,20 +375,36 @@ async function onAuthenticated() {
   hideLoginPanel();
   dom.chatBtnDisconnect.classList.remove("hidden");
   toggleServerControls(true);
-  await fetchWorlds();
+  const worldsLoaded = await fetchWorlds();
+  if (!worldsLoaded) return;
   setStatus("Connected to mud server.");
 }
 
 async function fetchWorlds() {
   try {
     const res = await fetch("/api/mud/worlds");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      if (res.status === 401) {
+        handleSessionExpired();
+        return false;
+      }
+      if (res.status === 403) {
+        try { await fetch("/api/mud/logout", { method: "POST" }); } catch { /* ignore */ }
+        resetServerState();
+        showLoginPanel(err.detail || "This mud server account is not authorised for the Axis Lab.");
+        return false;
+      }
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
     const data = await res.json();
     chatState.worlds = data.worlds || [];
     populateWorldSelect();
     dom.chatWorldSelector.classList.remove("hidden");
+    return true;
   } catch (err) {
     setStatus(`Failed to fetch worlds: ${err.message}`);
+    return false;
   }
 }
 

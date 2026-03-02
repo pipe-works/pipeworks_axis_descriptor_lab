@@ -178,6 +178,25 @@ class TestMudLogin:
         data = resp.json()
         assert data["authenticated"] is False
 
+    def test_login_unauthorised_role_returns_denied(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client()
+        mock.login.return_value = {
+            "success": True,
+            "session_id": "abc-123",
+            "role": "player",
+            "message": "Login successful.",
+        }
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post("/api/mud/login", json={"username": "user", "password": "pass"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["authenticated"] is False
+        assert data["role"] == "player"
+        assert "author" in data["message"].lower()
+        mock.logout.assert_called_once()
+
     def test_login_standalone_mode(self, test_client: TestClient) -> None:
         with patch("app.routes_mud.get_mud_client", return_value=None):
             resp = test_client.post("/api/mud/login", json={"username": "user", "password": "pass"})
@@ -334,6 +353,20 @@ class TestMudWorlds:
             resp = test_client.get("/api/mud/worlds")
 
         assert resp.status_code == 502
+
+    def test_worlds_forbidden_returns_403(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        fake_response = MagicMock()
+        fake_response.status_code = 403
+        mock.list_worlds.side_effect = httpx.HTTPStatusError(
+            "Forbidden", request=MagicMock(), response=fake_response
+        )
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/worlds")
+
+        assert resp.status_code == 403
+        assert "author" in resp.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------

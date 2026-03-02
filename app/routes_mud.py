@@ -34,6 +34,12 @@ from app.schema import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["mud"])
+_LAB_ALLOWED_ROLES = frozenset({"admin", "superuser"})
+
+
+def _is_lab_authorized_role(role: str | None) -> bool:
+    """Return True when the mud-server role is allowed to use the lab UI."""
+    return role in _LAB_ALLOWED_ROLES
 
 
 @router.get("/mode", response_model=MudModeResponse, summary="Get runtime chat mode")
@@ -70,9 +76,18 @@ def mud_login(req: MudLoginRequest) -> MudLoginResponse:
             message=f"Login failed: {exc.response.status_code}",
         )
 
+    role = data.get("role")
+    if data.get("success") and not _is_lab_authorized_role(role):
+        client.logout()
+        return MudLoginResponse(
+            authenticated=False,
+            role=role,
+            message="This mud server account is not authorised for the Axis Lab. Admin or superuser access is required.",
+        )
+
     return MudLoginResponse(
         authenticated=data.get("success", False),
-        role=data.get("role"),
+        role=role,
         message=data.get("message"),
     )
 
@@ -126,6 +141,13 @@ def mud_worlds() -> dict:
             status_code=401,
             detail="Mud server session expired. Please log in again.",
         )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 403:
+            raise HTTPException(
+                status_code=403,
+                detail="This mud server account is not authorised for the Axis Lab.",
+            ) from exc
+        raise
     except MudServerConnectionError:
         raise HTTPException(status_code=502, detail="Cannot connect to mud server.")
 
