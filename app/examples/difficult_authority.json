@@ -1,16 +1,16 @@
 {
   "axes": {
-    "physique": { "label": "solid", "score": 0.73 },
-    "wealth": { "label": "comfortable", "score": 0.68 },
-    "health": { "label": "steady", "score": 0.64 },
-    "demeanor": { "label": "unyielding", "score": 0.87 },
-    "age": { "label": "middle-aged", "score": 0.62 },
-    "facial_signal": { "label": "stern", "score": 0.76 },
-    "legitimacy": { "label": "sanctioned", "score": 0.83 },
-    "visibility": { "label": "visible", "score": 0.72 },
-    "moral_load": { "label": "rigid", "score": 0.58 },
-    "dependency": { "label": "limited", "score": 0.33 },
-    "risk_exposure": { "label": "controlled", "score": 0.41 }
+    "physique": { "label": "broad", "score": 0.73 },
+    "wealth": { "label": "wealthy", "score": 0.68 },
+    "health": { "label": "scarred", "score": 0.64 },
+    "demeanor": { "label": "proud", "score": 0.87 },
+    "age": { "label": "old", "score": 0.62 },
+    "facial_signal": { "label": "soft-featured", "score": 0.76 },
+    "legitimacy": { "label": "illicit", "score": 0.83 },
+    "visibility": { "label": "routine", "score": 0.72 },
+    "moral_load": { "label": "conflicted", "score": 0.58 },
+    "dependency": { "label": "useful", "score": 0.33 },
+    "risk_exposure": { "label": "straining", "score": 0.41 }
   },
   "policy_hash": "6410396dc5d133d8149773d16b2d8fff5de2287e9bf79f227aaaff22287ae945",
   "seed": 120009,
