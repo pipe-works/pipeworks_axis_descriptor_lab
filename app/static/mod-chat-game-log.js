@@ -173,6 +173,22 @@ function resolveChatSeed() {
   return raw;
 }
 
+/**
+ * Return the currently selected named example for a chat character.
+ *
+ * The save package keeps the payload JSON in the canonical payload files and
+ * records the UI's selected example name in metadata only.  Reading from the
+ * select keeps that provenance stable even if the payload object has been
+ * relabeled or otherwise rebuilt in memory.
+ *
+ * @param {"a"|"b"} ch - Character identifier.
+ * @returns {string|null} Selected example stem, or null when none is selected.
+ */
+function getSelectedExampleName(ch) {
+  const value = (ch === "a" ? dom.chatAExampleSelect.value : dom.chatBExampleSelect.value).trim();
+  return value || null;
+}
+
 export function copyGameLogTxt() {
   if (chatState.gameLog.length === 0) { setStatus("No entries to copy."); return; }
   const text = chatState.gameLog
@@ -248,6 +264,8 @@ export async function saveChatLog() {
     })),
     character_a: chatState.a.payload ? chatState.a.payload.axes : null,
     character_b: chatState.b.payload ? chatState.b.payload.axes : null,
+    character_a_name: getSelectedExampleName("a"),
+    character_b_name: getSelectedExampleName("b"),
     model,
     temperature: parseFloat(dom.chatTempInput.value),
     max_tokens: parseInt(dom.chatTokensInput.value, 10),

@@ -132,6 +132,7 @@ def save_run(req: SaveRequest, data_dir: Path) -> SaveResponse:
             "world_id": req.payload.world_id,
             "policy_hash": req.payload.policy_hash,
             "axis_count": len(req.payload.axes),
+            "payload_name": req.payload_name,
             "diff_change_pct": req.diff_change_pct,
         }
 
