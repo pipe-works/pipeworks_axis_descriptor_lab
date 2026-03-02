@@ -98,9 +98,8 @@ export const state = {
   lastTmapResponse: null,
 
   /**
-   * Folder name returned by the most recent successful save.  Used by
-   * exportSave() to construct the export URL.  Null before the first save;
-   * set in saveRun() on success.  Enables the Export Zip button.
+   * Folder name returned by the most recent successful save.  Preserved so
+   * imported sessions can retain provenance about the exact saved package.
    */
   lastSaveFolderName: null,
 };
@@ -167,7 +166,6 @@ export const dom = {
   outputMeta:           $("output-meta"),
   btnSave:              $("btn-save"),
   btnClearOutput:       $("btn-clear-output"),
-  btnExport:            $("btn-export"),
   btnImport:            $("btn-import"),
   importFileInput:      $("import-file-input"),
   diffDelta:            $("diff-delta"),

@@ -613,6 +613,7 @@ class TestSaveEndpoint:
         assert metadata["world_id"] == "test_world"
         assert metadata["policy_hash"] == "abc123"
         assert metadata["axis_count"] == 2  # health + age from fixture
+        assert metadata["payload_name"] is None
         assert len(metadata["input_hash"]) == 64
         assert "timestamp" in metadata
         assert "folder_name" in metadata
@@ -621,6 +622,25 @@ class TestSaveEndpoint:
         assert len(metadata["system_prompt_hash"]) == 64
         assert len(metadata["output_hash"]) == 64
         assert len(metadata["ipc_id"]) == 64
+
+    def test_metadata_json_records_payload_name(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """metadata.json must preserve the selected example payload stem when provided."""
+        import json as _json
+
+        body = {**save_request_body, "payload_name": "brittle_elite"}
+        with patch("app.routes_save._DATA_DIR", tmp_path):
+            resp = client.post("/api/save", json=body)
+
+        data = resp.json()
+        save_dir = tmp_path / data["folder_name"]
+        metadata = _json.loads((save_dir / "metadata.json").read_text(encoding="utf-8"))
+
+        assert metadata["payload_name"] == "brittle_elite"
 
     def test_payload_json_round_trips_cleanly(
         self,
@@ -1415,12 +1435,35 @@ class TestImportEndpoint:
         assert data["payload"]["seed"] == 42
         assert data["payload"]["world_id"] == "test_world"
         assert "health" in data["payload"]["axes"]
+        assert data["metadata"]["payload_name"] is None
 
         # System prompt extracted from fenced code block
         assert "deterministic system" in data["system_prompt"]
 
         # Output extracted from markdown body
         assert "weathered figure" in data["output"]
+
+    def test_round_trip_preserves_payload_name_metadata(
+        self,
+        client: TestClient,
+        save_request_body: dict,
+        tmp_path: Path,
+    ) -> None:
+        """Import must expose payload_name from metadata.json so the UI can restore the example."""
+        body = {**save_request_body, "payload_name": "arrogant_patron"}
+        with patch("app.routes_save._DATA_DIR", tmp_path):
+            save_resp = client.post("/api/save", json=body)
+            folder_name = save_resp.json()["folder_name"]
+            export_resp = client.get(f"/api/save/{folder_name}/export")
+
+            import_resp = client.post(
+                "/api/import",
+                files={"file": (f"{folder_name}.zip", export_resp.content, "application/zip")},
+            )
+
+        assert import_resp.status_code == 200
+        data = import_resp.json()
+        assert data["metadata"]["payload_name"] == "arrogant_patron"
 
     def test_import_preserves_baseline(
         self,

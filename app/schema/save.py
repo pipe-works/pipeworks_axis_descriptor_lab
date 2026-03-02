@@ -37,6 +37,14 @@ class SaveRequest(BaseModel):
         default=None,
         description="Stored baseline text (state.baseline).  None if not set.",
     )
+    payload_name: str | None = Field(
+        default=None,
+        description=(
+            "Selected example payload stem for the current session (for example "
+            "'brittle_elite'), or None when the payload did not come from a "
+            "named example."
+        ),
+    )
     model: str = Field(
         ...,
         description="Ollama model name used (e.g. 'gemma2:2b').",

@@ -281,6 +281,29 @@ class TestChatSaveExport:
         assert meta["seed"] == 42
         assert meta["has_character_a"] is False
         assert meta["has_character_b"] is False
+        assert meta["character_a_name"] is None
+        assert meta["character_b_name"] is None
+
+    def test_metadata_json_includes_character_payload_names(
+        self, client: TestClient, base_request: dict, axes_a: dict, axes_b: dict
+    ) -> None:
+        """metadata.json must preserve the selected example names for both characters."""
+        req = {
+            **base_request,
+            "character_a": axes_a,
+            "character_b": axes_b,
+            "character_a_name": "brittle_elite",
+            "character_b_name": "arrogant_patron",
+        }
+        folder = client.post("/api/save_chat", json=req).json()["folder_name"]
+        resp = client.get(f"/api/save/{folder}/export")
+        with zipfile.ZipFile(BytesIO(resp.content)) as zf:
+            meta = json.loads(zf.read("metadata.json"))
+
+        assert meta["has_character_a"] is True
+        assert meta["has_character_b"] is True
+        assert meta["character_a_name"] == "brittle_elite"
+        assert meta["character_b_name"] == "arrogant_patron"
 
     def test_export_zip_contains_system_prompt_md(
         self, client: TestClient, base_request: dict

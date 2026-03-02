@@ -326,6 +326,20 @@ class ChatSaveRequest(BaseModel):
         default=None,
         description="Character B axes dict, or None if not used.",
     )
+    character_a_name: str | None = Field(
+        default=None,
+        description=(
+            "Selected example payload name for Character A (for example "
+            "'brittle_elite'), or None when no named example is active."
+        ),
+    )
+    character_b_name: str | None = Field(
+        default=None,
+        description=(
+            "Selected example payload name for Character B, or None when no "
+            "named example is active."
+        ),
+    )
     model: str = Field(
         ...,
         description="Ollama model tag used during this session.",

@@ -417,6 +417,8 @@ def save_chat(req: ChatSaveRequest, data_dir: Path, prompt_root: Path) -> ChatSa
         "entry_count": len(req.entries),
         "has_character_a": req.character_a is not None,
         "has_character_b": req.character_b is not None,
+        "character_a_name": req.character_a_name,
+        "character_b_name": req.character_b_name,
         "system_prompt_hash": sp_hash,
         "system_prompt_history": system_prompt_history,
         "log_hash": log_hash[:16],

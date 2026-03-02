@@ -7,29 +7,24 @@
  *
  *   1. **Save** — Persist the current session state (payload, output,
  *      baseline, settings, diff metadata) to a timestamped folder on
- *      the server via `POST /api/save`.
+ *      the server via `POST /api/save`, then immediately download the
+ *      resulting save package as a `.zip` archive.
  *
- *   2. **Export** — Download the last saved session as a `.zip` archive
- *      via `GET /api/save/{folder}/export`.
- *
- *   3. **Import** — Upload a `.zip` save package via `POST /api/import`
+ *   2. **Import** — Upload a `.zip` save package via `POST /api/import`
  *      and fully restore the session state from the imported data.
  *
- *   4. **Restore** — Rebuild all frontend state (payload, sliders, model,
+ *   3. **Restore** — Rebuild all frontend state (payload, sliders, model,
  *      temperature, system prompt, output, baseline, diff) from an
  *      `ImportResponse` object.  Used by `importSave()` but also
  *      available for other restore scenarios.
  *
- *   5. **Log** — Append a fire-and-forget entry to the server's JSONL
+ *   4. **Log** — Append a fire-and-forget entry to the server's JSONL
  *      run log via `POST /api/log`.
  *
  * Data flow
  * ─────────
  *   btnSave click → saveRun()
- *     → POST /api/save → state.lastSaveFolderName (enables export)
- *
- *   btnExport click → exportSave()
- *     → GET /api/save/{folder}/export → browser download (.zip)
+ *     → POST /api/save → GET /api/save/{folder}/export → browser download (.zip)
  *
  *   btnImport click → importFileInput.click() → importSave()
  *     → POST /api/import (FormData) → restoreSessionState(data)
@@ -62,9 +57,10 @@ import { updateDiff } from "./mod-diff.js";
  *   - Diff change percentage (if a diff exists)
  *
  * The server creates a timestamped directory under `data/` containing
- * individual files (payload.json, output.md, baseline.md, etc.) and
- * returns the folder name.  The folder name is stored in
- * `state.lastSaveFolderName` to enable subsequent export.
+ * individual files (payload.json, output.md, baseline.md, etc.), then
+ * the frontend immediately exports that exact saved folder as a zip.
+ * The folder name is still stored in `state.lastSaveFolderName` so the
+ * imported session can preserve provenance metadata about the saved run.
  *
  * The save button is disabled during the request to prevent double-saves.
  *
@@ -126,6 +122,7 @@ export async function saveRun() {
     payload:            state.payload,
     output:             state.current,
     baseline:           state.baseline,
+    payload_name:       dom.exampleSelect.value.trim() || null,
     model,
     temperature,
     max_tokens,
@@ -152,11 +149,31 @@ export async function saveRun() {
 
     const data = await res.json();
 
-    // Store folder name so export can reference it
+    // Store folder name so the imported session can preserve provenance
+    // about the exact save-package folder that was created.
     state.lastSaveFolderName = data.folder_name;
-    if (dom.btnExport) dom.btnExport.disabled = false;
 
-    setStatus(`Saved \u2192 data/${data.folder_name}/ (${data.files.join(", ")})`);
+    const exportRes = await fetch(
+      `/api/save/${encodeURIComponent(data.folder_name)}/export`
+    );
+    if (!exportRes.ok) {
+      const errData = await exportRes.json().catch(() => ({ detail: exportRes.statusText }));
+      throw new Error(errData.detail || `Export HTTP ${exportRes.status}`);
+    }
+
+    const blob = await exportRes.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${data.folder_name}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+
+    setStatus(`Saved and exported \u2192 ${data.folder_name}.zip`);
   } catch (err) {
     setStatus(`Save error: ${err.message}`);
   } finally {
@@ -173,14 +190,14 @@ export async function saveRun() {
  * click to initiate the browser download.  The temporary DOM node and
  * blob URL are cleaned up after a short delay.
  *
- * Requires a prior successful `saveRun()` call — the folder name is
- * stored in `state.lastSaveFolderName`.
+ * This helper is retained for module API stability, but the primary UI
+ * path now exports immediately from `saveRun()`.
  *
  * @returns {Promise<void>} Resolves after the download is triggered.
  */
 export async function exportSave() {
   if (!state.lastSaveFolderName) {
-    setStatus("Nothing to export \u2013 save first.");
+    setStatus("Nothing to export \u2013 save all data first.");
     return;
   }
 
@@ -289,7 +306,7 @@ export async function importSave() {
  *   4. **Output and baseline** → state + display panels
  *   5. **Diff recomputation** → if both A and B exist, call `updateDiff()`
  *      which cascades to signal isolation and transformation map
- *   6. **Enable export** → store folder name, enable export button
+ *   6. **Preserve save provenance** → store folder name and example select
  *
  * @param {object} data - The `ImportResponse` JSON from `POST /api/import`.
  *   Expected fields: `payload`, `model`, `temperature`, `max_tokens`,
@@ -302,6 +319,7 @@ export function restoreSessionState(data) {
   syncJsonTextarea();
   buildSlidersFromJson();
   setJsonBadge(true);
+  dom.exampleSelect.value = data.metadata?.payload_name || "";
 
   // ── 2. Model / temperature / max_tokens / seed ────────────────────── //
   // If the saved model exists in the current Ollama dropdown, select it;
@@ -369,9 +387,8 @@ export function restoreSessionState(data) {
     state.lastTmapResponse = null;
   }
 
-  // ── 6. Enable export ──────────────────────────────────────────────── //
+  // ── 6. Preserve save provenance ───────────────────────────────────── //
   state.lastSaveFolderName = data.folder_name;
-  if (dom.btnExport) dom.btnExport.disabled = false;
 }
 
 /**
@@ -417,7 +434,6 @@ export async function logRun(output, model, temperature, max_tokens) {
  *
  * Registers handlers for:
  *   - **Save button** click → `saveRun()`
- *   - **Export button** click → `exportSave()`
  *   - **Import button** click → triggers hidden file input
  *   - **Import file input** change → `importSave()`
  *   - **Clear output button** click → resets all output/diff/meta state
@@ -430,7 +446,7 @@ export async function logRun(output, model, temperature, max_tokens) {
  *   - Clears output box, meta panel, and all diff panels
  *   - Resets `state.current`, `state.baseline`, `state.lastMeta`,
  *     `state.baselineMeta`, `state.lastDiff`, `state.lastSaveFolderName`
- *   - Disables the export button and removes baseline highlight
+ *   - Clears saved-folder provenance and removes baseline highlight
  *   - Restores all panels to their empty placeholder states
  *
  * Called once during startup by the `mod-events.js` coordinator.
@@ -440,13 +456,6 @@ export function wirePersistenceEvents() {
   dom.btnSave.addEventListener("click", () => {
     saveRun();
   });
-
-  // ── Export Zip ────────────────────────────────────────────────────── //
-  if (dom.btnExport) {
-    dom.btnExport.addEventListener("click", () => {
-      exportSave();
-    });
-  }
 
   // ── Import Zip ────────────────────────────────────────────────────── //
   // The visible Import button triggers the hidden file input;
@@ -482,9 +491,8 @@ export function wirePersistenceEvents() {
     state.lastTmapResponse = null;
     state.lastSaveFolderName = null;
 
-    // Disable export and hide diff percentage badge
+    // Clear saved-folder provenance and hide diff percentage badge
     dom.diffPct.style.display = "none";
-    if (dom.btnExport) dom.btnExport.disabled = true;
 
     // Reset diff panels to placeholder state
     dom.diffA.textContent = "";

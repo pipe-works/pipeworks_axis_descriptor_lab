@@ -336,17 +336,11 @@
       <div class="output-actions">
         <!-- Save button: persists the entire session state (payload, output,
              baseline, system prompt, generation settings) to a timestamped
-             subfolder under data/.  Each save creates individual JSON and
-             Markdown files for both machine and human readability. -->
+             subfolder under data/, then immediately downloads that save
+             package as a zip. -->
         <button id="btn-save" class="btn btn--secondary btn--sm" type="button"
-                data-tooltip="Save the current session state (payload, output, baseline, system prompt, and generation settings) to a timestamped subfolder under data/. Creates metadata.json, payload.json, system_prompt.md, and optionally output.md and baseline.md.">
-          Save
-        </button>
-        <!-- Export Zip: downloads the last saved session as a .zip archive.
-             Disabled until a save is completed (requires a folder name). -->
-        <button id="btn-export" class="btn btn--secondary btn--sm" type="button" disabled
-                data-tooltip="Download the last saved session as a .zip archive. Save first to enable. The zip contains all save-package files with SHA-256 checksums in the manifest for integrity verification.">
-          Export Zip
+                data-tooltip="Save the current session state to a timestamped folder under data/ and immediately download the matching .zip package. Includes metadata.json, payload.json, system_prompt.md, and any generated output, baseline, delta, and transformation-map files.">
+          Save all data
         </button>
         <!-- Import Zip: upload a .zip save package to restore session state.
              Opens a hidden file input that accepts only .zip files. -->
