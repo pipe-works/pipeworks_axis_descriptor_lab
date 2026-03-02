@@ -44,6 +44,8 @@ POST /api/import               → import a save package from a zip upload
 POST /api/import_chat          → import a chat save package from a zip upload
 POST /api/mud/login            → proxy login to mud server
 POST /api/mud/logout           → clear mud server session
+GET  /api/mud/mode             → return runtime chat mode + available options
+POST /api/mud/mode             → switch runtime chat mode
 GET  /api/mud/session          → return auth status + translation mode
 GET  /api/mud/worlds           → proxy list worlds from mud server
 GET  /api/mud/world-config/{id}→ proxy world config from mud server
@@ -101,7 +103,7 @@ from app.save_package import (
     validate_and_extract_zip,
     MAX_UPLOAD_SIZE,
 )
-from app.mud_server_client import compute_translation_mode
+from app.mud_server_client import close_all_mud_clients, compute_translation_mode
 from app.schema import (
     AxisPayload,
     ChatImportResponse,
@@ -154,8 +156,15 @@ app = FastAPI(
     version=_APP_VERSION,
 )
 
-# Close shared HTTP client pool on shutdown to release TCP connections cleanly.
-app.add_event_handler("shutdown", close_all_clients)
+
+def close_runtime_clients() -> None:
+    """Close all shared HTTP clients created by the application runtime."""
+    close_all_clients()
+    close_all_mud_clients()
+
+
+# Close shared HTTP client pools on shutdown to release connections cleanly.
+app.add_event_handler("shutdown", close_runtime_clients)
 
 app.include_router(chat_router)
 app.include_router(mud_router, prefix="/api/mud")

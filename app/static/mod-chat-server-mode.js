@@ -1,8 +1,8 @@
 /**
  * mod-chat-server-mode.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Mud-server authentication, world selection, and server-prompt management
- * for the Chat Translation page.
+ * Mud-server runtime mode selection, authentication, world selection, and
+ * server-prompt management for the Chat Translation page.
  *
  * This module isolates the server-backed translation mode so the main chat
  * controller can stay focused on request construction and output rendering.
@@ -14,10 +14,23 @@ import { dom } from "./mod-state.js";
 import { setStatus } from "./mod-status.js";
 import { chatState, charDom } from "./mod-chat-state.js";
 
+const CHAT_MODE_STORAGE_KEY = "padl-chat-mode";
+const CHAT_MODE_DEV_URL_STORAGE_KEY = "padl-chat-dev-server-url";
+
+/**
+ * Return true when the chat page is currently targeting a mud server.
+ *
+ * @returns {boolean}
+ */
 export function isServerMode() {
   return chatState.translationMode !== "standalone";
 }
 
+/**
+ * Refresh the mode badge from the current runtime mode state.
+ *
+ * @returns {void}
+ */
 export function updateModeBadge() {
   const badge = dom.chatModeBadge;
   if (!badge) return;
@@ -37,12 +50,238 @@ export function updateModeBadge() {
   }
 }
 
+function updateModeUrl() {
+  if (!dom.chatModeUrl) return;
+  if (!isServerMode()) {
+    dom.chatModeUrl.textContent = "Uses the local standalone translator.";
+    return;
+  }
+
+  const label = chatState.availableModes.find((option) => option.key === chatState.modeKey)?.label;
+  const prefix = label || "Mud server";
+  dom.chatModeUrl.textContent = chatState.activeServerUrl
+    ? `${prefix}: ${chatState.activeServerUrl}`
+    : `${prefix} active.`;
+}
+
+function getDevelopmentModeOption() {
+  return chatState.availableModes.find((option) => option.key === "development") || null;
+}
+
+function syncDevelopmentUrlControls() {
+  const input = dom.chatModeDevUrl;
+  const button = dom.chatModeDevApply;
+  if (!input || !button) return;
+
+  input.value = chatState.developmentServerUrl || "";
+  button.disabled = input.value.trim().length === 0;
+
+  const showControls = getDevelopmentModeOption() !== null && dom.chatModeSelect?.value === "development";
+  input.classList.toggle("hidden", !showControls);
+  button.classList.toggle("hidden", !showControls);
+}
+
+function syncModeSelect() {
+  const select = dom.chatModeSelect;
+  if (!select) return;
+
+  select.innerHTML = "";
+  for (const option of chatState.availableModes) {
+    const el = document.createElement("option");
+    el.value = option.key;
+    el.textContent = option.label;
+    select.appendChild(el);
+  }
+
+  if (select.querySelector(`option[value="${chatState.modeKey}"]`)) {
+    select.value = chatState.modeKey;
+  }
+  syncDevelopmentUrlControls();
+}
+
+function applyModeConfig(data) {
+  chatState.modeKey = data.mode_key;
+  chatState.translationMode = data.translation_mode;
+  chatState.activeServerUrl = data.active_server_url || null;
+  chatState.availableModes = Array.isArray(data.available_modes) ? data.available_modes : [];
+  chatState.developmentServerUrl = getDevelopmentModeOption()?.server_url || null;
+  updateModeBadge();
+  updateModeUrl();
+  syncModeSelect();
+}
+
+function applySessionModeState(data) {
+  if (data.mode_key) {
+    chatState.modeKey = data.mode_key;
+  }
+  if (data.translation_mode) {
+    chatState.translationMode = data.translation_mode;
+  }
+  chatState.activeServerUrl = data.active_server_url || null;
+  if (chatState.modeKey === "development") {
+    chatState.developmentServerUrl = data.active_server_url || chatState.developmentServerUrl;
+  }
+  updateModeBadge();
+  updateModeUrl();
+  if (dom.chatModeSelect && dom.chatModeSelect.querySelector(`option[value="${chatState.modeKey}"]`)) {
+    dom.chatModeSelect.value = chatState.modeKey;
+  }
+  syncDevelopmentUrlControls();
+}
+
+function resetServerState({ dispatchCleared = true } = {}) {
+  chatState.authenticated = false;
+  chatState.worlds = [];
+  chatState.worldId = null;
+  chatState.worldConfig = null;
+  chatState.worldConfigLoading = false;
+  chatState.worldPrompts = [];
+  chatState.serverPromptOriginal = "";
+  clearActiveAxesIndicators();
+
+  if (dom.chatWorldSelect) {
+    dom.chatWorldSelect.innerHTML = '<option value="">— select world —</option>';
+  }
+  if (dom.chatServerPromptSelect) {
+    dom.chatServerPromptSelect.innerHTML = '<option value="">— loading —</option>';
+  }
+  if (dom.chatServerPromptText) {
+    dom.chatServerPromptText.value = "";
+  }
+  if (dom.chatServerModel) {
+    dom.chatServerModel.textContent = "--";
+  }
+  if (dom.chatServerActiveAxes) {
+    dom.chatServerActiveAxes.textContent = "--";
+  }
+  if (dom.chatServerConfigInfo) {
+    dom.chatServerConfigInfo.classList.add("hidden");
+  }
+
+  if (dispatchCleared) {
+    document.dispatchEvent(new CustomEvent("chat-world-config-cleared"));
+  }
+}
+
+/**
+ * Fetch the active runtime chat mode and reconcile it with any saved browser
+ * preference from a previous visit.
+ *
+ * The backend remains authoritative.  The saved preference is applied only if
+ * the server still exposes that mode in its available mode list.
+ *
+ * @returns {Promise<void>}
+ */
+export async function initMudMode() {
+  const response = await fetch("/api/mud/mode");
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  applyModeConfig(data);
+
+  const savedMode = window.localStorage.getItem(CHAT_MODE_STORAGE_KEY);
+  const savedDevelopmentUrl = window.localStorage.getItem(CHAT_MODE_DEV_URL_STORAGE_KEY);
+  if (savedDevelopmentUrl) {
+    chatState.developmentServerUrl = savedDevelopmentUrl;
+    syncDevelopmentUrlControls();
+  }
+  const modeExists = chatState.availableModes.some((option) => option.key === savedMode);
+  if (savedMode && modeExists && savedMode !== chatState.modeKey) {
+    await setRuntimeMode(savedMode, {
+      serverUrl: savedMode === "development" ? savedDevelopmentUrl : null,
+      persist: false,
+      refreshSession: false,
+      showStatus: false,
+    });
+  }
+}
+
+/**
+ * Switch the backend chat mode at runtime and update the page state to match.
+ *
+ * This clears frontend-only mud session UI state before rehydrating from the
+ * newly selected mode so stale world config or login state cannot bleed across
+ * mode switches.
+ *
+ * @param {string} modeKey - Runtime mode key to activate.
+ * @param {{persist?: boolean, refreshSession?: boolean, serverUrl?: string|null, showStatus?: boolean}} [options]
+ *   Mode-switch behaviour flags for startup restoration vs direct user action.
+ * @returns {Promise<void>}
+ */
+export async function setRuntimeMode(
+  modeKey,
+  { persist = true, refreshSession = true, serverUrl = null, showStatus = true } = {},
+) {
+  const trimmedServerUrl = typeof serverUrl === "string" ? serverUrl.trim() : null;
+  const currentDevelopmentUrl = (chatState.developmentServerUrl || "").trim();
+  const sameDevelopmentUrl = modeKey !== "development" || trimmedServerUrl === null
+    || trimmedServerUrl === currentDevelopmentUrl;
+
+  if (modeKey === chatState.modeKey && sameDevelopmentUrl) {
+    if (persist) {
+      window.localStorage.setItem(CHAT_MODE_STORAGE_KEY, modeKey);
+    }
+    return;
+  }
+
+  const requestBody = { mode_key: modeKey };
+  if (modeKey === "development" && trimmedServerUrl) {
+    requestBody.server_url = trimmedServerUrl;
+  }
+
+  const response = await fetch("/api/mud/mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(err.detail || `HTTP ${response.status}`);
+  }
+
+  resetServerState();
+  applyModeConfig(await response.json());
+
+  if (persist) {
+    window.localStorage.setItem(CHAT_MODE_STORAGE_KEY, chatState.modeKey);
+    if (chatState.developmentServerUrl) {
+      window.localStorage.setItem(CHAT_MODE_DEV_URL_STORAGE_KEY, chatState.developmentServerUrl);
+    }
+  }
+
+  if (isServerMode()) {
+    if (refreshSession) {
+      await checkSession();
+    }
+  } else {
+    hideLoginPanel();
+    dom.chatBtnDisconnect.classList.add("hidden");
+    dom.chatWorldSelector.classList.add("hidden");
+    toggleServerControls(false);
+  }
+
+  if (showStatus) {
+    const label = chatState.availableModes.find((option) => option.key === chatState.modeKey)?.label;
+    setStatus(`${label || "Chat mode"} selected.`);
+  }
+}
+
+/**
+ * Query the backend for the current mud session status in the active mode.
+ *
+ * @returns {Promise<void>}
+ */
 export async function checkSession() {
   if (!isServerMode()) return;
   try {
     const res = await fetch("/api/mud/session");
     if (!res.ok) { showLoginPanel(); return; }
     const data = await res.json();
+    applySessionModeState(data);
+    chatState.authenticated = Boolean(data.authenticated);
+    chatState.worldId = data.selected_world_id || null;
     if (data.authenticated) {
       await onAuthenticated();
     } else {
@@ -54,6 +293,10 @@ export async function checkSession() {
 }
 
 function showLoginPanel() {
+  if (!isServerMode()) {
+    hideLoginPanel();
+    return;
+  }
   dom.chatLoginPanel.classList.remove("hidden");
   dom.chatBtnDisconnect.classList.add("hidden");
   dom.chatWorldSelector.classList.add("hidden");
@@ -97,14 +340,7 @@ export async function doLogin() {
 
 export async function doLogout() {
   try { await fetch("/api/mud/logout", { method: "POST" }); } catch { /* ignore */ }
-  chatState.authenticated = false;
-  chatState.worlds = [];
-  chatState.worldId = null;
-  chatState.worldConfig = null;
-  chatState.worldPrompts = [];
-  chatState.serverPromptOriginal = "";
-  clearActiveAxesIndicators();
-  dom.chatServerConfigInfo.classList.add("hidden");
+  resetServerState();
   showLoginPanel();
   setStatus("Disconnected from mud server.");
 }
@@ -212,12 +448,7 @@ export async function selectWorld(worldId) {
 }
 
 export function handleSessionExpired() {
-  chatState.authenticated = false;
-  chatState.worldId = null;
-  chatState.worldConfig = null;
-  clearActiveAxesIndicators();
-  document.dispatchEvent(new CustomEvent("chat-world-config-cleared"));
-  dom.chatServerConfigInfo.classList.add("hidden");
+  resetServerState();
   showLoginPanel();
   setStatus("Session expired — please log in again.");
 }
@@ -403,6 +634,49 @@ export function getEffectiveSystemPrompt() {
  * @returns {void}
  */
 export function wireServerModeEvents() {
+  if (dom.chatModeSelect) {
+    dom.chatModeSelect.addEventListener("change", async () => {
+      try {
+        const nextMode = dom.chatModeSelect.value;
+        const serverUrl = nextMode === "development" ? dom.chatModeDevUrl?.value || null : null;
+        await setRuntimeMode(nextMode, { serverUrl });
+      } catch (err) {
+        syncModeSelect();
+        setStatus(`Mode switch error: ${err.message}`);
+      }
+    });
+  }
+
+  if (dom.chatModeDevUrl) {
+    dom.chatModeDevUrl.addEventListener("input", () => {
+      const value = dom.chatModeDevUrl.value.trim();
+      chatState.developmentServerUrl = value || null;
+      if (dom.chatModeDevApply) {
+        dom.chatModeDevApply.disabled = value.length === 0;
+      }
+    });
+
+    dom.chatModeDevUrl.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter" || dom.chatModeSelect?.value !== "development") return;
+      event.preventDefault();
+      try {
+        await setRuntimeMode("development", { serverUrl: dom.chatModeDevUrl.value });
+      } catch (err) {
+        setStatus(`Mode switch error: ${err.message}`);
+      }
+    });
+  }
+
+  if (dom.chatModeDevApply) {
+    dom.chatModeDevApply.addEventListener("click", async () => {
+      try {
+        await setRuntimeMode("development", { serverUrl: dom.chatModeDevUrl?.value || null });
+      } catch (err) {
+        setStatus(`Mode switch error: ${err.message}`);
+      }
+    });
+  }
+
   dom.chatBtnConnect.addEventListener("click", () => doLogin());
 
   // Allow Enter in either login field to submit credentials without
@@ -439,6 +713,13 @@ export function wireServerModeEvents() {
   // Re-check the session when the user navigates back to the chat page so
   // stale sessions are surfaced promptly.
   document.addEventListener("chat-translation-activated", () => {
-    if (isServerMode()) checkSession();
+    if (isServerMode()) {
+      checkSession();
+    } else {
+      hideLoginPanel();
+      dom.chatBtnDisconnect.classList.add("hidden");
+      dom.chatWorldSelector.classList.add("hidden");
+      toggleServerControls(false);
+    }
   });
 }

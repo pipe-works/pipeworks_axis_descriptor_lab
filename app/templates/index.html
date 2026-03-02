@@ -540,6 +540,24 @@
       <button id="chat-btn-disconnect" class="btn btn--secondary btn--sm hidden" type="button">Disconnect</button>
     </div>
 
+    <div class="control-row chat-mode-controls" style="margin-top:0.5rem;">
+      <label for="chat-mode-select" class="control-label">Mode</label>
+      <select id="chat-mode-select" class="select select--sm" aria-label="Chat translation mode">
+        <option value="standalone">Offline</option>
+      </select>
+      <input
+        id="chat-mode-dev-url"
+        class="input input--url hidden"
+        type="url"
+        placeholder="http://localhost:8000"
+        aria-label="Development mud server URL"
+      />
+      <button id="chat-mode-dev-apply" class="btn btn--secondary btn--sm hidden" type="button">
+        Apply URL
+      </button>
+      <span id="chat-mode-url" class="chat-mode-url">Uses the local standalone translator.</span>
+    </div>
+
     <!-- Login panel — shown in server mode when not authenticated -->
     <div id="chat-login-panel" class="chat-login-panel hidden">
       <div class="chat-login-panel__card">

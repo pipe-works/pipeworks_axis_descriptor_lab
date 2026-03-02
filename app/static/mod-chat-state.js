@@ -31,8 +31,14 @@ export const chatState = {
    */
   useAddress: false,
   logSeq: 0,
+  /** @type {"standalone"|"development"|"configured"} */
+  modeKey: "standalone",
   /** @type {"standalone"|"server-prod"|"server-local"} */
   translationMode: "standalone",
+  activeServerUrl: null,
+  developmentServerUrl: null,
+  /** @type {{key: string, label: string, translation_mode: string, server_url: string|null}[]} */
+  availableModes: [],
   authenticated: false,
   /** @type {{id: string, name: string}[]} */
   worlds: [],
