@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.3](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.2...axis-descriptor-lab-v0.8.3) (2026-03-02)
+
+
+### Bug Fixes
+
+* **chat:** add runtime mud mode switching ([1c51978](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/1c519788f9e9edf73248bad5623a141a681601b6))
+* **chat:** add runtime mud mode switching ([17e42ed](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/17e42eda5a34a03b16335d1e4a384e8b451d563b))
+
 ## [0.8.2](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.1...axis-descriptor-lab-v0.8.2) (2026-03-02)
 
 
