@@ -720,11 +720,11 @@ export async function initChatTranslation() {
   await Promise.all([loadChatExampleList(), loadChatIcPromptList()]);
 
   await Promise.all([
-    loadChatExample("a", "example_a").then(() => relabelChatChar("a")),
-    loadChatExample("b", "example_b").then(() => relabelChatChar("b")),
+    loadChatExample("a", "proud_operator").then(() => relabelChatChar("a")),
+    loadChatExample("b", "resentful_debtor").then(() => relabelChatChar("b")),
   ]);
-  charDom("a").exampleSelect.value = "example_a";
-  charDom("b").exampleSelect.value = "example_b";
+  charDom("a").exampleSelect.value = "proud_operator";
+  charDom("b").exampleSelect.value = "resentful_debtor";
 
   chatState.liveMode = dom.chatLiveToggle.checked;
   updateLiveModeUI();

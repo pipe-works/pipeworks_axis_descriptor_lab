@@ -50,7 +50,7 @@ export async function loadExampleList() {
  * the slider panel can highlight any user modifications relative to the
  * loaded example.
  *
- * @param {string} name - Example stem (e.g. "example_a").  No-op if empty.
+ * @param {string} name - Example stem (e.g. "proud_operator").  No-op if empty.
  */
 export async function loadExample(name) {
   if (!name) return;

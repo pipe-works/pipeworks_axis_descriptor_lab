@@ -223,7 +223,7 @@ def get_example(name: str) -> dict:
 
     Parameters
     ----------
-    name : Example stem, e.g. "example_a".
+    name : Example stem, e.g. "proud_operator".
 
     Returns
     -------

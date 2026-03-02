@@ -52,9 +52,9 @@ class TestLoadDefaultPrompt:
 class TestLoadExample:
     """Tests for the load_example() function."""
 
-    def test_loads_example_a(self) -> None:
-        """Loading 'example_a' must return a dict with axes and seed."""
-        data = load_example("example_a")
+    def test_loads_proud_operator(self) -> None:
+        """Loading 'proud_operator' must return a dict with axes and seed."""
+        data = load_example("proud_operator")
         assert "axes" in data
         assert "seed" in data
 
@@ -108,11 +108,11 @@ class TestListExampleNames:
     """Tests for the list_example_names() function."""
 
     def test_returns_sorted_list(self) -> None:
-        """Must return a sorted list containing at least example_a and example_b."""
+        """Must return a sorted list containing the shipped archetype examples."""
         names = list_example_names()
         assert isinstance(names, list)
-        assert "example_a" in names
-        assert "example_b" in names
+        assert "proud_operator" in names
+        assert "resentful_debtor" in names
         assert names == sorted(names)
 
 

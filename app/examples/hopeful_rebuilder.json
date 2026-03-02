@@ -1,0 +1,18 @@
+{
+  "axes": {
+    "physique": { "label": "steady", "score": 0.58 },
+    "wealth": { "label": "recovering", "score": 0.36 },
+    "health": { "label": "improving", "score": 0.67 },
+    "demeanor": { "label": "determined", "score": 0.79 },
+    "age": { "label": "middle-aged", "score": 0.48 },
+    "facial_signal": { "label": "open", "score": 0.62 },
+    "legitimacy": { "label": "rebuilding", "score": 0.44 },
+    "visibility": { "label": "emerging", "score": 0.53 },
+    "moral_load": { "label": "heavy", "score": 0.66 },
+    "dependency": { "label": "structured", "score": 0.59 },
+    "risk_exposure": { "label": "managed", "score": 0.46 }
+  },
+  "policy_hash": "6410396dc5d133d8149773d16b2d8fff5de2287e9bf79f227aaaff22287ae945",
+  "seed": 120011,
+  "world_id": "pipeworks_web"
+}
