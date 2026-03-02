@@ -41,6 +41,9 @@ from app.schema.generate import GenerateRequest, GenerateResponse, LogEntry
 from app.schema.mud import (
     MudLoginRequest,
     MudLoginResponse,
+    MudModeOption,
+    MudModeRequest,
+    MudModeResponse,
     MudSelectWorldRequest,
     MudSessionResponse,
 )
@@ -67,6 +70,9 @@ __all__ = [
     "ManifestFileEntry",
     "MudLoginRequest",
     "MudLoginResponse",
+    "MudModeOption",
+    "MudModeRequest",
+    "MudModeResponse",
     "MudSelectWorldRequest",
     "MudSessionResponse",
     "SaveRequest",

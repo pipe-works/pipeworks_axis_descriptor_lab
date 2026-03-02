@@ -26,10 +26,15 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+import app.mud_server_client as mud_client_module
 from app.mud_server_client import (
     MudServerClient,
     MudServerConnectionError,
     MudServerSessionExpiredError,
+    get_mud_client,
+    get_mud_mode_config,
+    list_mud_mode_options,
+    set_mud_mode,
     compute_translation_mode,
 )
 
@@ -44,6 +49,18 @@ def client() -> MudServerClient:
     with patch("app.mud_server_client.httpx.Client"):
         c = MudServerClient("http://fake-server:8000", timeout=5.0)
     return c
+
+
+@pytest.fixture(autouse=True)
+def reset_runtime_mode_state() -> None:
+    """Reset shared mud runtime state so tests do not leak mode changes."""
+    mud_client_module.close_all_mud_clients()
+    mud_client_module._ACTIVE_MODE_KEY = "standalone"
+    mud_client_module._RUNTIME_DEV_SERVER_URL = mud_client_module._DEV_MUD_SERVER_URL
+    yield
+    mud_client_module.close_all_mud_clients()
+    mud_client_module._RUNTIME_DEV_SERVER_URL = mud_client_module._DEV_MUD_SERVER_URL
+    mud_client_module._ACTIVE_MODE_KEY = mud_client_module._default_mode_key()
 
 
 # ---------------------------------------------------------------------------
@@ -486,25 +503,110 @@ class TestClose:
 
 
 # ---------------------------------------------------------------------------
+# Runtime mode management
+# ---------------------------------------------------------------------------
+
+
+class TestRuntimeModeConfig:
+    """Runtime mode helpers expose selectable modes and cache clients by URL."""
+
+    def test_mode_options_include_offline_and_development(self) -> None:
+        with (
+            patch.object(mud_client_module, "_ENV_MUD_SERVER_URL", "https://api.pipe-works.org"),
+            patch.object(mud_client_module, "_DEV_MUD_SERVER_URL", "http://localhost:8000"),
+        ):
+            options = list_mud_mode_options()
+
+        keys = [option["key"] for option in options]
+        assert keys == ["standalone", "development", "configured"]
+        assert options[0]["translation_mode"] == "standalone"
+        assert options[1]["server_url"] == "http://localhost:8000"
+        assert options[2]["translation_mode"] == "server-prod"
+
+    def test_get_mode_config_returns_active_server_url(self) -> None:
+        with (
+            patch.object(mud_client_module, "_ENV_MUD_SERVER_URL", "https://api.pipe-works.org"),
+            patch.object(mud_client_module, "_DEV_MUD_SERVER_URL", "http://localhost:8000"),
+            patch.object(mud_client_module, "_ACTIVE_MODE_KEY", "configured"),
+        ):
+            config = get_mud_mode_config()
+
+        assert config["mode_key"] == "configured"
+        assert config["translation_mode"] == "server-prod"
+        assert config["active_server_url"] == "https://api.pipe-works.org"
+
+    def test_set_mode_rejects_unknown_mode(self) -> None:
+        with pytest.raises(ValueError, match="Unknown mud mode"):
+            set_mud_mode("does-not-exist")
+
+    def test_set_mode_replaces_development_server_url(self) -> None:
+        with patch.object(mud_client_module, "_DEV_MUD_SERVER_URL", "http://localhost:8000"):
+            config = set_mud_mode("development", server_url="http://devbox:8000/")
+
+        assert config["active_server_url"] == "http://devbox:8000"
+        assert mud_client_module._RUNTIME_DEV_SERVER_URL == "http://devbox:8000"
+
+    def test_set_mode_rejects_empty_development_server_url(self) -> None:
+        with pytest.raises(ValueError, match="cannot be empty"):
+            set_mud_mode("development", server_url="   ")
+
+    def test_get_mud_client_returns_none_in_offline_mode(self) -> None:
+        with patch.object(mud_client_module, "_ACTIVE_MODE_KEY", "standalone"):
+            assert get_mud_client() is None
+
+    def test_get_mud_client_caches_client_per_url(self) -> None:
+        fake_client = MagicMock()
+        with (
+            patch.object(mud_client_module, "_DEV_MUD_SERVER_URL", "http://localhost:8000"),
+            patch.object(mud_client_module, "_ACTIVE_MODE_KEY", "development"),
+            patch("app.mud_server_client.MudServerClient", return_value=fake_client) as mock_cls,
+        ):
+            first = get_mud_client()
+            second = get_mud_client()
+
+        assert first is fake_client
+        assert second is fake_client
+        mock_cls.assert_called_once_with(
+            "http://localhost:8000", timeout=mud_client_module._MUD_SERVER_TIMEOUT
+        )
+
+    def test_get_mud_client_uses_runtime_development_url_override(self) -> None:
+        fake_client = MagicMock()
+        with (
+            patch.object(mud_client_module, "_ACTIVE_MODE_KEY", "development"),
+            patch.object(mud_client_module, "_RUNTIME_DEV_SERVER_URL", "http://devbox:8000"),
+            patch("app.mud_server_client.MudServerClient", return_value=fake_client) as mock_cls,
+        ):
+            result = get_mud_client()
+
+        assert result is fake_client
+        mock_cls.assert_called_once_with(
+            "http://devbox:8000", timeout=mud_client_module._MUD_SERVER_TIMEOUT
+        )
+
+
+# ---------------------------------------------------------------------------
 # compute_translation_mode
 # ---------------------------------------------------------------------------
 
 
 class TestComputeTranslationMode:
-    """compute_translation_mode returns correct mode strings."""
+    """compute_translation_mode returns the active runtime mode string."""
 
     def test_standalone_when_unset(self) -> None:
-        with patch("app.mud_server_client._MUD_SERVER_URL", None):
+        with patch.object(mud_client_module, "_ACTIVE_MODE_KEY", "standalone"):
             assert compute_translation_mode() == "standalone"
 
-    def test_server_local_for_localhost(self) -> None:
-        with patch("app.mud_server_client._MUD_SERVER_URL", "http://localhost:8000"):
+    def test_server_local_for_development_mode(self) -> None:
+        with (
+            patch.object(mud_client_module, "_DEV_MUD_SERVER_URL", "http://localhost:8000"),
+            patch.object(mud_client_module, "_ACTIVE_MODE_KEY", "development"),
+        ):
             assert compute_translation_mode() == "server-local"
 
-    def test_server_local_for_127(self) -> None:
-        with patch("app.mud_server_client._MUD_SERVER_URL", "http://127.0.0.1:8000"):
-            assert compute_translation_mode() == "server-local"
-
-    def test_server_prod_for_domain(self) -> None:
-        with patch("app.mud_server_client._MUD_SERVER_URL", "https://api.pipe-works.org"):
+    def test_server_prod_for_configured_mode(self) -> None:
+        with (
+            patch.object(mud_client_module, "_ENV_MUD_SERVER_URL", "https://api.pipe-works.org"),
+            patch.object(mud_client_module, "_ACTIVE_MODE_KEY", "configured"),
+        ):
             assert compute_translation_mode() == "server-prod"

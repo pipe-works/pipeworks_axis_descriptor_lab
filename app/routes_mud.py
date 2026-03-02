@@ -18,12 +18,15 @@ from fastapi import APIRouter, HTTPException
 from app.mud_server_client import (
     MudServerConnectionError,
     MudServerSessionExpiredError,
-    compute_translation_mode,
+    get_mud_mode_config,
     get_mud_client,
+    set_mud_mode,
 )
 from app.schema import (
     MudLoginRequest,
     MudLoginResponse,
+    MudModeRequest,
+    MudModeResponse,
     MudSelectWorldRequest,
     MudSessionResponse,
 )
@@ -33,6 +36,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["mud"])
 
 
+@router.get("/mode", response_model=MudModeResponse, summary="Get runtime chat mode")
+def mud_mode() -> MudModeResponse:
+    """Return the active runtime chat mode and available mode options."""
+    return MudModeResponse.model_validate(get_mud_mode_config())
+
+
+@router.post("/mode", response_model=MudModeResponse, summary="Set runtime chat mode")
+def mud_set_mode(req: MudModeRequest) -> MudModeResponse:
+    """Switch the active chat translation mode without restarting the app."""
+    try:
+        return MudModeResponse.model_validate(set_mud_mode(req.mode_key, server_url=req.server_url))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/login", response_model=MudLoginResponse, summary="Proxy login to mud server")
 def mud_login(req: MudLoginRequest) -> MudLoginResponse:
     """Proxy login to the mud server and store the session in memory."""
@@ -40,7 +58,7 @@ def mud_login(req: MudLoginRequest) -> MudLoginResponse:
     if client is None:
         return MudLoginResponse(
             authenticated=False,
-            message="Standalone mode — no mud server configured.",
+            message="Offline mode active — switch to a server mode to connect.",
         )
     try:
         data = client.login(req.username, req.password)
@@ -71,17 +89,24 @@ def mud_logout() -> dict:
 @router.get("/session", response_model=MudSessionResponse, summary="Auth status")
 def mud_session() -> MudSessionResponse:
     """Return current mud server auth status and translation mode."""
+    mode = get_mud_mode_config()
     client = get_mud_client()
     if client is None:
         return MudSessionResponse(
             authenticated=False,
-            translation_mode=compute_translation_mode(),
+            selected_world_id=None,
+            mode_key=mode["mode_key"],
+            translation_mode=mode["translation_mode"],
+            active_server_url=mode["active_server_url"],
         )
     status = client.session_status()
     return MudSessionResponse(
         authenticated=status["authenticated"],
         role=status.get("role"),
-        translation_mode=compute_translation_mode(),
+        selected_world_id=status.get("selected_world_id"),
+        mode_key=mode["mode_key"],
+        translation_mode=mode["translation_mode"],
+        active_server_url=mode["active_server_url"],
     )
 
 

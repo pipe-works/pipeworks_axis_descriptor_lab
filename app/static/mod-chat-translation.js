@@ -30,6 +30,7 @@ import {
   getCurrentSystemPromptText,
   getEffectiveSystemPrompt,
   handleSessionExpired,
+  initMudMode,
   isServerMode,
   updateModeBadge,
   wireServerModeEvents,
@@ -706,8 +707,15 @@ export async function translate() {
  */
 export async function initChatTranslation() {
   const labConfig = window.__LAB_CONFIG__ || {};
+  chatState.modeKey = labConfig.translationMode === "standalone" ? "standalone" : "configured";
   chatState.translationMode = labConfig.translationMode || "standalone";
   updateModeBadge();
+
+  try {
+    await initMudMode();
+  } catch (err) {
+    setStatus(`Failed to load chat mode: ${err.message}`);
+  }
 
   await Promise.all([loadChatExampleList(), loadChatIcPromptList()]);
 

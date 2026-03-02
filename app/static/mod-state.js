@@ -210,6 +210,10 @@ export const dom = {
 
   // ── Chat Translation — Server mode ──────────────────────────────── //
   chatModeBadge:        $("chat-mode-badge"),
+  chatModeSelect:       $("chat-mode-select"),
+  chatModeDevUrl:       $("chat-mode-dev-url"),
+  chatModeDevApply:     $("chat-mode-dev-apply"),
+  chatModeUrl:          $("chat-mode-url"),
   chatBtnDisconnect:    $("chat-btn-disconnect"),
   chatLoginPanel:       $("chat-login-panel"),
   chatLoginUsername:     $("chat-login-username"),

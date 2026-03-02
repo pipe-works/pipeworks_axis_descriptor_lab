@@ -5,6 +5,7 @@ All tests mock the MudServerClient at the module level to avoid real
 HTTP calls.  Tests verify request/response shapes and error handling.
 
 Test coverage:
+  - GET/POST /api/mud/mode: returns and switches runtime mode config.
   - POST /api/mud/login: success, failure, standalone mode.
   - POST /api/mud/logout: clears session.
   - GET /api/mud/session: returns translation_mode.
@@ -43,8 +44,97 @@ def _mock_mud_client(*, authenticated: bool = False, world_id: str | None = None
     mock.session_status.return_value = {
         "authenticated": authenticated,
         "role": "admin" if authenticated else None,
+        "selected_world_id": world_id,
     }
     return mock
+
+
+def _mode_config(
+    *,
+    mode_key: str = "standalone",
+    translation_mode: str = "standalone",
+    active_server_url: str | None = None,
+) -> dict:
+    """Build a serialisable runtime mode config dict for route tests."""
+    return {
+        "mode_key": mode_key,
+        "translation_mode": translation_mode,
+        "active_server_url": active_server_url,
+        "available_modes": [
+            {
+                "key": "standalone",
+                "label": "Offline",
+                "translation_mode": "standalone",
+                "server_url": None,
+            },
+            {
+                "key": "development",
+                "label": "Development server",
+                "translation_mode": "server-local",
+                "server_url": "http://localhost:8000",
+            },
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET/POST /api/mud/mode
+# ---------------------------------------------------------------------------
+
+
+class TestMudMode:
+    """Runtime mode endpoint tests."""
+
+    def test_get_mode_returns_config(self, test_client: TestClient) -> None:
+        with patch("app.routes_mud.get_mud_mode_config", return_value=_mode_config()):
+            resp = test_client.get("/api/mud/mode")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["mode_key"] == "standalone"
+        assert len(data["available_modes"]) == 2
+
+    def test_post_mode_switches_config(self, test_client: TestClient) -> None:
+        with patch(
+            "app.routes_mud.set_mud_mode",
+            return_value=_mode_config(
+                mode_key="development",
+                translation_mode="server-local",
+                active_server_url="http://localhost:8000",
+            ),
+        ) as mock_set_mode:
+            resp = test_client.post("/api/mud/mode", json={"mode_key": "development"})
+
+        assert resp.status_code == 200
+        assert resp.json()["translation_mode"] == "server-local"
+        mock_set_mode.assert_called_once_with("development", server_url=None)
+
+    def test_post_mode_forwards_development_server_url(self, test_client: TestClient) -> None:
+        with patch(
+            "app.routes_mud.set_mud_mode",
+            return_value=_mode_config(
+                mode_key="development",
+                translation_mode="server-local",
+                active_server_url="http://devbox:8000",
+            ),
+        ) as mock_set_mode:
+            resp = test_client.post(
+                "/api/mud/mode",
+                json={"mode_key": "development", "server_url": "http://devbox:8000"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["active_server_url"] == "http://devbox:8000"
+        mock_set_mode.assert_called_once_with("development", server_url="http://devbox:8000")
+
+    def test_post_mode_rejects_unknown_key(self, test_client: TestClient) -> None:
+        with patch(
+            "app.routes_mud.set_mud_mode", side_effect=ValueError("Unknown mud mode 'bad'.")
+        ):
+            resp = test_client.post("/api/mud/mode", json={"mode_key": "bad"})
+
+        assert resp.status_code == 400
+        assert "Unknown mud mode" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +185,7 @@ class TestMudLogin:
         assert resp.status_code == 200
         data = resp.json()
         assert data["authenticated"] is False
-        assert "standalone" in data["message"].lower() or "Standalone" in data["message"]
+        assert "offline" in data["message"].lower() or "standalone" in data["message"].lower()
 
     def test_login_connection_error(self, test_client: TestClient) -> None:
         mock = _mock_mud_client()
@@ -161,11 +251,18 @@ class TestMudSession:
     """Session status endpoint tests."""
 
     def test_session_authenticated(self, test_client: TestClient) -> None:
-        mock = _mock_mud_client(authenticated=True)
+        mock = _mock_mud_client(authenticated=True, world_id="pipeworks_web")
 
         with (
             patch("app.routes_mud.get_mud_client", return_value=mock),
-            patch("app.routes_mud.compute_translation_mode", return_value="server-prod"),
+            patch(
+                "app.routes_mud.get_mud_mode_config",
+                return_value=_mode_config(
+                    mode_key="configured",
+                    translation_mode="server-prod",
+                    active_server_url="https://api.pipe-works.org",
+                ),
+            ),
         ):
             resp = test_client.get("/api/mud/session")
 
@@ -173,11 +270,14 @@ class TestMudSession:
         data = resp.json()
         assert data["authenticated"] is True
         assert data["translation_mode"] == "server-prod"
+        assert data["mode_key"] == "configured"
+        assert data["selected_world_id"] == "pipeworks_web"
+        assert data["active_server_url"] == "https://api.pipe-works.org"
 
     def test_session_standalone(self, test_client: TestClient) -> None:
         with (
             patch("app.routes_mud.get_mud_client", return_value=None),
-            patch("app.routes_mud.compute_translation_mode", return_value="standalone"),
+            patch("app.routes_mud.get_mud_mode_config", return_value=_mode_config()),
         ):
             resp = test_client.get("/api/mud/session")
 
@@ -185,6 +285,8 @@ class TestMudSession:
         data = resp.json()
         assert data["authenticated"] is False
         assert data["translation_mode"] == "standalone"
+        assert data["mode_key"] == "standalone"
+        assert data["active_server_url"] is None
 
 
 # ---------------------------------------------------------------------------

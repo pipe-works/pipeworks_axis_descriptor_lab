@@ -7,11 +7,10 @@ This module provides a thin wrapper around the mud server's REST API,
 enabling the Axis Descriptor Lab to delegate OOC→IC translation to the
 mud server's canonical pipeline instead of running its own Ollama calls.
 
-Three translation modes are supported (selected by environment variable):
-
-- **Server (prod)** — ``MUD_SERVER_URL=https://api.pipe-works.org``
-- **Server (local)** — ``MUD_SERVER_URL=http://localhost:8000``
-- **Standalone** — ``MUD_SERVER_URL`` unset (lab's own Ollama pipeline)
+Environment values still provide startup defaults, but the active chat mode
+is now runtime-configurable inside the app.  That lets the Chat Translation
+page switch between offline mode, a local development mud server, and an
+optional configured server without editing ``.env`` or restarting FastAPI.
 
 The client stores the session token in memory only — never written to disk.
 On any 401 response from a lab endpoint the cached token is cleared and
@@ -37,6 +36,9 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+from dataclasses import dataclass
+from typing import TypedDict
 
 import httpx
 from dotenv import load_dotenv
@@ -49,11 +51,9 @@ logger = logging.getLogger(__name__)
 # Environment
 # ---------------------------------------------------------------------------
 
-_MUD_SERVER_URL: str | None = os.getenv("MUD_SERVER_URL")
-if _MUD_SERVER_URL:  # pragma: no cover — env-dependent import-time init
-    _MUD_SERVER_URL = _MUD_SERVER_URL.rstrip("/")
-
 _MUD_SERVER_TIMEOUT: float = float(os.getenv("MUD_SERVER_TIMEOUT", "120"))
+_ENV_MUD_SERVER_URL: str | None = os.getenv("MUD_SERVER_URL")
+_DEV_MUD_SERVER_URL: str | None = os.getenv("MUD_SERVER_DEV_URL", "http://localhost:8000")
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +67,42 @@ class MudServerSessionExpiredError(Exception):
 
 class MudServerConnectionError(Exception):
     """Raised when the mud server is unreachable or a request times out."""
+
+
+@dataclass(frozen=True)
+class MudRuntimeModeOption:
+    """One runtime-selectable chat translation mode.
+
+    Attributes:
+        key: Stable frontend/backend selector key.
+        label: Human-readable label for the mode selector.
+        translation_mode: External mode string used by existing UI badges.
+        server_url: Mud server base URL for server-backed modes, or None for
+            standalone/offline mode.
+    """
+
+    key: str
+    label: str
+    translation_mode: str
+    server_url: str | None
+
+
+class MudModeOptionDict(TypedDict):
+    """Serialised runtime mode option returned to the route layer."""
+
+    key: str
+    label: str
+    translation_mode: str
+    server_url: str | None
+
+
+class MudModeConfigDict(TypedDict):
+    """Serialised runtime mode configuration returned to the route layer."""
+
+    mode_key: str
+    translation_mode: str
+    active_server_url: str | None
+    available_modes: list[MudModeOptionDict]
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +206,7 @@ class MudServerClient:
         return {
             "authenticated": self.is_authenticated,
             "role": self._role,
+            "selected_world_id": self._selected_world_id,
         }
 
     # -- World selection ---------------------------------------------------
@@ -306,32 +343,181 @@ class MudServerClient:
 
 
 # ---------------------------------------------------------------------------
-# Module-level singleton
+# Runtime mode state
 # ---------------------------------------------------------------------------
 
 
-def get_mud_client() -> MudServerClient | None:
-    """Return the module-level MudServerClient, or None in standalone mode."""
-    return _mud_client
+def _normalise_server_url(url: str | None) -> str | None:
+    """Return a trimmed mud-server base URL or ``None`` when empty."""
+    if url is None:
+        return None
+    stripped = url.strip()
+    return stripped.rstrip("/") if stripped else None
 
 
-_mud_client: MudServerClient | None = None
-if _MUD_SERVER_URL:  # pragma: no cover — env-dependent import-time init
-    _mud_client = MudServerClient(_MUD_SERVER_URL, timeout=_MUD_SERVER_TIMEOUT)
-    logger.info("Mud server client initialised: %s", _MUD_SERVER_URL)
-
-
-def compute_translation_mode() -> str:
-    """Determine the translation mode from MUD_SERVER_URL.
-
-    Returns:
-        ``"server-prod"`` when URL contains a non-localhost domain,
-        ``"server-local"`` when URL points to localhost/127.0.0.1,
-        ``"standalone"`` when MUD_SERVER_URL is unset.
-    """
-    if not _MUD_SERVER_URL:
+def _classify_translation_mode(server_url: str | None) -> str:
+    """Classify a server URL into the public translation-mode strings."""
+    if not server_url:
         return "standalone"
-    lower = _MUD_SERVER_URL.lower()
+    lower = server_url.lower()
     if "localhost" in lower or "127.0.0.1" in lower:
         return "server-local"
     return "server-prod"
+
+
+_ENV_MUD_SERVER_URL = _normalise_server_url(_ENV_MUD_SERVER_URL)
+_DEV_MUD_SERVER_URL = _normalise_server_url(_DEV_MUD_SERVER_URL)
+_RUNTIME_DEV_SERVER_URL: str | None = _DEV_MUD_SERVER_URL
+
+
+def _build_mode_options() -> tuple[MudRuntimeModeOption, ...]:
+    """Build the set of runtime-selectable modes from env defaults."""
+    options = [
+        MudRuntimeModeOption(
+            key="standalone",
+            label="Offline",
+            translation_mode="standalone",
+            server_url=None,
+        )
+    ]
+
+    if _RUNTIME_DEV_SERVER_URL:
+        options.append(
+            MudRuntimeModeOption(
+                key="development",
+                label="Development server",
+                translation_mode=_classify_translation_mode(_RUNTIME_DEV_SERVER_URL),
+                server_url=_RUNTIME_DEV_SERVER_URL,
+            )
+        )
+
+    if _ENV_MUD_SERVER_URL and _ENV_MUD_SERVER_URL != _RUNTIME_DEV_SERVER_URL:
+        options.append(
+            MudRuntimeModeOption(
+                key="configured",
+                label="Configured server",
+                translation_mode=_classify_translation_mode(_ENV_MUD_SERVER_URL),
+                server_url=_ENV_MUD_SERVER_URL,
+            )
+        )
+
+    return tuple(options)
+
+
+def _default_mode_key() -> str:
+    """Choose the startup mode key from the configured environment defaults."""
+    if _ENV_MUD_SERVER_URL:
+        return "configured" if _ENV_MUD_SERVER_URL != _RUNTIME_DEV_SERVER_URL else "development"
+    return "standalone"
+
+
+_RUNTIME_LOCK = threading.RLock()
+_MUD_CLIENTS: dict[str, MudServerClient] = {}
+_ACTIVE_MODE_KEY: str = _default_mode_key()
+
+
+def _mode_option_map() -> dict[str, MudRuntimeModeOption]:
+    """Return the current runtime mode options keyed by selector key."""
+    return {option.key: option for option in _build_mode_options()}
+
+
+def _resolve_active_mode_key() -> str:
+    """Return the active mode key, falling back when it is no longer valid."""
+    if _ACTIVE_MODE_KEY in _mode_option_map():
+        return _ACTIVE_MODE_KEY
+    return _default_mode_key()
+
+
+def list_mud_mode_options() -> list[MudModeOptionDict]:
+    """Return all runtime-selectable mud translation modes.
+
+    The response is serialisable so the route layer can expose it directly to
+    the frontend for mode-selector construction.
+    """
+    return [
+        {
+            "key": option.key,
+            "label": option.label,
+            "translation_mode": option.translation_mode,
+            "server_url": option.server_url,
+        }
+        for option in _build_mode_options()
+    ]
+
+
+def get_mud_mode_config() -> MudModeConfigDict:
+    """Return the current runtime mud-mode configuration."""
+    with _RUNTIME_LOCK:
+        option = _mode_option_map()[_resolve_active_mode_key()]
+        return {
+            "mode_key": option.key,
+            "translation_mode": option.translation_mode,
+            "active_server_url": option.server_url,
+            "available_modes": list_mud_mode_options(),
+        }
+
+
+def set_mud_mode(mode_key: str, server_url: str | None = None) -> MudModeConfigDict:
+    """Activate a runtime mud mode by selector key.
+
+    Args:
+        mode_key: One of the keys returned by :func:`list_mud_mode_options`.
+        server_url: Optional mud-server URL override for development mode.
+
+    Raises:
+        ValueError: The requested mode key is not available in this process.
+    """
+    global _ACTIVE_MODE_KEY, _RUNTIME_DEV_SERVER_URL
+
+    with _RUNTIME_LOCK:
+        if mode_key == "development" and server_url is not None:
+            normalised_server_url = _normalise_server_url(server_url)
+            if not normalised_server_url:
+                raise ValueError("Development server URL cannot be empty.")
+            _RUNTIME_DEV_SERVER_URL = normalised_server_url
+
+        if mode_key not in _mode_option_map():
+            raise ValueError(f"Unknown mud mode '{mode_key}'.")
+        _ACTIVE_MODE_KEY = mode_key
+        option = _mode_option_map()[_resolve_active_mode_key()]
+        logger.info(
+            "Mud runtime mode set: key=%s translation_mode=%s url=%s",
+            option.key,
+            option.translation_mode,
+            option.server_url,
+        )
+        return {
+            "mode_key": option.key,
+            "translation_mode": option.translation_mode,
+            "active_server_url": option.server_url,
+            "available_modes": list_mud_mode_options(),
+        }
+
+
+def get_mud_client() -> MudServerClient | None:
+    """Return the active mud client for the current runtime mode, if any."""
+    with _RUNTIME_LOCK:
+        option = _mode_option_map()[_resolve_active_mode_key()]
+        if option.server_url is None:
+            return None
+
+        client = _MUD_CLIENTS.get(option.server_url)
+        if client is None:
+            client = MudServerClient(option.server_url, timeout=_MUD_SERVER_TIMEOUT)
+            _MUD_CLIENTS[option.server_url] = client
+            logger.info("Mud server client initialised: %s", option.server_url)
+        return client
+
+
+def close_all_mud_clients() -> None:
+    """Close every cached mud client and clear the runtime client cache."""
+    with _RUNTIME_LOCK:
+        for client in _MUD_CLIENTS.values():
+            client.close()
+        _MUD_CLIENTS.clear()
+
+
+def compute_translation_mode() -> str:
+    """Return the current public translation-mode string for the active mode."""
+    with _RUNTIME_LOCK:
+        return _mode_option_map()[_resolve_active_mode_key()].translation_mode
