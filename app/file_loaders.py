@@ -90,7 +90,7 @@ def load_example(name: str) -> dict:
 
     Parameters
     ----------
-    name : Bare filename without extension (e.g. ``"example_a"``).
+    name : Bare filename without extension (e.g. ``"proud_operator"``).
 
     Returns
     -------

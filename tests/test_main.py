@@ -28,8 +28,8 @@ class TestListExamples:
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
-        assert "example_a" in data
-        assert "example_b" in data
+        assert "proud_operator" in data
+        assert "resentful_debtor" in data
 
     def test_sorted(self, client: TestClient) -> None:
         data = client.get("/api/examples").json()
@@ -38,7 +38,7 @@ class TestListExamples:
 
 class TestGetExample:
     def test_returns_example(self, client: TestClient) -> None:
-        resp = client.get("/api/examples/example_a")
+        resp = client.get("/api/examples/proud_operator")
         assert resp.status_code == 200
         data = resp.json()
         assert "axes" in data
