@@ -19,10 +19,11 @@
  * resolveSeed) that extract generation settings from DOM inputs, and the
  * refreshModels function that repopulates the model <select> from Ollama.
  *
- * Imports: mod-state, mod-utils, mod-status
+ * Imports: mod-state, mod-axis-policy, mod-utils, mod-status
  */
 
 import { state, dom } from "./mod-state.js";
+import { AXIS_SCORE_STEP, formatAxisScore, orderAxisKeys } from "./mod-axis-policy.js";
 import { clamp, debounce, safeParse } from "./mod-utils.js";
 import { setStatus } from "./mod-status.js";
 
@@ -79,8 +80,8 @@ export function updateSystemPromptBadge() {
  *
  * One axis row is created per key in `payload.axes`.  Each row contains:
  *   - axis name (non-interactive label)
- *   - range input for score (0–1, step 0.005)
- *   - numeric score display (live, 3 d.p.)
+ *   - range input for score (0–1, step 0.01)
+ *   - numeric score display (live, 2 d.p.)
  *   - text input for label (editable when auto-label mode is OFF)
  *
  * Event listeners on the sliders and label inputs write changes back into
@@ -105,7 +106,7 @@ export function buildSlidersFromJson() {
   }
 
   const axes = payload.axes;
-  const keys = Object.keys(axes);
+  const keys = orderAxisKeys(Object.keys(axes));
 
   if (keys.length === 0) {
     dom.sliderPanel.textContent = "";
@@ -145,13 +146,13 @@ export function buildSlidersFromJson() {
     slider.className = "range-input";
     slider.min       = "0";
     slider.max       = "1";
-    slider.step      = "0.005";
-    slider.value     = score.toFixed(3);
+    slider.step      = String(AXIS_SCORE_STEP);
+    slider.value     = formatAxisScore(score);
     slider.setAttribute("aria-label", `${axisKey} score`);
 
     const scoreDisplay = document.createElement("span");
     scoreDisplay.className   = "axis-score";
-    scoreDisplay.textContent = score.toFixed(3);
+    scoreDisplay.textContent = formatAxisScore(score);
 
     // Highlight the score if it differs from the originally loaded example
     const orig = state.originalAxes && state.originalAxes[axisKey];
@@ -182,7 +183,7 @@ export function buildSlidersFromJson() {
     /** Slider input: update score in state + textarea + score display. */
     slider.addEventListener("input", () => {
       const newScore = parseFloat(slider.value);
-      scoreDisplay.textContent = newScore.toFixed(3);
+      scoreDisplay.textContent = formatAxisScore(newScore);
 
       // Toggle modification highlight relative to original example
       const origAxis = state.originalAxes && state.originalAxes[axisKey];

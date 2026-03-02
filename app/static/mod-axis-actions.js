@@ -41,10 +41,11 @@
  *   ollamaHostInput input (debounced 600ms)
  *     → refreshModels()
  *
- * Imports: mod-state, mod-utils, mod-status, mod-sync
+ * Imports: mod-state, mod-axis-policy, mod-utils, mod-status, mod-sync
  */
 
 import { state, dom } from "./mod-state.js";
+import { quantiseAxisScore } from "./mod-axis-policy.js";
 import { cryptoRandomFloat, debounce } from "./mod-utils.js";
 import { setStatus } from "./mod-status.js";
 import { syncJsonTextarea, buildSlidersFromJson, refreshModels } from "./mod-sync.js";
@@ -100,8 +101,8 @@ export async function relabel() {
  * optionally trigger relabelling.
  *
  * Each score is generated via `cryptoRandomFloat()` (backed by the
- * Web Crypto API) and quantised to 3 decimal places to match the
- * slider step resolution (0.005 rounds nicely at 3 d.p.).
+ * Web Crypto API) and quantised to hundredths to match the mirrored
+ * mud-server threshold resolution used by the lab sliders.
  *
  * If the auto-label toggle is checked, `relabel()` is called after
  * randomisation so labels stay consistent with the new scores.
@@ -120,7 +121,7 @@ export async function randomiseAxes() {
 
   // Generate a new random score for every axis
   for (const axisKey of Object.keys(state.payload.axes)) {
-    const newScore = Math.round(cryptoRandomFloat() * 1000) / 1000;
+    const newScore = quantiseAxisScore(cryptoRandomFloat());
     state.payload.axes[axisKey] = {
       ...state.payload.axes[axisKey],
       score: newScore,

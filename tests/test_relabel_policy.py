@@ -1,230 +1,211 @@
 """
-Tests for app/relabel_policy.py — policy table structure and relabel logic.
+Regression tests for the mud-server-aligned relabel policy mirror.
 
-Test strategy
--------------
-1. **Table structure**: verify all 11 axes are present, thresholds are
-   ascending, and each axis has a catch-all entry at 1.01.
-2. **Boundary values**: parametrized tests at exact threshold boundaries
-   to confirm the "< upper_bound" semantics (score *at* a boundary falls
-   into the next bucket, not the current one).
-3. **Unknown axes**: axes not in the policy table are passed through
-   unchanged (labels and scores both preserved).
-4. **Score preservation**: relabelling never modifies scores.
-5. **Non-axis field preservation**: policy_hash, seed, world_id are
-   unchanged after relabelling.
+These tests intentionally verify the current mirrored policy definitions used
+by the Axis Descriptor Lab against the shape and semantics expected from the
+Pipe-Works mud server:
+
+1. The canonical axis order matches the mud-server ``axes.yaml`` order.
+2. The per-axis ordinal label order matches the mud-server ``ordering.values``
+   sequences.
+3. The relabel ranges are ordered, non-overlapping, and label-complete.
+4. Boundary values resolve to the same labels the mud server would publish.
+5. Example payloads ship in canonical order with labels already consistent
+   with the relabel policy.
 """
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
-from app.relabel_policy import RELABEL_POLICY, apply_relabel_policy
+from app.relabel_policy import (
+    AXIS_LABEL_ORDER,
+    AXIS_ORDER,
+    RELABEL_POLICY,
+    apply_relabel_policy,
+    resolve_axis_label,
+)
 from app.schema import AxisPayload, AxisValue
 
-# ── Policy table structure ──────────────────────────────────────────────────
+EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "app" / "examples"
 
 
 class TestRelabelPolicyStructure:
-    """Verify the static RELABEL_POLICY dict is well-formed."""
+    """Verify that the mirrored mud-server policy tables stay internally consistent."""
 
-    # All 11 axes that should be present in the policy table.
-    EXPECTED_AXES = [
-        "age",
-        "demeanor",
-        "dependency",
-        "facial_signal",
-        "health",
-        "legitimacy",
-        "moral_load",
+    EXPECTED_AXIS_ORDER = [
         "physique",
-        "risk_exposure",
-        "visibility",
         "wealth",
+        "health",
+        "demeanor",
+        "age",
+        "facial_signal",
+        "legitimacy",
+        "visibility",
+        "moral_load",
+        "dependency",
+        "risk_exposure",
     ]
 
-    def test_all_expected_axes_present(self) -> None:
-        """The policy table must contain exactly the 11 known axes."""
-        assert sorted(RELABEL_POLICY.keys()) == sorted(self.EXPECTED_AXES)
+    def test_axis_order_matches_mud_server_policy(self) -> None:
+        """The canonical axis order should match the current mud-server ``axes.yaml`` order."""
+        assert AXIS_ORDER == self.EXPECTED_AXIS_ORDER
 
-    @pytest.mark.parametrize("axis_name", EXPECTED_AXES)
-    def test_thresholds_ascending(self, axis_name: str) -> None:
-        """Thresholds within each axis must be in strictly ascending order."""
-        thresholds = [t for t, _ in RELABEL_POLICY[axis_name]]
-        assert thresholds == sorted(thresholds)
-        # No duplicate thresholds
-        assert len(thresholds) == len(set(thresholds))
+    def test_policy_keys_match_axis_order(self) -> None:
+        """Every canonical axis must have both label-order and threshold definitions."""
+        assert list(RELABEL_POLICY.keys()) == AXIS_ORDER
+        assert list(AXIS_LABEL_ORDER.keys()) == AXIS_ORDER
 
-    @pytest.mark.parametrize("axis_name", EXPECTED_AXES)
-    def test_catch_all_at_1_01(self, axis_name: str) -> None:
-        """Each axis must end with a catch-all threshold at 1.01."""
-        last_threshold, _ = RELABEL_POLICY[axis_name][-1]
-        assert last_threshold == pytest.approx(1.01)
+    @pytest.mark.parametrize("axis_name", EXPECTED_AXIS_ORDER)
+    def test_label_order_matches_threshold_labels(self, axis_name: str) -> None:
+        """Ordinal labels should appear in the same low-to-high order in both tables."""
+        labels_from_ranges = [label for _, _, label in RELABEL_POLICY[axis_name]]
+        assert labels_from_ranges == AXIS_LABEL_ORDER[axis_name]
 
-    @pytest.mark.parametrize("axis_name", EXPECTED_AXES)
-    def test_labels_are_non_empty_strings(self, axis_name: str) -> None:
-        """Every label in the policy table must be a non-empty string."""
-        for _, label in RELABEL_POLICY[axis_name]:
-            assert isinstance(label, str)
-            assert len(label.strip()) > 0
-
-
-# ── Boundary value tests ───────────────────────────────────────────────────
+    @pytest.mark.parametrize("axis_name", EXPECTED_AXIS_ORDER)
+    def test_ranges_are_sorted_and_non_overlapping(self, axis_name: str) -> None:
+        """Mirrored threshold ranges must be ordered and must not overlap."""
+        previous_max = None
+        for min_score, max_score, _label in RELABEL_POLICY[axis_name]:
+            assert 0.0 <= min_score <= max_score <= 1.0
+            if previous_max is not None:
+                assert min_score > previous_max
+            previous_max = max_score
 
 
-class TestRelabelBoundaryValues:
-    """Test score-to-label mapping at exact boundary thresholds.
-
-    The policy uses ``score < upper_bound`` semantics, so a score
-    exactly at a boundary should fall into the *next* bucket.
-    """
+class TestResolveAxisLabel:
+    """Boundary and fallback tests for the mud-server-aligned range resolver."""
 
     @pytest.mark.parametrize(
-        "axis, score, expected_label",
+        ("axis_name", "score", "expected_label"),
         [
-            # age boundaries
-            ("age", 0.0, "young"),
+            ("physique", 0.00, "frail"),
+            ("physique", 0.16, "frail"),
+            ("physique", 0.17, "hunched"),
+            ("physique", 0.64, "wiry"),
+            ("physique", 0.80, "broad"),
+            ("physique", 0.81, "stocky"),
+            ("wealth", 0.00, "poor"),
+            ("wealth", 0.20, "modest"),
+            ("wealth", 0.59, "well-kept"),
+            ("wealth", 0.60, "wealthy"),
+            ("wealth", 0.80, "decadent"),
+            ("health", 0.19, "sickly"),
+            ("health", 0.20, "limping"),
+            ("health", 0.60, "scarred"),
+            ("health", 0.80, "hale"),
+            ("demeanor", 0.19, "timid"),
+            ("demeanor", 0.20, "suspicious"),
+            ("demeanor", 0.60, "alert"),
+            ("demeanor", 0.80, "proud"),
             ("age", 0.24, "young"),
-            ("age", 0.25, "middle-aged"),  # at boundary → next bucket
-            ("age", 0.49, "middle-aged"),
+            ("age", 0.25, "middle-aged"),
             ("age", 0.50, "old"),
-            ("age", 0.74, "old"),
             ("age", 0.75, "ancient"),
-            ("age", 1.0, "ancient"),
-            # health boundaries
-            ("health", 0.0, "vigorous"),
-            ("health", 0.25, "weary"),
-            ("health", 0.50, "ailing"),
-            ("health", 0.75, "failing"),
-            ("health", 1.0, "failing"),
-            # demeanor boundaries
-            ("demeanor", 0.0, "cordial"),
-            ("demeanor", 0.2, "guarded"),
-            ("demeanor", 0.4, "resentful"),
-            ("demeanor", 0.6, "hostile"),
-            ("demeanor", 0.8, "menacing"),
-            ("demeanor", 1.0, "menacing"),
-            # wealth boundaries
-            ("wealth", 0.0, "destitute"),
-            ("wealth", 0.25, "threadbare"),
-            ("wealth", 0.45, "well-kept"),
-            ("wealth", 0.55, "comfortable"),
-            ("wealth", 0.75, "affluent"),
+            ("facial_signal", 0.14, "understated"),
+            ("facial_signal", 0.15, "pronounced"),
+            ("facial_signal", 0.45, "asymmetrical"),
+            ("facial_signal", 0.90, "sharp-featured"),
+            ("legitimacy", 0.24, "sanctioned"),
+            ("legitimacy", 0.25, "tolerated"),
+            ("legitimacy", 0.50, "questioned"),
+            ("legitimacy", 0.75, "illicit"),
+            ("visibility", 0.24, "hidden"),
+            ("visibility", 0.25, "discrete"),
+            ("visibility", 0.50, "routine"),
+            ("visibility", 0.75, "conspicuous"),
+            ("moral_load", 0.24, "neutral"),
+            ("moral_load", 0.25, "burdened"),
+            ("moral_load", 0.50, "conflicted"),
+            ("moral_load", 0.75, "corrosive"),
+            ("dependency", 0.24, "optional"),
+            ("dependency", 0.25, "useful"),
+            ("dependency", 0.50, "necessary"),
+            ("dependency", 0.75, "unavoidable"),
+            ("risk_exposure", 0.24, "benign"),
+            ("risk_exposure", 0.25, "straining"),
+            ("risk_exposure", 0.50, "hazardous"),
+            ("risk_exposure", 0.75, "eroding"),
         ],
     )
-    def test_score_produces_expected_label(
-        self, axis: str, score: float, expected_label: str
+    def test_boundary_scores_resolve_to_expected_labels(
+        self, axis_name: str, score: float, expected_label: str
     ) -> None:
-        """Verify that a given score on a given axis produces the expected label."""
+        """Exact range boundaries should map to the mirrored mud-server label."""
+        assert resolve_axis_label(axis_name, score, "fallback") == expected_label
+
+    def test_unknown_axis_preserves_existing_label(self) -> None:
+        """Unknown axes should preserve their current label unchanged."""
+        assert resolve_axis_label("custom_axis", 0.5, "original") == "original"
+
+    def test_gap_score_preserves_existing_label(self) -> None:
+        """Scores outside the mirrored published ranges keep the existing label."""
+        assert resolve_axis_label("wealth", 0.195, "keep-me") == "keep-me"
+
+
+class TestApplyRelabelPolicy:
+    """End-to-end relabel tests using the public payload API."""
+
+    def test_relabels_known_axes(self) -> None:
+        """Known axes should be rewritten to their mirrored mud-server labels."""
         payload = AxisPayload(
-            axes={axis: AxisValue(label="placeholder", score=score)},
-            policy_hash="test",
+            axes={
+                "physique": AxisValue(label="placeholder", score=0.81),
+                "health": AxisValue(label="placeholder", score=0.90),
+                "wealth": AxisValue(label="placeholder", score=0.30),
+            },
+            policy_hash="hash",
             seed=1,
             world_id="w",
         )
+
         result = apply_relabel_policy(payload)
-        assert result.axes[axis].label == expected_label
 
+        assert result.axes["physique"].label == "stocky"
+        assert result.axes["health"].label == "hale"
+        assert result.axes["wealth"].label == "modest"
 
-# ── Unknown axis preservation ──────────────────────────────────────────────
-
-
-class TestRelabelUnknownAxes:
-    """Axes not in the policy table must pass through unchanged."""
-
-    def test_unknown_axis_label_preserved(self) -> None:
-        """An axis not in RELABEL_POLICY keeps its original label."""
+    def test_preserves_unknown_axes_and_scores(self) -> None:
+        """Unknown axes and all numeric scores must pass through unchanged."""
         payload = AxisPayload(
-            axes={"custom_axis": AxisValue(label="original_label", score=0.5)},
-            policy_hash="h",
-            seed=1,
+            axes={"custom_axis": AxisValue(label="original", score=0.42)},
+            policy_hash="hash",
+            seed=7,
             world_id="w",
         )
-        result = apply_relabel_policy(payload)
-        assert result.axes["custom_axis"].label == "original_label"
 
-    def test_unknown_axis_score_preserved(self) -> None:
-        """An axis not in RELABEL_POLICY keeps its original score."""
-        payload = AxisPayload(
-            axes={"custom_axis": AxisValue(label="x", score=0.42)},
-            policy_hash="h",
-            seed=1,
-            world_id="w",
-        )
         result = apply_relabel_policy(payload)
+
+        assert result.axes["custom_axis"].label == "original"
         assert result.axes["custom_axis"].score == pytest.approx(0.42)
-
-    def test_mixed_known_and_unknown_axes(self) -> None:
-        """Known axes get relabelled; unknown axes pass through in one call."""
-        payload = AxisPayload(
-            axes={
-                "age": AxisValue(label="placeholder", score=0.1),
-                "custom": AxisValue(label="keep_me", score=0.9),
-            },
-            policy_hash="h",
-            seed=1,
-            world_id="w",
-        )
-        result = apply_relabel_policy(payload)
-        assert result.axes["age"].label == "young"
-        assert result.axes["custom"].label == "keep_me"
+        assert result.policy_hash == "hash"
+        assert result.seed == 7
+        assert result.world_id == "w"
 
 
-# ── Score preservation ─────────────────────────────────────────────────────
+class TestExamplePayloads:
+    """Verify the shipped examples stay aligned with the mirrored mud-server policy."""
 
+    @pytest.mark.parametrize(
+        "example_path",
+        sorted(EXAMPLES_DIR.glob("*.json")),
+        ids=lambda path: path.stem,
+    )
+    def test_examples_use_canonical_axis_order(self, example_path: Path) -> None:
+        """Examples should encode axes in the same order the UI now renders them."""
+        payload = AxisPayload.model_validate(json.loads(example_path.read_text(encoding="utf-8")))
+        assert list(payload.axes.keys()) == AXIS_ORDER
 
-class TestRelabelScorePreservation:
-    """Relabelling must never modify axis scores."""
-
-    def test_scores_unchanged_after_relabel(self) -> None:
-        """All axis scores must be identical before and after relabelling."""
-        payload = AxisPayload(
-            axes={
-                "age": AxisValue(label="x", score=0.33),
-                "health": AxisValue(label="x", score=0.77),
-                "wealth": AxisValue(label="x", score=0.5),
-            },
-            policy_hash="h",
-            seed=1,
-            world_id="w",
-        )
-        result = apply_relabel_policy(payload)
-        for axis_name in payload.axes:
-            assert result.axes[axis_name].score == pytest.approx(payload.axes[axis_name].score)
-
-
-# ── Non-axis field preservation ────────────────────────────────────────────
-
-
-class TestRelabelNonAxisFields:
-    """Relabelling must preserve all non-axis fields on the payload."""
-
-    def test_policy_hash_preserved(self) -> None:
-        payload = AxisPayload(
-            axes={"age": AxisValue(label="x", score=0.1)},
-            policy_hash="keep_this_hash",
-            seed=42,
-            world_id="my_world",
-        )
-        result = apply_relabel_policy(payload)
-        assert result.policy_hash == "keep_this_hash"
-
-    def test_seed_preserved(self) -> None:
-        payload = AxisPayload(
-            axes={"age": AxisValue(label="x", score=0.1)},
-            policy_hash="h",
-            seed=999,
-            world_id="w",
-        )
-        result = apply_relabel_policy(payload)
-        assert result.seed == 999
-
-    def test_world_id_preserved(self) -> None:
-        payload = AxisPayload(
-            axes={"age": AxisValue(label="x", score=0.1)},
-            policy_hash="h",
-            seed=1,
-            world_id="my_world",
-        )
-        result = apply_relabel_policy(payload)
-        assert result.world_id == "my_world"
+    @pytest.mark.parametrize(
+        "example_path",
+        sorted(EXAMPLES_DIR.glob("*.json")),
+        ids=lambda path: path.stem,
+    )
+    def test_examples_are_already_policy_consistent(self, example_path: Path) -> None:
+        """Relabelling an example should be a no-op for all shipped example payloads."""
+        payload = AxisPayload.model_validate(json.loads(example_path.read_text(encoding="utf-8")))
+        relabelled = apply_relabel_policy(payload)
+        assert relabelled.axes == payload.axes

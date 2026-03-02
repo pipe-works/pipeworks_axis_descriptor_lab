@@ -175,6 +175,7 @@ export async function selectWorld(worldId) {
     chatState.worldId = null;
     chatState.worldConfig = null;
     clearActiveAxesIndicators();
+    document.dispatchEvent(new CustomEvent("chat-world-config-cleared"));
     dom.chatServerConfigInfo.classList.add("hidden");
     return;
   }
@@ -198,6 +199,7 @@ export async function selectWorld(worldId) {
     const config = await cfgRes.json();
     chatState.worldId = worldId;
     chatState.worldConfig = config;
+    document.dispatchEvent(new CustomEvent("chat-world-config-applied"));
     applyActiveAxesIndicators();
     updateServerConfigDisplay();
     await fetchWorldPrompts(worldId);
@@ -214,6 +216,7 @@ export function handleSessionExpired() {
   chatState.worldId = null;
   chatState.worldConfig = null;
   clearActiveAxesIndicators();
+  document.dispatchEvent(new CustomEvent("chat-world-config-cleared"));
   dom.chatServerConfigInfo.classList.add("hidden");
   showLoginPanel();
   setStatus("Session expired — please log in again.");
