@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.0...axis-descriptor-lab-v0.8.1) (2026-03-01)
+
+
+### Bug Fixes
+
+* **chat:** persist prompt history in saved conversations ([a9b4372](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/a9b43729ab7189995e0e3ad746a4b9b57521da6d))
+* **chat:** persist prompt history in saved conversations ([a65d56d](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/a65d56d49a2f293674fa9b30b1090afa3f93b2e3))
+
 ## [0.8.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.7.1...axis-descriptor-lab-v0.8.0) (2026-03-01)
 
 
