@@ -4,256 +4,204 @@
 
 ## Introduction
 
-The Axis Descriptor Lab includes a **server-side relabelling endpoint**
-(`POST /api/relabel`) that applies a hardcoded policy table to map normalised
-axis scores (0.0--1.0) to human-readable labels.  In the UI this is the
-**Auto (policy)** toggle.
+The Axis Descriptor Lab includes a server-side relabelling endpoint,
+`POST /api/relabel`, used by the **Auto (policy)** toggle in the UI.
 
-The policy is intentionally simple and Pipe-Works-flavoured -- it is **not** a
-substitute for a real policy engine.  It exists to:
+That endpoint now mirrors the current axis policy shipped in
+`pipeworks_mud_server` for the bundled worlds:
 
-1. **Make sliders meaningful** -- dragging a score slider produces a
-   semantically appropriate label.
-2. **Demonstrate policy drift** -- changing thresholds or labels shows how
-   upstream policy decisions propagate through to LLM output.
-3. **Support A/B comparison** -- relabelling after score changes enables
-   controlled experiments (same score, different label vs. same label,
-   different score).
+- `data/worlds/pipeworks_web/policies/axes.yaml`
+- `data/worlds/pipeworks_web/policies/thresholds.yaml`
 
-:::{admonition} Pipe-Works Design Philosophy
-:class: note
-
-In the broader Pipe-Works ecosystem, policy would come from the MUD server's
-authoritative game state, not from hardcoded thresholds.  The lab's policy
-table is a stand-in for experimentation.
-:::
+The lab still keeps a local copy of those definitions in
+`app/relabel_policy.py` so it can run as a standalone research tool, but the
+intent is direct alignment rather than an approximate Pipe-Works-flavoured
+substitute.
 
 ## Mechanism
 
-Matching uses **piecewise threshold lookup**.  For each known axis:
+Matching uses **inclusive score ranges** derived from the mud-server
+`thresholds.yaml` files.
 
-1. Thresholds are checked in ascending order.
-2. The first threshold where `score < upper_bound` wins.
-3. A final entry with an upper bound of 1.01 acts as the catch-all, ensuring
-   scores of exactly 1.0 are captured.
+For each known axis:
 
-**Unknown axes** (any axis name not listed in the policy table) are left
-unchanged -- their existing labels are preserved as-is.
+1. Ranges are checked in declared order.
+2. A label matches when `min_score <= score <= max_score`.
+3. Unknown axes are left unchanged.
+4. If a score falls outside every mirrored range, the existing label is
+   preserved because the lab schema requires a non-empty string label.
+
+## Canonical Axis Order
+
+The standalone slider UI uses the same full-axis order as the mud-server
+`axes.yaml` file:
+
+1. `physique`
+2. `wealth`
+3. `health`
+4. `demeanor`
+5. `age`
+6. `facial_signal`
+7. `legitimacy`
+8. `visibility`
+9. `moral_load`
+10. `dependency`
+11. `risk_exposure`
+
+When the chat page is connected to a mud server, the selected world's
+`active_axes` order is shown first, and any remaining axes fall back to the
+canonical order above.
 
 ## Policy Table
 
-### Age
-
-| Score Range       | Label       |
-|-------------------|-------------|
-| 0.000 -- 0.249    | young       |
-| 0.250 -- 0.499    | middle-aged |
-| 0.500 -- 0.749    | old         |
-| 0.750 -- 1.000    | ancient     |
-
-4 labels.  Even spacing at 0.25 intervals.
-
----
-
-### Demeanor
-
-| Score Range       | Label     |
-|-------------------|-----------|
-| 0.000 -- 0.199    | cordial   |
-| 0.200 -- 0.399    | guarded   |
-| 0.400 -- 0.599    | resentful |
-| 0.600 -- 0.799    | hostile   |
-| 0.800 -- 1.000    | menacing  |
-
-5 labels.  Even spacing at 0.20 intervals.  Progression from warm to
-threatening.
-
----
-
-### Dependency
-
-| Score Range       | Label         |
-|-------------------|---------------|
-| 0.000 -- 0.329    | dispensable   |
-| 0.330 -- 0.659    | necessary     |
-| 0.660 -- 1.000    | indispensable |
-
-3 labels.  Even thirds (~0.33 intervals).
-
----
-
-### Facial Signal
-
-| Score Range       | Label        |
-|-------------------|--------------|
-| 0.000 -- 0.299    | open         |
-| 0.300 -- 0.599    | asymmetrical |
-| 0.600 -- 1.000    | closed       |
-
-3 labels.  Even thirds (~0.30 intervals).  Maps from readable expression to
-guarded.
-
----
-
-### Health
-
-| Score Range       | Label    |
-|-------------------|----------|
-| 0.000 -- 0.249    | vigorous |
-| 0.250 -- 0.499    | weary    |
-| 0.500 -- 0.749    | ailing   |
-| 0.750 -- 1.000    | failing  |
-
-4 labels.  Even spacing at 0.25 intervals.  Progression from strong to dying.
-
----
-
-### Legitimacy
-
-| Score Range       | Label        |
-|-------------------|--------------|
-| 0.000 -- 0.249    | unchallenged |
-| 0.250 -- 0.499    | tolerated    |
-| 0.500 -- 0.649    | questioned   |
-| 0.650 -- 0.799    | contested    |
-| 0.800 -- 1.000    | illegitimate |
-
-5 labels.  **Uneven spacing** -- the upper end is compressed (0.15 bands for
-"questioned" and "contested") reflecting how authority erodes faster once
-doubt sets in.
-
----
-
-### Moral Load
-
-| Score Range       | Label      |
-|-------------------|------------|
-| 0.000 -- 0.299    | clear      |
-| 0.300 -- 0.599    | conflicted |
-| 0.600 -- 1.000    | burdened   |
-
-3 labels.  Even thirds (~0.30 intervals).
-
----
-
 ### Physique
 
-| Score Range       | Label   |
-|-------------------|---------|
-| 0.000 -- 0.299    | gaunt   |
-| 0.300 -- 0.449    | lean    |
-| 0.450 -- 0.549    | stocky  |
-| 0.550 -- 0.699    | hunched |
-| 0.700 -- 1.000    | imposing|
-
-5 labels.  **Uneven spacing** -- the middle bands ("lean", "stocky",
-"hunched") are narrower (0.10--0.15), creating a tighter cluster around the
-midpoint.  This makes the neutral range more granular while the extremes
-("gaunt", "imposing") occupy wider bands.
-
----
-
-### Risk Exposure
-
-| Score Range       | Label     |
-|-------------------|-----------|
-| 0.000 -- 0.329    | sheltered |
-| 0.330 -- 0.659    | hazardous |
-| 0.660 -- 1.000    | perilous  |
-
-3 labels.  Even thirds (~0.33 intervals).
-
----
-
-### Visibility
-
-| Score Range       | Label     |
-|-------------------|-----------|
-| 0.000 -- 0.329    | obscure   |
-| 0.330 -- 0.659    | routine   |
-| 0.660 -- 1.000    | prominent |
-
-3 labels.  Even thirds (~0.33 intervals).
-
----
+| Score Range    | Label  |
+|----------------|--------|
+| 0.00 -- 0.16   | frail  |
+| 0.17 -- 0.32   | hunched |
+| 0.33 -- 0.48   | skinny |
+| 0.49 -- 0.64   | wiry   |
+| 0.65 -- 0.80   | broad  |
+| 0.81 -- 1.00   | stocky |
 
 ### Wealth
 
-| Score Range       | Label      |
-|-------------------|------------|
-| 0.000 -- 0.249    | destitute  |
-| 0.250 -- 0.449    | threadbare |
-| 0.450 -- 0.549    | well-kept  |
-| 0.550 -- 0.749    | comfortable|
-| 0.750 -- 1.000    | affluent   |
+| Score Range    | Label     |
+|----------------|-----------|
+| 0.00 -- 0.19   | poor      |
+| 0.20 -- 0.39   | modest    |
+| 0.40 -- 0.59   | well-kept |
+| 0.60 -- 0.79   | wealthy   |
+| 0.80 -- 1.00   | decadent  |
 
-5 labels.  **Uneven spacing** -- the middle band ("well-kept") is deliberately
-narrow (0.10), creating a slim "just adequate" zone.  The extremes
-("destitute", "affluent") occupy wider bands.
+### Health
 
----
+| Score Range    | Label   |
+|----------------|---------|
+| 0.00 -- 0.19   | sickly  |
+| 0.20 -- 0.39   | limping |
+| 0.40 -- 0.59   | weary   |
+| 0.60 -- 0.79   | scarred |
+| 0.80 -- 1.00   | hale    |
+
+### Demeanor
+
+| Score Range    | Label      |
+|----------------|------------|
+| 0.00 -- 0.19   | timid      |
+| 0.20 -- 0.39   | suspicious |
+| 0.40 -- 0.59   | resentful  |
+| 0.60 -- 0.79   | alert      |
+| 0.80 -- 1.00   | proud      |
+
+### Age
+
+| Score Range    | Label       |
+|----------------|-------------|
+| 0.00 -- 0.24   | young       |
+| 0.25 -- 0.49   | middle-aged |
+| 0.50 -- 0.74   | old         |
+| 0.75 -- 1.00   | ancient     |
+
+### Facial Signal
+
+| Score Range    | Label          |
+|----------------|----------------|
+| 0.00 -- 0.14   | understated    |
+| 0.15 -- 0.29   | pronounced     |
+| 0.30 -- 0.44   | exaggerated    |
+| 0.45 -- 0.59   | asymmetrical   |
+| 0.60 -- 0.74   | weathered      |
+| 0.75 -- 0.89   | soft-featured  |
+| 0.90 -- 1.00   | sharp-featured |
+
+### Legitimacy
+
+| Score Range    | Label      |
+|----------------|------------|
+| 0.00 -- 0.24   | sanctioned |
+| 0.25 -- 0.49   | tolerated  |
+| 0.50 -- 0.74   | questioned |
+| 0.75 -- 1.00   | illicit    |
+
+### Visibility
+
+| Score Range    | Label       |
+|----------------|-------------|
+| 0.00 -- 0.24   | hidden      |
+| 0.25 -- 0.49   | discrete    |
+| 0.50 -- 0.74   | routine     |
+| 0.75 -- 1.00   | conspicuous |
+
+### Moral Load
+
+| Score Range    | Label      |
+|----------------|------------|
+| 0.00 -- 0.24   | neutral    |
+| 0.25 -- 0.49   | burdened   |
+| 0.50 -- 0.74   | conflicted |
+| 0.75 -- 1.00   | corrosive  |
+
+### Dependency
+
+| Score Range    | Label       |
+|----------------|-------------|
+| 0.00 -- 0.24   | optional    |
+| 0.25 -- 0.49   | useful      |
+| 0.50 -- 0.74   | necessary   |
+| 0.75 -- 1.00   | unavoidable |
+
+### Risk Exposure
+
+| Score Range    | Label      |
+|----------------|------------|
+| 0.00 -- 0.24   | benign     |
+| 0.25 -- 0.49   | straining  |
+| 0.50 -- 0.74   | hazardous  |
+| 0.75 -- 1.00   | eroding    |
 
 ## Summary
 
-| Axis           | Labels | Spacing       | Notes                    |
-|----------------|--------|---------------|--------------------------|
-| age            | 4      | Even (0.25)   |                          |
-| demeanor       | 5      | Even (0.20)   |                          |
-| dependency     | 3      | Even (0.33)   |                          |
-| facial_signal  | 3      | Even (0.30)   |                          |
-| health         | 4      | Even (0.25)   |                          |
-| legitimacy     | 5      | Uneven        | Upper end compressed     |
-| moral_load     | 3      | Even (0.30)   |                          |
-| physique       | 5      | Uneven        | Tight midpoint cluster   |
-| risk_exposure  | 3      | Even (0.33)   |                          |
-| visibility     | 3      | Even (0.33)   |                          |
-| wealth         | 5      | Uneven        | Narrow middle band       |
+| Axis           | Labels | Order Source |
+|----------------|--------|--------------|
+| physique       | 6      | `axes.yaml`  |
+| wealth         | 5      | `axes.yaml`  |
+| health         | 5      | `axes.yaml`  |
+| demeanor       | 5      | `axes.yaml`  |
+| age            | 4      | `axes.yaml`  |
+| facial_signal  | 7      | `axes.yaml`  |
+| legitimacy     | 4      | `axes.yaml`  |
+| visibility     | 4      | `axes.yaml`  |
+| moral_load     | 4      | `axes.yaml`  |
+| dependency     | 4      | `axes.yaml`  |
+| risk_exposure  | 4      | `axes.yaml`  |
 
-**Total:** 11 axes, 43 labels across all axes.
+**Total:** 11 axes, 52 mirrored labels.
 
 ## Implementation Details
 
 Source location
-: `app/main.py`, inside the `relabel()` route handler
+: `app/relabel_policy.py`
 
 Endpoint
 : `POST /api/relabel`
 
-Data structure
-: `dict[str, list[tuple[float, str]]]` -- axis name maps to a list of
-  `(upper_bound_exclusive, label)` tuples
+Data structures
+: `AXIS_ORDER`, `AXIS_LABEL_ORDER`, and
+  `RELABEL_POLICY: dict[str, list[tuple[float, float, str]]]`
 
 Matching algorithm
-: Linear scan; first threshold where `score < upper_bound` wins
-
-Catch-all
-: Final tuple uses 1.01 as upper bound to capture scores of exactly 1.0
-
-Statefulness
-: The policy is hardcoded and stateless -- no database, no config file, no
-  runtime modification
+: Inclusive range scan; first tuple satisfying `min_score <= score <= max_score`
+  wins
 
 Unknown axes
-: Passed through unchanged (label preserved as-is)
+: Passed through unchanged
+
+Unmatched scores
+: Existing label preserved, because the lab payload schema requires a
+  non-empty string label
 
 Return value
-: New `AxisPayload` with updated labels; all non-axis fields (`seed`,
-  `policy_hash`, `world_id`) unchanged
-
-## Potential Improvements
-
-:::{admonition} Not Currently Planned
-:class: tip
-
-These are noted for completeness.  The current hardcoded policy is sufficient
-for the lab's experimental purpose.
-:::
-
-- Externalise the policy table to a YAML/JSON config file for easier editing
-- Add API endpoint to inspect/modify the policy at runtime
-- Support per-world policy overrides (different worlds could have different
-  label vocabularies)
-- Add policy versioning to track how threshold changes affect LLM output
-  over time
-- Include the policy table hash in IPC calculations (currently only
-  `policy_hash` from the payload is used)
+: New `AxisPayload` with relabelled axes and unchanged `policy_hash`, `seed`,
+  and `world_id`

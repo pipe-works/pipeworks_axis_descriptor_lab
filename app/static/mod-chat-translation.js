@@ -14,12 +14,13 @@
  * persistence, and import/restore logic live in dedicated modules so this
  * controller can stay focused on page-level coordination.
  *
- * Imports: mod-state, mod-utils, mod-status, mod-chat-state,
+ * Imports: mod-state, mod-axis-policy, mod-utils, mod-status, mod-chat-state,
  *          mod-chat-sliders, mod-chat-server-mode, mod-chat-game-log,
  *          mod-chat-import
  */
 
 import { dom } from "./mod-state.js";
+import { quantiseAxisScore } from "./mod-axis-policy.js";
 import { clamp, debounce, safeParse, cryptoRandomFloat } from "./mod-utils.js";
 import { setStatus } from "./mod-status.js";
 import { chatState, charDom } from "./mod-chat-state.js";
@@ -83,6 +84,22 @@ async function loadChatExample(ch, name) {
 }
 
 /**
+ * Return a defensive copy of the current manual active-axis selection.
+ *
+ * The chat page treats `activeAxes === null` as "derive defaults from the
+ * current world config or payload". Once the user has interacted with the
+ * checkboxes, we preserve that explicit selection across slider rebuilds so
+ * actions like randomise/relabel never re-enable axes on the user's behalf.
+ *
+ * @param {"a"|"b"} ch - Character identifier.
+ * @returns {Set<string>|null} Cloned active-axis set, or null when defaults
+ *   should still be derived.
+ */
+function snapshotActiveAxes(ch) {
+  return chatState[ch].activeAxes ? new Set(chatState[ch].activeAxes) : null;
+}
+
+/**
  * Populate both example dropdowns from `/api/examples`.
  *
  * The placeholder option is preserved for each select; only dynamically
@@ -127,6 +144,7 @@ async function relabelChatChar(ch) {
     return;
   }
 
+  const preservedActiveAxes = snapshotActiveAxes(ch);
   setStatus(`Recomputing labels for Character ${ch.toUpperCase()}…`, true);
   try {
     const res = await fetch("/api/relabel", {
@@ -140,6 +158,7 @@ async function relabelChatChar(ch) {
     }
 
     chatState[ch].payload = await res.json();
+    chatState[ch].activeAxes = preservedActiveAxes;
     syncJsonTextarea(ch);
     buildChatSliders(ch);
     setStatus(`Character ${ch.toUpperCase()} — labels recomputed.`);
@@ -151,8 +170,8 @@ async function relabelChatChar(ch) {
 /**
  * Randomise every axis score for a character.
  *
- * Scores are rounded to three decimal places so they stay aligned with the
- * slider step size and the existing JSON/UI presentation.
+ * Scores are rounded to hundredths so the chat UI stays aligned with the
+ * mirrored mud-server threshold bands used by the relabel endpoint.
  *
  * @param {"a"|"b"} ch - Character identifier.
  * @returns {Promise<void>}
@@ -164,11 +183,13 @@ async function randomiseChatChar(ch) {
     return;
   }
 
+  const preservedActiveAxes = snapshotActiveAxes(ch);
   for (const axisKey of Object.keys(payload.axes)) {
-    const newScore = Math.round(cryptoRandomFloat() * 1000) / 1000;
+    const newScore = quantiseAxisScore(cryptoRandomFloat());
     payload.axes[axisKey] = { ...payload.axes[axisKey], score: newScore };
   }
 
+  chatState[ch].activeAxes = preservedActiveAxes;
   syncJsonTextarea(ch);
   buildChatSliders(ch);
 
@@ -715,6 +736,22 @@ export async function initChatTranslation() {
  * @returns {void}
  */
 export function wireChatTranslationEvents() {
+  document.addEventListener("chat-world-config-applied", () => {
+    for (const ch of ["a", "b"]) {
+      if (!chatState[ch].payload) continue;
+      chatState[ch].activeAxes = null;
+      buildChatSliders(ch);
+    }
+  });
+
+  document.addEventListener("chat-world-config-cleared", () => {
+    for (const ch of ["a", "b"]) {
+      if (!chatState[ch].payload) continue;
+      chatState[ch].activeAxes = null;
+      buildChatSliders(ch);
+    }
+  });
+
   for (const ch of ["a", "b"]) {
     const cd = charDom(ch);
 

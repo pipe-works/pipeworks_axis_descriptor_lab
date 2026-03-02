@@ -3,19 +3,32 @@ app/relabel_policy.py
 -----------------------------------------------------------------------------
 Server-side policy table and score-to-label mapping for the Axis Descriptor Lab.
 
-This module owns the authoritative score-to-label mapping — a simple piecewise
-function that translates a normalised axis score (0.0–1.0) into a human-readable
-label string.  The policy is intentionally simple and Pipe-Works-flavoured: it
-is NOT a substitute for a production policy engine but demonstrates how label
-changes propagate through to LLM output.
+This module owns the lab's authoritative score-to-label mapping and the
+canonical axis ordering used by the standalone UI.  The definitions here are
+kept intentionally aligned with the current Pipe-Works mud-server policy files:
+
+- ``pipeworks_mud_server/data/worlds/pipeworks_web/policies/axes.yaml``
+- ``pipeworks_mud_server/data/worlds/pipeworks_web/policies/thresholds.yaml``
+
+The lab remains a standalone tool, so it does not import those files directly.
+Instead, this module mirrors their current ordering and threshold labels so the
+lab's "auto-label" behaviour matches the mud server's policy semantics as
+closely as possible.
 
 Exports
 -------
-RELABEL_POLICY : dict[str, list[tuple[float, str]]]
+AXIS_ORDER : list[str]
+    Canonical full-axis ordering, matching the mud-server ``axes.yaml`` key
+    order for the bundled worlds.
+
+AXIS_LABEL_ORDER : dict[str, list[str]]
+    Canonical low-to-high ordinal label sequence for each axis, matching the
+    mud-server ``ordering.values`` payloads.
+
+RELABEL_POLICY : dict[str, list[tuple[float, float, str]]]
     Module-level constant mapping each known axis name to an ordered list of
-    (upper_bound_exclusive, label) pairs.  Thresholds are checked in order;
-    the first pair whose upper_bound exceeds the score wins.  A final entry
-    with upper_bound = 1.01 acts as the catch-all for scores up to 1.0.
+    inclusive ``(min_score, max_score, label)`` tuples derived from the
+    mud-server ``thresholds.yaml`` ranges.
 
 apply_relabel_policy(payload) -> AxisPayload
     Walk the payload's axes, recompute labels from ``RELABEL_POLICY`` for
@@ -27,8 +40,8 @@ Design notes
 The policy table lives in its own module (rather than inline in a route
 handler) so that:
 
-1. Unit tests can validate the table structure (ascending thresholds,
-   catch-all present) without hitting the HTTP layer.
+1. Unit tests can validate the mirrored mud-server policy in isolation
+   without hitting the HTTP layer.
 2. The table can be imported by other modules (e.g. future CLI tools)
    without pulling in all of FastAPI.
 3. ``main.py`` stays a thin routing layer — it calls
@@ -40,85 +53,138 @@ from __future__ import annotations
 from app.schema import AxisPayload
 
 # -----------------------------------------------------------------------------
+# Canonical axis ordering
+# -----------------------------------------------------------------------------
+#
+# ``AXIS_ORDER`` mirrors the current mud-server ``axes.yaml`` order.  The
+# frontend uses it to render rows deterministically instead of depending on
+# incoming JSON insertion order.
+
+AXIS_ORDER: list[str] = [
+    "physique",
+    "wealth",
+    "health",
+    "demeanor",
+    "age",
+    "facial_signal",
+    "legitimacy",
+    "visibility",
+    "moral_load",
+    "dependency",
+    "risk_exposure",
+]
+
+# Each label list is low → high, matching the mud-server ``ordering.values``
+# payload for that axis.
+AXIS_LABEL_ORDER: dict[str, list[str]] = {
+    "physique": ["frail", "hunched", "skinny", "wiry", "broad", "stocky"],
+    "wealth": ["poor", "modest", "well-kept", "wealthy", "decadent"],
+    "health": ["sickly", "limping", "weary", "scarred", "hale"],
+    "demeanor": ["timid", "suspicious", "resentful", "alert", "proud"],
+    "age": ["young", "middle-aged", "old", "ancient"],
+    "facial_signal": [
+        "understated",
+        "pronounced",
+        "exaggerated",
+        "asymmetrical",
+        "weathered",
+        "soft-featured",
+        "sharp-featured",
+    ],
+    "legitimacy": ["sanctioned", "tolerated", "questioned", "illicit"],
+    "visibility": ["hidden", "discrete", "routine", "conspicuous"],
+    "moral_load": ["neutral", "burdened", "conflicted", "corrosive"],
+    "dependency": ["optional", "useful", "necessary", "unavoidable"],
+    "risk_exposure": ["benign", "straining", "hazardous", "eroding"],
+}
+
+# -----------------------------------------------------------------------------
 # Policy table
 # -----------------------------------------------------------------------------
 #
-# Structure:  axis_name -> list of (upper_bound_exclusive, label)
+# Structure: axis_name -> ordered list of inclusive (min_score, max_score, label)
 #
-# For each axis, thresholds are checked in order; the first pair whose
-# upper_bound exceeds the score wins.  A sentinel entry at 1.01 catches
-# any score up to (and including) 1.0.
-#
-# Example — "age" axis:
-#   score 0.10 → "young"    (0.10 < 0.25)
-#   score 0.25 → "middle-aged" (0.25 is NOT < 0.25, so skip; 0.25 < 0.50 → hit)
-#   score 0.80 → "ancient"  (0.80 < 1.01 → catch-all)
+# These ranges mirror the mud-server ``thresholds.yaml`` values exactly.  The
+# server currently resolves labels with inclusive ``min``/``max`` checks, so
+# the lab uses the same contract here rather than the previous simplified
+# ``score < upper_bound`` approximation.
 
-RELABEL_POLICY: dict[str, list[tuple[float, str]]] = {
-    "age": [
-        (0.25, "young"),
-        (0.5, "middle-aged"),
-        (0.75, "old"),
-        (1.01, "ancient"),
-    ],
-    "demeanor": [
-        (0.2, "cordial"),
-        (0.4, "guarded"),
-        (0.6, "resentful"),
-        (0.8, "hostile"),
-        (1.01, "menacing"),
-    ],
-    "dependency": [
-        (0.33, "dispensable"),
-        (0.66, "necessary"),
-        (1.01, "indispensable"),
-    ],
-    "facial_signal": [
-        (0.3, "open"),
-        (0.6, "asymmetrical"),
-        (1.01, "closed"),
-    ],
-    "health": [
-        (0.25, "vigorous"),
-        (0.5, "weary"),
-        (0.75, "ailing"),
-        (1.01, "failing"),
-    ],
-    "legitimacy": [
-        (0.25, "unchallenged"),
-        (0.5, "tolerated"),
-        (0.65, "questioned"),
-        (0.8, "contested"),
-        (1.01, "illegitimate"),
-    ],
-    "moral_load": [
-        (0.3, "clear"),
-        (0.6, "conflicted"),
-        (1.01, "burdened"),
-    ],
+type PolicyRange = tuple[float, float, str]
+
+RELABEL_POLICY: dict[str, list[PolicyRange]] = {
     "physique": [
-        (0.3, "gaunt"),
-        (0.45, "lean"),
-        (0.55, "stocky"),
-        (0.7, "hunched"),
-        (1.01, "imposing"),
-    ],
-    "risk_exposure": [
-        (0.33, "sheltered"),
-        (0.66, "hazardous"),
-        (1.01, "perilous"),
-    ],
-    "visibility": [
-        (0.33, "obscure"),
-        (0.66, "routine"),
-        (1.01, "prominent"),
+        (0.00, 0.16, "frail"),
+        (0.17, 0.32, "hunched"),
+        (0.33, 0.48, "skinny"),
+        (0.49, 0.64, "wiry"),
+        (0.65, 0.80, "broad"),
+        (0.81, 1.00, "stocky"),
     ],
     "wealth": [
-        (0.25, "destitute"),
-        (0.45, "threadbare"),
-        (0.55, "well-kept"),
-        (0.75, "comfortable"),
-        (1.01, "affluent"),
+        (0.00, 0.19, "poor"),
+        (0.20, 0.39, "modest"),
+        (0.40, 0.59, "well-kept"),
+        (0.60, 0.79, "wealthy"),
+        (0.80, 1.00, "decadent"),
+    ],
+    "health": [
+        (0.00, 0.19, "sickly"),
+        (0.20, 0.39, "limping"),
+        (0.40, 0.59, "weary"),
+        (0.60, 0.79, "scarred"),
+        (0.80, 1.00, "hale"),
+    ],
+    "demeanor": [
+        (0.00, 0.19, "timid"),
+        (0.20, 0.39, "suspicious"),
+        (0.40, 0.59, "resentful"),
+        (0.60, 0.79, "alert"),
+        (0.80, 1.00, "proud"),
+    ],
+    "age": [
+        (0.00, 0.24, "young"),
+        (0.25, 0.49, "middle-aged"),
+        (0.50, 0.74, "old"),
+        (0.75, 1.00, "ancient"),
+    ],
+    "facial_signal": [
+        (0.00, 0.14, "understated"),
+        (0.15, 0.29, "pronounced"),
+        (0.30, 0.44, "exaggerated"),
+        (0.45, 0.59, "asymmetrical"),
+        (0.60, 0.74, "weathered"),
+        (0.75, 0.89, "soft-featured"),
+        (0.90, 1.00, "sharp-featured"),
+    ],
+    "legitimacy": [
+        (0.00, 0.24, "sanctioned"),
+        (0.25, 0.49, "tolerated"),
+        (0.50, 0.74, "questioned"),
+        (0.75, 1.00, "illicit"),
+    ],
+    "visibility": [
+        (0.00, 0.24, "hidden"),
+        (0.25, 0.49, "discrete"),
+        (0.50, 0.74, "routine"),
+        (0.75, 1.00, "conspicuous"),
+    ],
+    "moral_load": [
+        (0.00, 0.24, "neutral"),
+        (0.25, 0.49, "burdened"),
+        (0.50, 0.74, "conflicted"),
+        (0.75, 1.00, "corrosive"),
+    ],
+    "dependency": [
+        (0.00, 0.24, "optional"),
+        (0.25, 0.49, "useful"),
+        (0.50, 0.74, "necessary"),
+        (0.75, 1.00, "unavoidable"),
+    ],
+    "risk_exposure": [
+        (0.00, 0.24, "benign"),
+        (0.25, 0.49, "straining"),
+        (0.50, 0.74, "hazardous"),
+        (0.75, 1.00, "eroding"),
     ],
 }
 
@@ -128,14 +194,48 @@ RELABEL_POLICY: dict[str, list[tuple[float, str]]] = {
 # -----------------------------------------------------------------------------
 
 
+def resolve_axis_label(axis_name: str, score: float, fallback_label: str) -> str:
+    """
+    Resolve ``score`` to the mud-server-aligned label for ``axis_name``.
+
+    The lookup uses inclusive ``min <= score <= max`` range checks to mirror
+    the mud server's axis-value resolution logic.  If the axis is unknown, or
+    if the score falls outside every mirrored range, ``fallback_label`` is
+    returned unchanged.
+
+    Returning the existing label for unmatched scores is intentional: the lab's
+    schema requires a non-empty label string, while the mud server stores label
+    absence as ``None`` in the database layer.
+
+    Parameters
+    ----------
+    axis_name : str
+        Axis key to resolve.
+    score : float
+        Normalised axis score in ``[0.0, 1.0]``.
+    fallback_label : str
+        Existing label to preserve when no mirrored range matches.
+
+    Returns
+    -------
+    str
+        The resolved canonical label, or ``fallback_label`` when the axis or
+        score is not covered by the mirrored policy.
+    """
+    for min_score, max_score, label in RELABEL_POLICY.get(axis_name, []):
+        if min_score <= score <= max_score:
+            return label
+    return fallback_label
+
+
 def apply_relabel_policy(payload: AxisPayload) -> AxisPayload:
     """
     Recompute axis labels from the policy table and return an updated payload.
 
     For each axis in *payload*, if the axis name appears in
-    :data:`RELABEL_POLICY`, the label is rewritten to the first entry whose
-    ``upper_bound`` exceeds the axis score.  Unknown axes (those not in the
-    policy table) are passed through with their existing labels intact.
+    :data:`RELABEL_POLICY`, the label is rewritten to the matching mirrored
+    mud-server threshold range.  Unknown axes (those not in the policy table)
+    are passed through with their existing labels intact.
 
     Scores are **never** modified — only labels change.  All non-axis fields
     (``policy_hash``, ``seed``, ``world_id``) are preserved verbatim.
@@ -154,12 +254,11 @@ def apply_relabel_policy(payload: AxisPayload) -> AxisPayload:
 
     for axis_name, axis_val in payload.axes.items():
         if axis_name in RELABEL_POLICY:
-            # Walk the threshold list; first match wins.
-            new_label = axis_val.label  # fallback: keep existing
-            for upper_bound, label in RELABEL_POLICY[axis_name]:
-                if axis_val.score < upper_bound:
-                    new_label = label
-                    break
+            new_label = resolve_axis_label(
+                axis_name=axis_name,
+                score=axis_val.score,
+                fallback_label=axis_val.label,
+            )
             # Create a new AxisValue with the updated label, same score.
             updated_axes[axis_name] = axis_val.model_copy(update={"label": new_label})
         else:

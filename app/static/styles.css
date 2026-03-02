@@ -971,14 +971,38 @@
   flex-shrink: 0;
 }
 
-/* Visually dim a disabled (unchecked) axis row */
+/* Unchecked chat-axis rows use the shared muted text/border tokens so they
+   read as intentionally inactive rather than simply faded out. */
 .axis-row--disabled {
-  opacity: 0.35;
+  opacity: 1;
+}
+
+.axis-row--disabled .axis-name,
+.axis-row--disabled .axis-score,
+.axis-row--disabled .axis-label-input {
+  color: var(--col-text-muted);
+}
+
+.axis-row--disabled .axis-modified {
+  color: var(--col-text-muted) !important;
+}
+
+.axis-row--disabled .axis-label-input {
+  border-bottom-color: var(--col-border);
 }
 
 .axis-row--disabled .range-input,
 .axis-row--disabled .axis-label-input {
   pointer-events: none;
+}
+
+.axis-row--disabled .range-input,
+.axis-row--disabled .axis-enable-checkbox {
+  opacity: 0.5;
+}
+
+.axis-row--disabled .range-input {
+  filter: saturate(0);
 }
 
 /* ── Translate button + Live toggle ────────────────────────────────────── */
@@ -1186,7 +1210,7 @@
 
 /* ── Inactive axis — server active_axes dimming ──────────────────────── */
 .axis-row--inactive-server {
-  opacity: 0.55;
+  opacity: 1;
 }
 .axis-row--inactive-server .axis-name::after {
   content: " ·";

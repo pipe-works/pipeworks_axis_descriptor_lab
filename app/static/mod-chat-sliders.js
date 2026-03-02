@@ -8,9 +8,10 @@
  * per-character axis slider panel from the current payload state and keeping
  * the JSON textarea view in sync with slider and label edits.
  *
- * Imports: mod-chat-state, mod-utils, mod-chat-server-mode
+ * Imports: mod-chat-state, mod-axis-policy, mod-utils, mod-chat-server-mode
  */
 
+import { AXIS_SCORE_STEP, formatAxisScore, orderAxisKeys } from "./mod-axis-policy.js";
 import { clamp } from "./mod-utils.js";
 import { chatState, charDom } from "./mod-chat-state.js";
 import { applyActiveAxesIndicators } from "./mod-chat-server-mode.js";
@@ -66,7 +67,8 @@ export function buildChatSliders(ch) {
   }
 
   const axes = payload.axes;
-  const keys = Object.keys(axes);
+  const preferredOrder = chatState.worldConfig?.active_axes || [];
+  const keys = orderAxisKeys(Object.keys(axes), preferredOrder);
 
   if (keys.length === 0) {
     panel.textContent = "";
@@ -78,7 +80,13 @@ export function buildChatSliders(ch) {
   }
 
   if (chatState[ch].activeAxes === null) {
-    chatState[ch].activeAxes = new Set(keys);
+    const serverActiveAxes = chatState.worldConfig?.active_axes;
+    if (Array.isArray(serverActiveAxes) && serverActiveAxes.length > 0) {
+      const activeSet = new Set(serverActiveAxes);
+      chatState[ch].activeAxes = new Set(keys.filter((axisKey) => activeSet.has(axisKey)));
+    } else {
+      chatState[ch].activeAxes = new Set(keys);
+    }
   }
 
   const fragment = document.createDocumentFragment();
@@ -119,7 +127,7 @@ export function buildChatSliders(ch) {
 
     const scoreDisplay = document.createElement("span");
     scoreDisplay.className = "axis-score";
-    scoreDisplay.textContent = score.toFixed(3);
+    scoreDisplay.textContent = formatAxisScore(score);
 
     if (orig && Math.abs(score - orig.score) > 0.0001) {
       scoreDisplay.classList.add("axis-modified");
@@ -130,8 +138,8 @@ export function buildChatSliders(ch) {
     slider.className = "range-input";
     slider.min = "0";
     slider.max = "1";
-    slider.step = "0.005";
-    slider.value = score.toFixed(3);
+    slider.step = String(AXIS_SCORE_STEP);
+    slider.value = formatAxisScore(score);
     slider.setAttribute("aria-label", `${axisKey} score`);
 
     const labelInput = document.createElement("input");
@@ -147,7 +155,7 @@ export function buildChatSliders(ch) {
 
     slider.addEventListener("input", () => {
       const newScore = parseFloat(slider.value);
-      scoreDisplay.textContent = newScore.toFixed(3);
+      scoreDisplay.textContent = formatAxisScore(newScore);
       const origAxis = chatState[ch].originalAxes && chatState[ch].originalAxes[axisKey];
       if (origAxis) {
         scoreDisplay.classList.toggle("axis-modified", Math.abs(newScore - origAxis.score) > 0.0001);

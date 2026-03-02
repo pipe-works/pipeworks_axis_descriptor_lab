@@ -400,7 +400,7 @@ class TestRelabelEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["axes"]["age"]["label"] == "young"
-        assert data["axes"]["health"]["label"] == "failing"
+        assert data["axes"]["health"]["label"] == "hale"
 
     def test_preserves_unknown_axes(self, client: TestClient) -> None:
         payload = {
@@ -425,7 +425,7 @@ class TestRelabelEndpoint:
         resp = client.post("/api/relabel", json=payload)
         data = resp.json()
         assert data["axes"]["wealth"]["score"] == 0.3
-        assert data["axes"]["wealth"]["label"] == "threadbare"
+        assert data["axes"]["wealth"]["label"] == "modest"
 
     def test_all_policy_axes(self, client: TestClient) -> None:
         """Verify every axis in the policy table produces a valid relabel."""

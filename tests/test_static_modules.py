@@ -37,6 +37,16 @@ MODULE_MANIFEST: dict[str, dict] = {
         "exports": ["state", "dom"],
         "imports_from": [],  # leaf — no imports
     },
+    "mod-axis-policy.js": {
+        "exports": [
+            "CANONICAL_AXIS_ORDER",
+            "AXIS_SCORE_STEP",
+            "orderAxisKeys",
+            "quantiseAxisScore",
+            "formatAxisScore",
+        ],
+        "imports_from": [],  # leaf — no imports
+    },
     "mod-status.js": {
         "exports": ["setStatus"],
         "imports_from": ["mod-state.js"],
@@ -53,7 +63,7 @@ MODULE_MANIFEST: dict[str, dict] = {
             "refreshModels",
             "wireSyncEvents",
         ],
-        "imports_from": ["mod-state.js", "mod-utils.js", "mod-status.js"],
+        "imports_from": ["mod-state.js", "mod-axis-policy.js", "mod-utils.js", "mod-status.js"],
     },
     "mod-loaders.js": {
         "exports": [
@@ -93,6 +103,7 @@ MODULE_MANIFEST: dict[str, dict] = {
         "exports": ["relabel", "randomiseAxes", "wireAxisEvents"],
         "imports_from": [
             "mod-state.js",
+            "mod-axis-policy.js",
             "mod-utils.js",
             "mod-status.js",
             "mod-sync.js",
@@ -158,7 +169,12 @@ MODULE_MANIFEST: dict[str, dict] = {
     },
     "mod-chat-sliders.js": {
         "exports": ["syncJsonTextarea", "setJsonBadge", "buildChatSliders"],
-        "imports_from": ["mod-utils.js", "mod-chat-state.js", "mod-chat-server-mode.js"],
+        "imports_from": [
+            "mod-axis-policy.js",
+            "mod-utils.js",
+            "mod-chat-state.js",
+            "mod-chat-server-mode.js",
+        ],
     },
     "mod-chat-game-log.js": {
         "exports": [
@@ -191,6 +207,7 @@ MODULE_MANIFEST: dict[str, dict] = {
         "exports": ["translate", "initChatTranslation", "wireChatTranslationEvents"],
         "imports_from": [
             "mod-state.js",
+            "mod-axis-policy.js",
             "mod-utils.js",
             "mod-status.js",
             "mod-chat-state.js",
@@ -452,15 +469,16 @@ class TestModuleDocumentation:
 
 
 class TestModuleCount:
-    """The application has exactly 21 module files after the chat-module split."""
+    """The module count on disk should stay in sync with the declared manifest."""
 
-    def test_exactly_21_modules_on_disk(self) -> None:
-        """The static directory contains exactly 21 mod-*.js files."""
+    def test_module_count_matches_manifest(self) -> None:
+        """The static directory contains exactly the modules declared in the manifest."""
         static_dir = Path(__file__).resolve().parent.parent / "app" / "static"
         mod_files = sorted(p.name for p in static_dir.glob("mod-*.js"))
-        assert (
-            len(mod_files) == 21
-        ), f"Expected 21 mod-*.js files, found {len(mod_files)}: {mod_files}"
+        assert len(mod_files) == len(MODULE_MANIFEST), (
+            f"Expected {len(MODULE_MANIFEST)} mod-*.js files, "
+            f"found {len(mod_files)}: {mod_files}"
+        )
 
     def test_manifest_matches_disk(self) -> None:
         """Every file in the manifest exists on disk, and vice versa."""
