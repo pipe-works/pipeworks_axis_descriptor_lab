@@ -102,9 +102,10 @@ class ChatTranslationRequest(BaseModel):
     prompt_name: str | None = Field(
         default=None,
         description=(
-            "Name of a server-side prompt file to load from app/prompts/.  "
+            "Name of a server-side prompt file to load from "
+            "app/prompts/chat_translation/.  "
             "When None and system_prompt is also None, the server loads "
-            "ic_v01_undertaking.txt as the default."
+            "the default standalone chat translation prompt."
         ),
     )
     system_prompt: str | None = Field(

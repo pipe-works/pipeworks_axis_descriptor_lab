@@ -106,7 +106,7 @@ prompt itself contains the line:
 
 > "The system is authoritative.  You are ornamental."
 >
-> -- `app/prompts/system_prompt_v01.txt`, line 29
+> -- `app/prompts/character_description/system_prompt_v01.txt`, line 29
 
 ### Why the Boundary Matters for Hashing
 
@@ -431,7 +431,7 @@ and what the final response looks like.
  |                                                                   |
  |  1. Resolve system prompt                                         |
  |     - Use custom override from request, OR                        |
- |     - Load default from app/prompts/system_prompt_v01.txt         |
+ |     - Load default from app/prompts/character_description/        |
  |                                                                   |
  |  2. Serialise payload as pretty-printed JSON                      |
  |     - This becomes the "user turn" sent to the LLM               |
@@ -481,8 +481,8 @@ and what the final response looks like.
 
 **Step 1 -- Prompt resolution.**  The backend checks whether the request
 includes a custom `system_prompt` override.  If not, it loads the default
-prompt from `app/prompts/system_prompt_v01.txt`.  The resolved prompt is
-the text that will be hashed as `system_prompt_hash`.
+prompt from `app/prompts/character_description/system_prompt_v01.txt`.
+The resolved prompt is the text that will be hashed as `system_prompt_hash`.
 
 **Step 2 -- Payload serialisation.**  The `AxisPayload` is serialised
 to pretty-printed JSON (with 2-space indentation) and sent as the user

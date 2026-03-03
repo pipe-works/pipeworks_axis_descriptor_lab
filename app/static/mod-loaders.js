@@ -10,7 +10,7 @@
  *      loadExample(name)  → fetch payload → state.payload → sliders
  *
  *   2. **Prompts** — system prompt text files from `/api/prompts`
- *      loadPromptList()   → populate prompt <select>
+ *      loadPromptList()   → populate the Character Description prompt <select>
  *      loadPrompt(name)   → fetch text → system prompt textarea
  *
  * Both flows populate a `<select>` dropdown at startup and load selected
@@ -80,11 +80,12 @@ export async function loadExample(name) {
  * the prompt `<select>` dropdown.
  *
  * Called once at startup from `init()`.  Mirrors `loadExampleList()` but
- * hits `/api/prompts` instead of `/api/examples`.
+ * hits the purpose-filtered `/api/prompts?purpose=character_description`
+ * endpoint instead of `/api/examples`.
  */
 export async function loadPromptList() {
   try {
-    const res  = await fetch("/api/prompts");
+    const res  = await fetch("/api/prompts?purpose=character_description");
     const list = await res.json();
 
     const defaultOpt = new Option("\u2014 choose \u2014", "");
@@ -114,7 +115,9 @@ export async function loadPrompt(name) {
 
   setStatus(`Loading prompt ${name}…`, true);
   try {
-    const res = await fetch(`/api/prompts/${name}`);
+    const res = await fetch(
+      `/api/prompts/${encodeURIComponent(name)}?purpose=character_description`
+    );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     // Use .text() because the endpoint returns PlainTextResponse, not JSON

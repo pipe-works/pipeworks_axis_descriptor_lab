@@ -32,7 +32,7 @@ _FOLDER_NAME_PATTERN = re.compile(r"^\d{8}_\d{6}_[0-9a-f]{8}$")
 )
 def get_system_prompt() -> str:
     """
-    Return the content of ``system_prompt_v01.txt`` as plain text.
+    Return the default Character Description prompt as plain text.
 
     This allows the frontend to resolve the effective system prompt when no
     custom override is set, ensuring saved files always contain the complete

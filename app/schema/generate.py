@@ -55,7 +55,7 @@ class GenerateRequest(BaseModel):
         default=None,
         description=(
             "Optional override for the system prompt.  When None the server "
-            "loads app/prompts/system_prompt_v01.txt."
+            "loads the default prompt from app/prompts/character_description/."
         ),
     )
     ollama_host: str | None = Field(

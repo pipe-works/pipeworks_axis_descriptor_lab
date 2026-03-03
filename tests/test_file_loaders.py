@@ -6,7 +6,8 @@ and adapted to the new public-function signatures and module-level patch targets
 
 Test strategy
 -------------
-1. Happy-path loading from the real ``app/examples/`` and ``app/prompts/`` dirs.
+1. Happy-path loading from the real ``app/examples/`` dir and grouped
+   ``app/prompts/`` tree.
 2. Error cases (missing files, invalid JSON) using ``tmp_path`` + ``patch``.
 3. Listing functions return sorted names from the real directories.
 """
@@ -22,6 +23,7 @@ from fastapi import HTTPException
 from app.file_loaders import (
     list_example_names,
     list_prompt_names,
+    load_chat_default_prompt,
     load_default_prompt,
     load_example,
     load_prompt,
@@ -44,6 +46,22 @@ class TestLoadDefaultPrompt:
         with patch("app.file_loaders.PROMPTS_DIR", tmp_path):
             with pytest.raises(Exception):
                 load_default_prompt()
+
+
+class TestLoadChatDefaultPrompt:
+    """Tests for the load_chat_default_prompt() function."""
+
+    def test_loads_prompt(self) -> None:
+        """The default standalone chat prompt must exist and contain template text."""
+        prompt = load_chat_default_prompt()
+        assert "{{profile_summary}}" in prompt
+        assert len(prompt) > 50
+
+    def test_missing_prompt_raises(self, tmp_path: Path) -> None:
+        """A missing chat default prompt must raise an exception."""
+        with patch("app.file_loaders.PROMPTS_DIR", tmp_path):
+            with pytest.raises(Exception):
+                load_chat_default_prompt()
 
 
 # ── load_example ────────────────────────────────────────────────────────────
@@ -94,11 +112,22 @@ class TestLoadPrompt:
 
     def test_returns_stripped_text(self, tmp_path: Path) -> None:
         """Loaded prompt text must be stripped of leading/trailing whitespace."""
-        prompt_file = tmp_path / "padded.txt"
+        prompt_dir = tmp_path / "character_description"
+        prompt_dir.mkdir()
+        prompt_file = prompt_dir / "padded.txt"
         prompt_file.write_text("  \n  Hello world  \n  ", encoding="utf-8")
         with patch("app.file_loaders.PROMPTS_DIR", tmp_path):
             text = load_prompt("padded")
         assert text == "Hello world"
+
+    def test_respects_purpose_filter(self) -> None:
+        """Purpose-filtered prompt lookup must only search that prompt group."""
+        text = load_prompt("ic_v01_undertaking", purpose="chat_translation")
+        assert "{{profile_summary}}" in text
+
+        with pytest.raises(HTTPException) as exc_info:
+            load_prompt("ic_v01_undertaking", purpose="character_description")
+        assert exc_info.value.status_code == 404
 
 
 # ── list_example_names ──────────────────────────────────────────────────────
@@ -132,7 +161,24 @@ class TestListPromptNames:
     def test_includes_variant_prompts(self) -> None:
         """All known prompt variants must appear."""
         names = list_prompt_names()
-        assert len(names) >= 4
+        assert len(names) >= 7
         assert "system_prompt_v02_terse" in names
         assert "system_prompt_v03_environmental" in names
         assert "system_prompt_v04_contrast" in names
+        assert "ic_v01_undertaking" in names
+        assert "ic_v02_generic" in names
+        assert "ic_v03_development" in names
+
+    def test_filters_character_description_prompts(self) -> None:
+        """Character Description listing must exclude chat translation prompts."""
+        names = list_prompt_names("character_description")
+        assert "system_prompt_v01" in names
+        assert "system_prompt_v04_contrast" in names
+        assert "ic_v01_undertaking" not in names
+
+    def test_filters_chat_translation_prompts(self) -> None:
+        """Chat Translation listing must exclude character description prompts."""
+        names = list_prompt_names("chat_translation")
+        assert "ic_v01_undertaking" in names
+        assert "ic_v03_development" in names
+        assert "system_prompt_v01" not in names
