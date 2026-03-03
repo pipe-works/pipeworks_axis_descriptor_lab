@@ -24,7 +24,7 @@ from pipeworks_ipc import (
 )
 
 from app.chat_renderer import OLLAMA_HOST, ChatRenderer
-from app.file_loaders import load_prompt
+from app.file_loaders import load_chat_default_prompt, load_prompt
 from app.mud_server_client import (
     MudServerClient,
     MudServerConnectionError,
@@ -187,21 +187,9 @@ def _translate_standalone(
     if req.system_prompt:
         template = req.system_prompt
     elif req.prompt_name:
-        template = load_prompt(req.prompt_name)
+        template = load_prompt(req.prompt_name, purpose="chat_translation")
     else:
-        ic_default_path = prompt_root / "prompts" / "ic_v01_undertaking.txt"
-        template = (
-            ic_default_path.read_text(encoding="utf-8").strip()
-            if ic_default_path.exists()
-            else (
-                "You are a narrative rendering engine. Translate the user's "
-                "OOC message into one line of IC dialogue.\n\n"
-                "CHARACTER PROFILE:\n{{profile_summary}}\nChannel: {{channel}}\n\n"
-                "RULES:\n1. One line of dialogue only.\n"
-                "2. The user's message is the OOC input to translate.\n"
-                "3. If untranslatable, output: PASSTHROUGH"
-            )
-        )
+        template = load_chat_default_prompt()
 
     validator = OutputValidator(
         strict_mode=req.strict_mode,
@@ -333,9 +321,10 @@ def save_chat(req: ChatSaveRequest, data_dir: Path, prompt_root: Path) -> ChatSa
 
     prompt_to_save = req.system_prompt
     if not prompt_to_save:
-        ic_default_path = prompt_root / "prompts" / "ic_v01_undertaking.txt"
-        if ic_default_path.exists():
-            prompt_to_save = ic_default_path.read_text(encoding="utf-8").strip()
+        try:
+            prompt_to_save = load_chat_default_prompt()
+        except HTTPException:
+            prompt_to_save = None
 
     if prompt_to_save:
         (save_dir / "system_prompt.md").write_text(

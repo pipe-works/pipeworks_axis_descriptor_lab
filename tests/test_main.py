@@ -97,10 +97,23 @@ class TestListPrompts:
     def test_includes_variant_prompts(self, client: TestClient) -> None:
         """All prompt .txt files in app/prompts/ must appear in the list."""
         data = client.get("/api/prompts").json()
-        assert len(data) >= 4  # v01 + v02_terse + v03_environmental + v04_contrast
+        assert len(data) >= 7
         assert "system_prompt_v02_terse" in data
         assert "system_prompt_v03_environmental" in data
         assert "system_prompt_v04_contrast" in data
+        assert "ic_v01_undertaking" in data
+
+    def test_character_description_purpose_filters_chat_prompts(self, client: TestClient) -> None:
+        """Character Description prompt listing must exclude chat templates."""
+        data = client.get("/api/prompts?purpose=character_description").json()
+        assert "system_prompt_v01" in data
+        assert "ic_v01_undertaking" not in data
+
+    def test_chat_translation_purpose_filters_system_prompts(self, client: TestClient) -> None:
+        """Chat Translation prompt listing must exclude description prompts."""
+        data = client.get("/api/prompts?purpose=chat_translation").json()
+        assert "ic_v01_undertaking" in data
+        assert "system_prompt_v01" not in data
 
 
 class TestGetPrompt:
@@ -121,6 +134,11 @@ class TestGetPrompt:
     def test_missing_prompt_404(self, client: TestClient) -> None:
         """A non-existent prompt name must return 404."""
         resp = client.get("/api/prompts/does_not_exist")
+        assert resp.status_code == 404
+
+    def test_purpose_filtered_lookup_404s_on_wrong_group(self, client: TestClient) -> None:
+        """A prompt must not resolve through the wrong purpose filter."""
+        resp = client.get("/api/prompts/ic_v01_undertaking?purpose=character_description")
         assert resp.status_code == 404
 
 

@@ -202,21 +202,20 @@ async function randomiseChatChar(ch) {
 }
 
 /**
- * Populate the standalone IC prompt dropdown with prompt names prefixed
- * `ic_`, preserving the existing "default" placeholder option.
+ * Populate the standalone IC prompt dropdown from the chat-translation
+ * prompt group, preserving the existing "default" placeholder option.
  *
  * @returns {Promise<void>}
  */
 async function loadChatIcPromptList() {
   try {
-    const res = await fetch("/api/prompts");
+    const res = await fetch("/api/prompts?purpose=chat_translation");
     if (!res.ok) return;
 
     const names = await res.json();
-    const icNames = names.filter((name) => name.startsWith("ic_"));
     while (dom.chatPromptSelect.options.length > 1) dom.chatPromptSelect.remove(1);
 
-    for (const name of icNames) {
+    for (const name of names) {
       const option = document.createElement("option");
       option.value = name;
       option.textContent = name;
@@ -815,7 +814,9 @@ export function wireChatTranslationEvents() {
     if (!name) return;
 
     try {
-      const res = await fetch(`/api/prompts/${encodeURIComponent(name)}`);
+      const res = await fetch(
+        `/api/prompts/${encodeURIComponent(name)}?purpose=chat_translation`
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const text = await res.text();
       dom.chatSystemPrompt.value = text;

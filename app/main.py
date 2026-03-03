@@ -29,7 +29,7 @@ Endpoints
 GET  /                         → serves index.html
 GET  /api/examples             → list of available example names
 GET  /api/examples/{name}      → returns a single example JSON payload
-GET  /api/prompts              → list of available prompt names
+GET  /api/prompts              → list of available prompt names (optionally by purpose)
 GET  /api/prompts/{name}       → returns a single prompt's text content
 GET  /api/models               → returns locally available Ollama models
 POST /api/generate             → send axis payload to Ollama, return description
@@ -67,6 +67,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Literal
 
 import httpx
 from dotenv import load_dotenv
@@ -234,16 +235,23 @@ def get_example(name: str) -> dict:
 
 
 @app.get("/api/prompts", summary="List available prompt names")
-def list_prompts() -> list[str]:
+def list_prompts(
+    purpose: Literal["character_description", "chat_translation"] | None = None,
+) -> list[str]:
     """
     Return a sorted list of prompt names (without the .txt extension) that
-    are stored in app/prompts/.
+    are stored in the grouped ``app/prompts/`` tree.
 
     The frontend uses this to populate its prompt library dropdown, allowing
-    users to browse and load different system prompt variants into the
-    system prompt override textarea.
+    users to browse only the prompt family relevant to the current page.
+
+    Parameters
+    ----------
+    purpose : {"character_description", "chat_translation"} | None
+        Optional prompt-group filter. When omitted, prompt names from every
+        local prompt group are returned.
     """
-    return list_prompt_names()
+    return list_prompt_names(purpose)
 
 
 @app.get(
@@ -251,7 +259,10 @@ def list_prompts() -> list[str]:
     response_class=PlainTextResponse,
     summary="Get a named prompt text",
 )
-def get_prompt(name: str) -> str:
+def get_prompt(
+    name: str,
+    purpose: Literal["character_description", "chat_translation"] | None = None,
+) -> str:
     """
     Return the text content of a named prompt file as plain text.
 
@@ -262,12 +273,15 @@ def get_prompt(name: str) -> str:
     Parameters
     ----------
     name : Prompt stem, e.g. "system_prompt_v01".
+    purpose : {"character_description", "chat_translation"} | None
+        Optional prompt-group filter. When provided, lookup is limited to
+        that prompt family.
 
     Returns
     -------
     The raw prompt text (plain text, not JSON).
     """
-    return load_prompt(name)
+    return load_prompt(name, purpose)
 
 
 @app.get("/api/models", summary="List locally available Ollama models")
@@ -296,10 +310,10 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     Core endpoint: serialise the axis payload to JSON, attach the system
     prompt, call Ollama, and return the generated paragraph.
 
-    The system prompt is taken from the request body if provided, otherwise
-    the default prompt (app/prompts/system_prompt_v01.txt) is loaded from
-    disk.  This lets the frontend experiment with custom prompts without
-    restarting the server.
+    The system prompt is taken from the request body if provided; otherwise
+    the default Character Description prompt is loaded from
+    ``app/prompts/character_description/``. This lets the frontend
+    experiment with custom prompts without restarting the server.
 
     Parameters
     ----------
