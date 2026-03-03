@@ -179,8 +179,10 @@ export const dom = {
   // ── Page navigation ───────────────────────────────────────────────── //
   navCharDesc:          $("nav-char-desc"),
   navChatTrans:         $("nav-chat-trans"),
+  navArtifactEditor:    $("nav-artifact-editor"),
   pageCharDescription:  $("page-char-description"),
   pageChatTranslation:  $("page-chat-translation"),
+  pageArtifactEditor:   $("page-artifact-editor"),
 
   // ── Chat Translation — Character A ───────────────────────────────── //
   chatAExampleSelect:   $("chat-a-example-select"),
@@ -246,6 +248,23 @@ export const dom = {
   chatSystemPrompt:     $("chat-system-prompt"),
   chatPromptBadge:      $("chat-prompt-badge"),
   btnTranslate:         $("btn-translate"),
+
+  // ── Artifact Editor ─────────────────────────────────────────────────── //
+  artifactSource:            $("artifact-source"),
+  artifactPurpose:           $("artifact-purpose"),
+  artifactWorld:             $("artifact-world"),
+  artifactRefreshWorlds:     $("artifact-refresh-worlds"),
+  artifactSelect:            $("artifact-select"),
+  artifactBtnLoad:           $("artifact-btn-load"),
+  artifactCurrentName:       $("artifact-current-name"),
+  artifactDraftName:         $("artifact-draft-name"),
+  artifactEditor:            $("artifact-editor"),
+  artifactEditorBadge:       $("artifact-editor-badge"),
+  artifactSaveDraft:         $("artifact-save-draft"),
+  artifactSaveHint:          $("artifact-save-hint"),
+  artifactMeta:              $("artifact-meta"),
+  artifactReference:         $("artifact-reference"),
+  artifactPreview:           $("artifact-preview"),
 
   // ── Chat Translation — Output ─────────────────────────────────────── //
   chatAOutput:          $("chat-a-output"),

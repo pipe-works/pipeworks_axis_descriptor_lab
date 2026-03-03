@@ -14,10 +14,21 @@ Submodules
 - ``generate`` – generate/log request and response models.
 - ``save``     – save/import and manifest models.
 - ``analysis`` – signal-isolation and transformation-map models.
+- ``artifact`` – Artifact Editor prompt-manifest and draft models.
 - ``chat``     – chat translation, chat save, and chat import models.
 - ``mud``      – mud-server proxy request and response models.
 """
 
+from app.schema.artifact import (
+    ArtifactPlaceholder,
+    ArtifactPromptReference,
+    LocalPromptArtifactListResponse,
+    LocalPromptDraftCreateRequest,
+    LocalPromptDraftCreateResponse,
+    PromptArtifactDocument,
+    PromptArtifactSummary,
+    ServerPromptManifestResponse,
+)
 from app.schema.analysis import (
     DeltaRequest,
     DeltaResponse,
@@ -50,6 +61,8 @@ from app.schema.mud import (
 from app.schema.save import ImportResponse, ManifestFileEntry, SaveRequest, SaveResponse
 
 __all__ = [
+    "ArtifactPlaceholder",
+    "ArtifactPromptReference",
     "AxisPayload",
     "AxisValue",
     "ChatCharacterInput",
@@ -67,6 +80,9 @@ __all__ = [
     "ImportResponse",
     "IndicatorConfig",
     "LogEntry",
+    "LocalPromptArtifactListResponse",
+    "LocalPromptDraftCreateRequest",
+    "LocalPromptDraftCreateResponse",
     "ManifestFileEntry",
     "MudLoginRequest",
     "MudLoginResponse",
@@ -75,8 +91,11 @@ __all__ = [
     "MudModeResponse",
     "MudSelectWorldRequest",
     "MudSessionResponse",
+    "PromptArtifactDocument",
+    "PromptArtifactSummary",
     "SaveRequest",
     "SaveResponse",
+    "ServerPromptManifestResponse",
     "TransformationMapRequest",
     "TransformationMapResponse",
     "TransformationMapRow",

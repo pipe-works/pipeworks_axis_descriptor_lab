@@ -1,0 +1,110 @@
+"""
+Artifact Editor routes.
+
+These endpoints power the first-cut Artifact Editor page.  The current scope
+is intentionally narrow:
+
+- local prompt artifact browsing and loading
+- local draft prompt creation with create-only safety rules
+- server-backed prompt manifests derived from the mud server's canonical lab
+  endpoints
+
+The route layer stays thin and delegates all file policy and manifest shaping
+to ``app.artifact_editor``.
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException
+
+from app.artifact_editor import (
+    create_local_prompt_draft,
+    get_server_prompt_manifest,
+    list_local_prompt_artifacts,
+    load_local_prompt_artifact,
+)
+from app.mud_server_client import (
+    MudServerConnectionError,
+    MudServerSessionExpiredError,
+    get_mud_client,
+)
+from app.schema import (
+    LocalPromptArtifactListResponse,
+    LocalPromptDraftCreateRequest,
+    LocalPromptDraftCreateResponse,
+    PromptArtifactDocument,
+    ServerPromptManifestResponse,
+)
+
+router = APIRouter(tags=["artifact-editor"])
+
+
+@router.get(
+    "/api/artifacts/local/chat-prompts",
+    response_model=LocalPromptArtifactListResponse,
+    summary="List local prompt artifacts for the Artifact Editor",
+)
+def list_local_chat_prompts(
+    purpose: Literal["character_description", "chat_translation"],
+) -> LocalPromptArtifactListResponse:
+    """Return local prompt files, including drafts, for one prompt family."""
+
+    return list_local_prompt_artifacts(purpose)
+
+
+@router.get(
+    "/api/artifacts/local/chat-prompts/{name}",
+    response_model=PromptArtifactDocument,
+    summary="Load one local prompt artifact",
+)
+def get_local_chat_prompt(
+    name: str,
+    purpose: Literal["character_description", "chat_translation"],
+) -> PromptArtifactDocument:
+    """Load one prompt file together with its editor reference contract."""
+
+    return load_local_prompt_artifact(name, purpose)
+
+
+@router.post(
+    "/api/artifacts/local/chat-prompts/drafts",
+    response_model=LocalPromptDraftCreateResponse,
+    summary="Create a new local draft prompt artifact",
+)
+def create_local_chat_prompt_draft(
+    req: LocalPromptDraftCreateRequest,
+) -> LocalPromptDraftCreateResponse:
+    """Create a new draft prompt file under the local prompt tree."""
+
+    return create_local_prompt_draft(req)
+
+
+@router.get(
+    "/api/artifacts/server/chat-prompts/{world_id}",
+    response_model=ServerPromptManifestResponse,
+    summary="Get a server-backed canonical prompt manifest",
+)
+def get_server_chat_prompts(world_id: str) -> ServerPromptManifestResponse:
+    """Return canonical world prompt data for the Artifact Editor.
+
+    The first cut is read-only: the lab consumes the mud server's world prompt
+    files and contract metadata but does not write any server files.
+    """
+
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    if not client.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+
+    try:
+        return get_server_prompt_manifest(world_id, client)
+    except MudServerSessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        ) from exc
+    except MudServerConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
