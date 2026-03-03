@@ -21,6 +21,7 @@ The local-only JSON slices extend that same pattern to deterministic artifacts
 owned entirely by the lab, including:
 
 - AxisPayload JSON examples under ``app/examples``
+- normalized world policy bundle JSON files under ``app/artifacts/policy_bundles``
 - micro-indicator lexicon/config JSON files under ``app/data``
 """
 
@@ -32,7 +33,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from app.file_loaders import EXAMPLES_DIR, PROMPTS_DIR, load_prompt
 from app.mud_server_client import MudServerClient
@@ -54,9 +55,16 @@ from app.schema.artifact import (
     LocalLexiconJsonArtifactListResponse,
     LocalLexiconJsonDraftCreateRequest,
     LocalLexiconJsonDraftCreateResponse,
+    LocalPolicyBundleArtifactListResponse,
+    LocalPolicyBundleDraftCreateRequest,
+    LocalPolicyBundleDraftCreateResponse,
     LocalPromptArtifactListResponse,
     LocalPromptDraftCreateRequest,
     LocalPromptDraftCreateResponse,
+    PolicyBundleArtifactDocument,
+    PolicyBundleArtifactSummary,
+    PolicyBundleFieldInfo,
+    PolicyBundleReference,
     PromptArtifactDocument,
     PromptArtifactSummary,
     ServerPromptManifestResponse,
@@ -67,6 +75,7 @@ type LexiconKind = Literal["abstraction", "embodiment", "intensity"]
 
 _DRAFT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 DATA_DIR = Path(__file__).parent / "data"
+POLICY_BUNDLES_DIR = Path(__file__).parent / "artifacts" / "policy_bundles"
 
 
 class AbstractionLexiconPayload(BaseModel):
@@ -98,6 +107,92 @@ class IntensityLexiconPayload(BaseModel):
     scales: dict[str, list[str]]
 
 
+class PolicyThresholdRange(BaseModel):
+    """One ordinal threshold band in a normalized world policy bundle."""
+
+    label: str
+    min: float
+    max: float
+
+
+class PolicyAxisDefinition(BaseModel):
+    """Normalized per-axis metadata derived from mud-server policy files."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    group: str
+    ordering: list[str]
+    thresholds: list[PolicyThresholdRange]
+
+    @model_validator(mode="after")
+    def validate_threshold_ordering(self) -> "PolicyAxisDefinition":
+        """Ensure threshold labels align exactly with the declared ordering."""
+
+        labels = [entry.label for entry in self.thresholds]
+        if labels != self.ordering:
+            raise ValueError("threshold labels must match ordering exactly")
+        return self
+
+
+class PolicyChatAxisRule(BaseModel):
+    """Chat-resolution rule for one axis in a policy bundle."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    resolver: str
+    base_magnitude: float | None = None
+
+    @model_validator(mode="after")
+    def validate_rule(self) -> "PolicyChatAxisRule":
+        """Require base magnitude on rules that are not explicit no-ops."""
+
+        if self.resolver != "no_effect" and self.base_magnitude is None:
+            raise ValueError("base_magnitude is required unless resolver is 'no_effect'")
+        return self
+
+
+class PolicyChatRules(BaseModel):
+    """Normalized chat-resolution rules derived from resolution.yaml."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    channel_multipliers: dict[str, float]
+    min_gap_threshold: float
+    axes: dict[str, PolicyChatAxisRule]
+
+    @model_validator(mode="after")
+    def validate_channels(self) -> "PolicyChatRules":
+        """Require the canonical say/yell/whisper channel keys."""
+
+        if set(self.channel_multipliers) != {"say", "yell", "whisper"}:
+            raise ValueError("channel_multipliers must define exactly say, yell, and whisper")
+        return self
+
+
+class PolicyBundlePayload(BaseModel):
+    """Local JSON normalization of a mud-server world policy package."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    world_id: str
+    version: str
+    source: str
+    policy_hash: str | None = None
+    axes_order: list[str]
+    axes: dict[str, PolicyAxisDefinition]
+    chat_rules: PolicyChatRules
+
+    @model_validator(mode="after")
+    def validate_consistency(self) -> "PolicyBundlePayload":
+        """Enforce consistent axis coverage across the normalized bundle."""
+
+        if self.axes_order != list(self.axes.keys()):
+            raise ValueError("axes_order must match the axes object key order exactly")
+        if set(self.chat_rules.axes) != set(self.axes):
+            raise ValueError("chat_rules.axes must define exactly the same axis set as axes")
+        return self
+
+
 def _prompt_root(purpose: PromptPurpose) -> Path:
     """Return the filesystem root for one prompt family."""
 
@@ -114,6 +209,12 @@ def _data_root() -> Path:
     """Return the filesystem root for deterministic lexicon JSON files."""
 
     return DATA_DIR
+
+
+def _policy_bundle_root() -> Path:
+    """Return the filesystem root for normalized local policy bundle JSON files."""
+
+    return POLICY_BUNDLES_DIR
 
 
 def _iter_prompt_files(purpose: PromptPurpose) -> list[Path]:
@@ -168,6 +269,24 @@ def _lexicon_origin_path(path: Path) -> str:
     """Return a lexicon path relative to the data root."""
 
     return path.relative_to(_data_root()).as_posix()
+
+
+def _iter_policy_bundle_files() -> list[Path]:
+    """Return normalized policy bundle JSON files, including local drafts."""
+
+    return sorted(_policy_bundle_root().rglob("*.json"))
+
+
+def _policy_bundle_is_draft(path: Path) -> bool:
+    """Return True when the policy bundle file lives under drafts/."""
+
+    return "drafts" in path.relative_to(_policy_bundle_root()).parts
+
+
+def _policy_bundle_origin_path(path: Path) -> str:
+    """Return a policy bundle path relative to the policy bundle root."""
+
+    return path.relative_to(_policy_bundle_root()).as_posix()
 
 
 def _build_profile_summary_example(active_axes: list[str]) -> str:
@@ -475,6 +594,118 @@ def _parse_lexicon_payload(raw: str | bytes | dict) -> tuple[LexiconKind, BaseMo
     )
 
 
+def _policy_bundle_reference() -> PolicyBundleReference:
+    """Return schema/reference metadata for normalized policy bundle JSON artifacts."""
+
+    sample_bundle = {
+        "world_id": "pipeworks_web",
+        "version": "0.1.0",
+        "source": "mud_server policy package normalized to JSON",
+        "policy_hash": None,
+        "axes_order": ["physique", "wealth", "health"],
+        "axes": {
+            "physique": {
+                "group": "character",
+                "ordering": ["frail", "hunched", "skinny"],
+                "thresholds": [
+                    {"label": "frail", "min": 0.0, "max": 0.16},
+                    {"label": "hunched", "min": 0.17, "max": 0.32},
+                    {"label": "skinny", "min": 0.33, "max": 0.48},
+                ],
+            },
+            "wealth": {
+                "group": "character",
+                "ordering": ["poor", "modest", "well-kept"],
+                "thresholds": [
+                    {"label": "poor", "min": 0.0, "max": 0.19},
+                    {"label": "modest", "min": 0.2, "max": 0.39},
+                    {"label": "well-kept", "min": 0.4, "max": 0.59},
+                ],
+            },
+            "health": {
+                "group": "character",
+                "ordering": ["sickly", "limping", "weary"],
+                "thresholds": [
+                    {"label": "sickly", "min": 0.0, "max": 0.19},
+                    {"label": "limping", "min": 0.2, "max": 0.39},
+                    {"label": "weary", "min": 0.4, "max": 0.59},
+                ],
+            },
+        },
+        "chat_rules": {
+            "channel_multipliers": {"say": 1.0, "yell": 1.5, "whisper": 0.5},
+            "min_gap_threshold": 0.05,
+            "axes": {
+                "physique": {"resolver": "no_effect"},
+                "wealth": {"resolver": "no_effect"},
+                "health": {"resolver": "shared_drain", "base_magnitude": 0.01},
+            },
+        },
+    }
+    return PolicyBundleReference(
+        fields=[
+            PolicyBundleFieldInfo(
+                name="world_id",
+                type="string",
+                description="World identifier this normalized policy bundle targets.",
+            ),
+            PolicyBundleFieldInfo(
+                name="version",
+                type="string",
+                description="Policy package version mirrored from the canonical mud-server files.",
+            ),
+            PolicyBundleFieldInfo(
+                name="source",
+                type="string",
+                description="Provenance note describing how the bundle was derived.",
+            ),
+            PolicyBundleFieldInfo(
+                name="policy_hash",
+                type="string|null",
+                description="Optional canonical mud-server policy hash, when known.",
+            ),
+            PolicyBundleFieldInfo(
+                name="axes_order",
+                type="string[]",
+                description="Canonical axis order. Must match the axes object key order exactly.",
+            ),
+            PolicyBundleFieldInfo(
+                name="axes",
+                type="object",
+                description="Per-axis group, ordinal ordering, and threshold ranges normalized from axes.yaml and thresholds.yaml.",
+            ),
+            PolicyBundleFieldInfo(
+                name="chat_rules",
+                type="object",
+                description="Chat interaction rules normalized from resolution.yaml.",
+            ),
+        ],
+        sample_json=json.dumps(sample_bundle, ensure_ascii=False, indent=2),
+        notes=[
+            "This is a local JSON normalization of the mud-server policy package, not a replacement for the canonical YAML files.",
+            "Draft saves are validated for axis ordering, threshold ordering, and chat-rule axis coverage before they are written.",
+            "Local drafts are stored under app/artifacts/policy_bundles/drafts and never overwrite shipped starter bundles.",
+        ],
+    )
+
+
+def _parse_policy_bundle_payload(raw: str | bytes | dict) -> PolicyBundlePayload:
+    """Validate one normalized policy bundle JSON payload."""
+
+    if isinstance(raw, (str, bytes)):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc.msg}") from exc
+    else:
+        parsed = raw
+
+    try:
+        return PolicyBundlePayload.model_validate(parsed)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc.errors()[0]["msg"])) from exc
+
+
 def build_prompt_reference(
     purpose: PromptPurpose,
     *,
@@ -556,6 +787,28 @@ def list_local_lexicon_json_artifacts() -> LocalLexiconJsonArtifactListResponse:
     )
 
 
+def list_local_policy_bundle_artifacts() -> LocalPolicyBundleArtifactListResponse:
+    """List shipped and draft normalized policy bundle JSON files."""
+
+    bundles: list[PolicyBundleArtifactSummary] = []
+    for path in _iter_policy_bundle_files():
+        payload = _parse_policy_bundle_payload(path.read_text(encoding="utf-8"))
+        bundles.append(
+            PolicyBundleArtifactSummary(
+                name=path.stem,
+                is_draft=_policy_bundle_is_draft(path),
+                origin_path=_policy_bundle_origin_path(path),
+                world_id=payload.world_id,
+                version=payload.version,
+            )
+        )
+
+    return LocalPolicyBundleArtifactListResponse(
+        bundles=bundles,
+        reference=_policy_bundle_reference(),
+    )
+
+
 def load_local_prompt_artifact(name: str, purpose: PromptPurpose) -> PromptArtifactDocument:
     """Load one local prompt file together with its editor contract."""
 
@@ -624,6 +877,31 @@ def load_local_lexicon_json_artifact(name: str) -> LexiconJsonArtifactDocument:
         origin_path=_lexicon_origin_path(target),
         version=str(payload.model_dump()["version"]),
         reference=_lexicon_reference(kind),
+    )
+
+
+def load_local_policy_bundle_artifact(name: str) -> PolicyBundleArtifactDocument:
+    """Load one normalized policy bundle JSON artifact and its reference contract."""
+
+    target: Path | None = None
+    for path in _iter_policy_bundle_files():
+        if path.stem == name:
+            target = path
+            break
+
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Policy bundle artifact '{name}' not found.")
+
+    payload = _parse_policy_bundle_payload(target.read_text(encoding="utf-8"))
+    normalized = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
+    return PolicyBundleArtifactDocument(
+        name=name,
+        content=normalized,
+        is_draft=_policy_bundle_is_draft(target),
+        origin_path=_policy_bundle_origin_path(target),
+        world_id=payload.world_id,
+        version=payload.version,
+        reference=_policy_bundle_reference(),
     )
 
 
@@ -744,6 +1022,44 @@ def create_local_lexicon_json_draft(
         artifact_kind=kind,
         origin_path=_lexicon_origin_path(target),
         version=str(payload.model_dump()["version"]),
+        based_on_name=req.based_on_name,
+    )
+
+
+def create_local_policy_bundle_draft(
+    req: LocalPolicyBundleDraftCreateRequest,
+) -> LocalPolicyBundleDraftCreateResponse:
+    """Create a new validated normalized policy bundle JSON draft."""
+
+    draft_name = req.draft_name.strip()
+    if not _DRAFT_NAME_RE.fullmatch(draft_name):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Draft names must use lowercase letters, numbers, underscores, or hyphens "
+                "and must not include a file extension."
+            ),
+        )
+
+    existing_names = {path.stem for path in _iter_policy_bundle_files()}
+    if draft_name in existing_names:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A policy bundle artifact named '{draft_name}' already exists.",
+        )
+
+    payload = _parse_policy_bundle_payload(req.content)
+    drafts_dir = _policy_bundle_root() / "drafts"
+    drafts_dir.mkdir(parents=True, exist_ok=True)
+    target = drafts_dir / f"{draft_name}.json"
+    normalized = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
+    target.write_text(normalized + "\n", encoding="utf-8")
+
+    return LocalPolicyBundleDraftCreateResponse(
+        name=draft_name,
+        origin_path=_policy_bundle_origin_path(target),
+        world_id=payload.world_id,
+        version=payload.version,
         based_on_name=req.based_on_name,
     )
 

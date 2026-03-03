@@ -1,14 +1,18 @@
 """
 Schemas for the Artifact Editor page.
 
-These models describe the prompt-artifact subset of the planned Artifact
-Editor workflow.  The first implementation focuses on prompt templates only:
+These models describe the Artifact Editor workflow across both prompt and
+deterministic JSON artifacts:
 
 - local prompt files stored in ``app/prompts/*`` plus draft files under
   ``app/prompts/*/drafts``
 - server-backed prompt manifests derived from the mud server's canonical world
   prompt endpoints
-- create-only local draft saves that avoid overwriting shipped prompt files
+- local AxisPayload JSON artifacts from ``app/examples``
+- local normalized policy bundle JSON artifacts from
+  ``app/artifacts/policy_bundles``
+- local deterministic lexicon JSON artifacts from ``app/data``
+- create-only local draft saves that avoid overwriting shipped files
 
 The models are intentionally explicit so the frontend receives structured
 metadata rather than reverse-engineering file paths and placeholder contracts
@@ -413,4 +417,107 @@ class LocalLexiconJsonDraftCreateResponse(BaseModel):
     based_on_name: str | None = Field(
         default=None,
         description="Source lexicon name copied into the request, if any.",
+    )
+
+
+class PolicyBundleFieldInfo(BaseModel):
+    """One documented field in a normalized world policy bundle JSON artifact."""
+
+    name: str = Field(..., description="Top-level field name.")
+    type: str = Field(..., description="Human-readable type description.")
+    description: str = Field(..., description="Short explanation of the field's role.")
+
+
+class PolicyBundleReference(BaseModel):
+    """Reference metadata for normalized world policy bundle JSON artifacts."""
+
+    fields: list[PolicyBundleFieldInfo] = Field(
+        default_factory=list,
+        description="Documented top-level fields in the policy bundle contract.",
+    )
+    sample_json: str = Field(
+        ...,
+        description="Canonical pretty-printed example JSON shown in the editor sidebar.",
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Constraints and invariants for policy bundle JSON files.",
+    )
+
+
+class PolicyBundleArtifactSummary(BaseModel):
+    """Metadata for one selectable normalized world policy bundle JSON artifact."""
+
+    name: str = Field(..., description="Artifact stem without the .json extension.")
+    is_draft: bool = Field(
+        ...,
+        description="True when the file lives under a drafts/ directory rather than the shipped policy bundle root.",
+    )
+    origin_path: str = Field(
+        ...,
+        description="Path relative to the policy bundle root.",
+    )
+    world_id: str = Field(..., description="World identifier declared by the policy bundle.")
+    version: str = Field(..., description="Version declared by the policy bundle.")
+
+
+class LocalPolicyBundleArtifactListResponse(BaseModel):
+    """Listing response for local normalized world policy bundle JSON artifacts."""
+
+    bundles: list[PolicyBundleArtifactSummary] = Field(
+        default_factory=list,
+        description="Selectable policy bundle JSON files from the policy bundle tree.",
+    )
+    reference: PolicyBundleReference = Field(
+        ...,
+        description="Reference contract for policy bundle JSON editing.",
+    )
+
+
+class PolicyBundleArtifactDocument(BaseModel):
+    """Full document payload for one normalized world policy bundle JSON artifact."""
+
+    name: str = Field(..., description="Artifact stem without extension.")
+    content: str = Field(..., description="Pretty-printed raw JSON text.")
+    is_draft: bool = Field(..., description="True when stored under policy bundle drafts/.")
+    origin_path: str = Field(..., description="Path relative to the policy bundle root.")
+    world_id: str = Field(..., description="World identifier declared by the policy bundle.")
+    version: str = Field(..., description="Version declared by the policy bundle.")
+    reference: PolicyBundleReference = Field(
+        ...,
+        description="Reference contract to use while editing this policy bundle.",
+    )
+
+
+class LocalPolicyBundleDraftCreateRequest(BaseModel):
+    """Create-only request for saving a new local normalized policy bundle JSON draft."""
+
+    draft_name: str = Field(
+        ...,
+        min_length=1,
+        description="Filename stem for the new draft, without the .json extension.",
+    )
+    content: str = Field(
+        ...,
+        description="Raw JSON text to validate and save.",
+    )
+    based_on_name: str | None = Field(
+        default=None,
+        description="Optional source policy bundle name this draft was derived from.",
+    )
+
+
+class LocalPolicyBundleDraftCreateResponse(BaseModel):
+    """Response returned after creating a local normalized policy bundle JSON draft."""
+
+    name: str = Field(..., description="Created draft stem without extension.")
+    origin_path: str = Field(
+        ...,
+        description="Relative path of the newly created draft JSON file.",
+    )
+    world_id: str = Field(..., description="World identifier declared by the saved policy bundle.")
+    version: str = Field(..., description="Version declared by the saved policy bundle.")
+    based_on_name: str | None = Field(
+        default=None,
+        description="Source policy bundle name copied into the request, if any.",
     )

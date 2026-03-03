@@ -273,6 +273,94 @@ class TestLocalLexiconArtifacts:
         assert resp.status_code == 409
 
 
+class TestLocalPolicyBundleArtifacts:
+    """Local normalized policy bundle JSON artifact listing, loading, and draft creation."""
+
+    def test_lists_local_policy_bundle_artifacts(self, client: TestClient) -> None:
+        resp = client.get("/api/artifacts/local/policy-bundles")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert any(
+            bundle["name"] == "pipeworks_web_policy_bundle_v0_1" for bundle in data["bundles"]
+        )
+        assert any(field["name"] == "chat_rules" for field in data["reference"]["fields"])
+
+    def test_loads_local_policy_bundle_document(self, client: TestClient) -> None:
+        resp = client.get("/api/artifacts/local/policy-bundles/pipeworks_web_policy_bundle_v0_1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "pipeworks_web_policy_bundle_v0_1"
+        assert data["world_id"] == "pipeworks_web"
+        assert data["version"] == "0.1.0"
+        assert '"chat_rules"' in data["content"]
+        assert data["origin_path"] == "pipeworks_web_policy_bundle_v0_1.json"
+
+    def test_creates_local_policy_bundle_draft_in_drafts_directory(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        bundle_root = tmp_path / "policy_bundles"
+        bundle_root.mkdir(parents=True)
+        (bundle_root / "pipeworks_web_policy_bundle_v0_1.json").write_text(
+            '{"world_id":"pipeworks_web","version":"0.1.0","source":"test","policy_hash":null,"axes_order":["health"],"axes":{"health":{"group":"character","ordering":["weary"],"thresholds":[{"label":"weary","min":0.4,"max":0.59}]}},"chat_rules":{"channel_multipliers":{"say":1.0,"yell":1.5,"whisper":0.5},"min_gap_threshold":0.05,"axes":{"health":{"resolver":"shared_drain","base_magnitude":0.01}}}}',
+            encoding="utf-8",
+        )
+
+        with patch("app.artifact_editor.POLICY_BUNDLES_DIR", bundle_root):
+            resp = client.post(
+                "/api/artifacts/local/policy-bundles/drafts",
+                json={
+                    "draft_name": "pipeworks_web_policy_bundle_alt",
+                    "content": '{"world_id":"pipeworks_web","version":"0.2.0","source":"test","policy_hash":null,"axes_order":["health"],"axes":{"health":{"group":"character","ordering":["weary"],"thresholds":[{"label":"weary","min":0.4,"max":0.59}]}},"chat_rules":{"channel_multipliers":{"say":1.0,"yell":1.5,"whisper":0.5},"min_gap_threshold":0.05,"axes":{"health":{"resolver":"shared_drain","base_magnitude":0.02}}}}',
+                    "based_on_name": "pipeworks_web_policy_bundle_v0_1",
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "pipeworks_web_policy_bundle_alt"
+        assert data["origin_path"] == "drafts/pipeworks_web_policy_bundle_alt.json"
+        assert data["world_id"] == "pipeworks_web"
+        assert data["version"] == "0.2.0"
+        assert (bundle_root / "drafts" / "pipeworks_web_policy_bundle_alt.json").exists()
+
+    def test_rejects_invalid_policy_bundle_contract(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        bundle_root = tmp_path / "policy_bundles"
+        bundle_root.mkdir(parents=True)
+
+        with patch("app.artifact_editor.POLICY_BUNDLES_DIR", bundle_root):
+            resp = client.post(
+                "/api/artifacts/local/policy-bundles/drafts",
+                json={
+                    "draft_name": "bad_policy_bundle",
+                    "content": '{"world_id":"pipeworks_web","version":"0.1.0","source":"test","axes_order":["health"],"axes":{"health":{"group":"character","ordering":["weary"],"thresholds":[{"label":"scarred","min":0.6,"max":0.79}]}},"chat_rules":{"channel_multipliers":{"say":1.0,"yell":1.5,"whisper":0.5},"min_gap_threshold":0.05,"axes":{"health":{"resolver":"shared_drain","base_magnitude":0.01}}}}',
+                },
+            )
+
+        assert resp.status_code == 400
+        assert "threshold labels must match ordering exactly" in resp.json()["detail"]
+
+    def test_rejects_policy_bundle_name_collision(self, client: TestClient, tmp_path: Path) -> None:
+        bundle_root = tmp_path / "policy_bundles"
+        bundle_root.mkdir(parents=True)
+        (bundle_root / "pipeworks_web_policy_bundle_v0_1.json").write_text(
+            '{"world_id":"pipeworks_web","version":"0.1.0","source":"test","policy_hash":null,"axes_order":["health"],"axes":{"health":{"group":"character","ordering":["weary"],"thresholds":[{"label":"weary","min":0.4,"max":0.59}]}},"chat_rules":{"channel_multipliers":{"say":1.0,"yell":1.5,"whisper":0.5},"min_gap_threshold":0.05,"axes":{"health":{"resolver":"shared_drain","base_magnitude":0.01}}}}',
+            encoding="utf-8",
+        )
+
+        with patch("app.artifact_editor.POLICY_BUNDLES_DIR", bundle_root):
+            resp = client.post(
+                "/api/artifacts/local/policy-bundles/drafts",
+                json={
+                    "draft_name": "pipeworks_web_policy_bundle_v0_1",
+                    "content": '{"world_id":"pipeworks_web","version":"0.2.0","source":"test","policy_hash":null,"axes_order":["health"],"axes":{"health":{"group":"character","ordering":["weary"],"thresholds":[{"label":"weary","min":0.4,"max":0.59}]}},"chat_rules":{"channel_multipliers":{"say":1.0,"yell":1.5,"whisper":0.5},"min_gap_threshold":0.05,"axes":{"health":{"resolver":"shared_drain","base_magnitude":0.02}}}}',
+                },
+            )
+
+        assert resp.status_code == 409
+
+
 class TestServerPromptManifest:
     """Server-backed prompt-manifest normalization."""
 

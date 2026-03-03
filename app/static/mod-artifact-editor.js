@@ -9,6 +9,7 @@
  * - browse server-backed canonical world prompts via the lab backend
  * - browse local Axis Payload JSON files from app/examples plus drafts
  * - browse local micro-indicator lexicon JSON files from app/data plus drafts
+ * - browse local normalized world policy bundle JSON files plus drafts
  * - edit raw text in a single textarea
  * - inspect placeholder/schema reference metadata
  * - create new local draft files without overwriting shipped artifacts
@@ -39,6 +40,10 @@ function isPromptArtifact() {
 
 function isAxisPayloadArtifact() {
   return currentArtifactType() === "axis_payload";
+}
+
+function isPolicyBundleArtifact() {
+  return currentArtifactType() === "policy_bundle";
 }
 
 function isServerSource() {
@@ -120,18 +125,14 @@ function renderAxisPayloadReference(reference) {
     `Sample JSON\n${reference.sample_json}`;
 }
 
-function renderLexiconReference(reference) {
+function renderStructuredJsonReference(reference, headingLabel = "Fields") {
   const fieldLines = reference.fields.map(
     (row) => `${row.name} (${row.type})  ${row.description}`
   );
   const noteLines = reference.notes.length ? reference.notes.map((note) => `- ${note}`) : ["- none"];
-  const heading =
-    reference.artifact_kind === "catalog"
-      ? "Contracts"
-      : `Contract: ${reference.artifact_kind}`;
 
   dom.artifactReference.textContent =
-    `${heading}\n${fieldLines.join("\n")}\n\n` +
+    `${headingLabel}\n${fieldLines.join("\n")}\n\n` +
     `Notes\n${noteLines.join("\n")}\n\n` +
     `Sample JSON\n${reference.sample_json}`;
 }
@@ -152,7 +153,16 @@ function renderReferencePanel(reference) {
     return;
   }
 
-  renderLexiconReference(reference);
+  if (isPolicyBundleArtifact()) {
+    renderStructuredJsonReference(reference, "Policy Bundle");
+    return;
+  }
+
+  const heading =
+    reference.artifact_kind === "catalog"
+      ? "Contracts"
+      : `Contract: ${reference.artifact_kind}`;
+  renderStructuredJsonReference(reference, heading);
 }
 
 function renderPromptPreview(reference, content, unknownPlaceholders) {
@@ -387,6 +397,23 @@ async function loadLocalLexiconArtifacts() {
   validateEditor();
 }
 
+async function loadLocalPolicyBundleArtifacts() {
+  const res = await fetch("/api/artifacts/local/policy-bundles");
+  if (!res.ok) {
+    throw new Error(`local policy bundle listing failed (${res.status})`);
+  }
+
+  artifactState.localListing = await res.json();
+  artifactState.serverManifest = null;
+  artifactState.currentDocument = null;
+  renderArtifactOptions(artifactState.localListing.bundles);
+  renderReferencePanel(artifactState.localListing.reference);
+  renderMetaPanel("Local normalized policy bundle JSON artifacts\nmode: create-only drafts");
+  dom.artifactCurrentName.value = "";
+  dom.artifactEditor.value = "";
+  validateEditor();
+}
+
 async function loadServerArtifacts() {
   const worldId = dom.artifactWorld.value;
   if (!worldId) {
@@ -444,6 +471,9 @@ function syncControlState() {
   } else if (isAxisPayloadArtifact()) {
     dom.artifactSaveHint.textContent =
       "Axis Payload JSON is local-only for now. Drafts are validated and saved under app/examples/drafts without overwriting shipped examples.";
+  } else if (isPolicyBundleArtifact()) {
+    dom.artifactSaveHint.textContent =
+      "Policy Bundle JSON is local-only for now. Drafts are validated and saved under app/artifacts/policy_bundles/drafts without overwriting shipped starter bundles.";
   } else {
     dom.artifactSaveHint.textContent =
       "Lexicon JSON is local-only for now. Drafts are validated and saved under app/data/drafts without overwriting shipped canonical files.";
@@ -458,6 +488,9 @@ async function refreshArtifactSource() {
       if (isAxisPayloadArtifact()) {
         await loadLocalAxisPayloadArtifacts();
         setStatus("Artifact Editor — loaded local Axis Payload JSON artifacts.");
+      } else if (isPolicyBundleArtifact()) {
+        await loadLocalPolicyBundleArtifacts();
+        setStatus("Artifact Editor — loaded local policy bundle JSON artifacts.");
       } else {
         await loadLocalLexiconArtifacts();
         setStatus("Artifact Editor — loaded local lexicon JSON artifacts.");
@@ -526,7 +559,9 @@ async function loadSelectedArtifact() {
       )}`
     : isAxisPayloadArtifact()
       ? `/api/artifacts/local/axis-payloads/${encodeURIComponent(selectedName)}`
-      : `/api/artifacts/local/lexicons/${encodeURIComponent(selectedName)}`;
+      : isPolicyBundleArtifact()
+        ? `/api/artifacts/local/policy-bundles/${encodeURIComponent(selectedName)}`
+        : `/api/artifacts/local/lexicons/${encodeURIComponent(selectedName)}`;
 
   const res = await fetch(endpoint);
   if (!res.ok) {
@@ -539,7 +574,9 @@ async function loadSelectedArtifact() {
     ? "Local prompt artifact"
     : isAxisPayloadArtifact()
       ? "Local AxisPayload JSON"
-      : "Local lexicon JSON";
+      : isPolicyBundleArtifact()
+        ? "Local policy bundle JSON"
+        : "Local lexicon JSON";
   renderLoadedDocument(doc, metaPrefix);
   setStatus(`Artifact Editor — loaded local artifact '${selectedName}'.`);
 }
@@ -560,7 +597,9 @@ async function saveDraft() {
     ? "/api/artifacts/local/chat-prompts/drafts"
     : isAxisPayloadArtifact()
       ? "/api/artifacts/local/axis-payloads/drafts"
-      : "/api/artifacts/local/lexicons/drafts";
+      : isPolicyBundleArtifact()
+        ? "/api/artifacts/local/policy-bundles/drafts"
+        : "/api/artifacts/local/lexicons/drafts";
   const body = isPromptArtifact()
     ? {
         purpose: isServerSource() ? "chat_translation" : currentPurpose(),
