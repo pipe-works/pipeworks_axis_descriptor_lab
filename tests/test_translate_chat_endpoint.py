@@ -303,16 +303,16 @@ class TestActiveAxesFiltering:
         assert resp.status_code == 200
         assert len(captured_prompts) == 1
         sp = captured_prompts[0]
-        # profile_summary lines have the format "  axis_name: label (score: N.NNN)"
-        # 'health' is active → its profile line must appear in the system prompt
-        assert "health: weary" in sp
+        # The standalone path mirrors the mud server's summary format.
+        assert "  Character: Character A" in sp
+        assert "  Health: weary (0.30)" in sp
         # 'age' is inactive → its profile line must NOT appear in the profile summary.
         # We check for the score-bearing form because the bare word "age" may appear
         # anywhere in the static template text.
-        assert "age: old (score:" not in sp
+        assert "  Age: old (0.75)" not in sp
 
     def test_empty_active_axes_produces_no_profile(self, client: TestClient) -> None:
-        """active_axes=[] disables all axes; profile_summary says no axes active."""
+        """active_axes=[] disables all axes; only the character-name line remains."""
         req = {
             "character_a": {
                 "axes": {
@@ -338,7 +338,8 @@ class TestActiveAxesFiltering:
             client.post("/api/translate_chat", json=req)
 
         assert len(captured_prompts) == 1
-        assert "(no axes active)" in captured_prompts[0]
+        assert "  Character: Character A" in captured_prompts[0]
+        assert "Health:" not in captured_prompts[0]
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +354,7 @@ class TestSystemPromptHandling:
         """When system_prompt is provided inline, it is used as the template."""
         req = {
             **base_request,
-            "system_prompt": "Translate the user's OOC message using this profile.",
+            "system_prompt": "Profile:\n{{profile_summary}}\nOOC:\n{{ooc_message}}",
         }
 
         captured: list[tuple[str, str]] = []
@@ -366,9 +367,9 @@ class TestSystemPromptHandling:
             client.post("/api/translate_chat", json=req)
 
         assert len(captured) == 1
-        # Inline prompt text is passed through unchanged; the OOC input stays in
-        # the user turn rather than being injected into the system prompt.
-        assert captured[0][0] == req["system_prompt"]
+        assert "  Character: Character A" in captured[0][0]
+        assert "  Health: weary (0.30)" in captured[0][0]
+        assert "OOC:\nI look around the room." in captured[0][0]
         assert captured[0][1] == base_request["character_a"]["ooc_message"]
 
     def test_prompt_name_404_raises_error(self, client: TestClient, base_request: dict) -> None:
@@ -378,13 +379,41 @@ class TestSystemPromptHandling:
             resp = client.post("/api/translate_chat", json=req)
         assert resp.status_code == 404
 
-    def test_prompt_name_ic_v01_loads(self, client: TestClient, base_request: dict) -> None:
-        """prompt_name='ic_v01_undertaking' loads and substitutes placeholders."""
-        req = {**base_request, "prompt_name": "ic_v01_undertaking"}
-        with _patch_renderer("ok") as mock_render:
+    def test_prompt_name_pipeworks_web_loads(self, client: TestClient, base_request: dict) -> None:
+        """The canonical pipeworks_web prompt loads and renders mud-style context."""
+        req = {**base_request, "prompt_name": "pipeworks_web_ic_prompt"}
+        captured: list[tuple[str, str]] = []
+
+        def capture_render(self_inner, system_prompt: str, user_message: str):
+            captured.append((system_prompt, user_message))
+            return "ok"
+
+        with patch("app.chat_renderer.ChatRenderer.render", capture_render):
             resp = client.post("/api/translate_chat", json=req)
         assert resp.status_code == 200
-        mock_render.assert_called_once()
+        assert len(captured) == 1
+        assert 'A "destitute" character' in captured[0][0]
+        assert "  Character: Character A" in captured[0][0]
+        assert captured[0][1] == base_request["character_a"]["ooc_message"]
+
+    def test_prompt_name_daily_undertaking_renders_ooc_placeholder(
+        self, client: TestClient, base_request: dict
+    ) -> None:
+        """The daily Undertaking prompt can embed ``{{ooc_message}}`` like the mud server."""
+        req = {**base_request, "prompt_name": "daily_undertaking_ic_prompt"}
+        captured: list[tuple[str, str]] = []
+
+        def capture_render(self_inner, system_prompt: str, user_message: str):
+            captured.append((system_prompt, user_message))
+            return "ok"
+
+        with patch("app.chat_renderer.ChatRenderer.render", capture_render):
+            resp = client.post("/api/translate_chat", json=req)
+
+        assert resp.status_code == 200
+        assert len(captured) == 1
+        assert "OOC MESSAGE TO TRANSLATE:\nI look around the room." in captured[0][0]
+        assert captured[0][1] == base_request["character_a"]["ooc_message"]
 
 
 # ---------------------------------------------------------------------------

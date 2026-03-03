@@ -122,11 +122,11 @@ class TestLoadPrompt:
 
     def test_respects_purpose_filter(self) -> None:
         """Purpose-filtered prompt lookup must only search that prompt group."""
-        text = load_prompt("ic_v01_undertaking", purpose="chat_translation")
+        text = load_prompt("pipeworks_web_ic_prompt", purpose="chat_translation")
         assert "{{profile_summary}}" in text
 
         with pytest.raises(HTTPException) as exc_info:
-            load_prompt("ic_v01_undertaking", purpose="character_description")
+            load_prompt("pipeworks_web_ic_prompt", purpose="character_description")
         assert exc_info.value.status_code == 404
 
 
@@ -161,24 +161,23 @@ class TestListPromptNames:
     def test_includes_variant_prompts(self) -> None:
         """All known prompt variants must appear."""
         names = list_prompt_names()
-        assert len(names) >= 7
+        assert len(names) >= 6
         assert "system_prompt_v02_terse" in names
         assert "system_prompt_v03_environmental" in names
         assert "system_prompt_v04_contrast" in names
-        assert "ic_v01_undertaking" in names
-        assert "ic_v02_generic" in names
-        assert "ic_v03_development" in names
+        assert "pipeworks_web_ic_prompt" in names
+        assert "daily_undertaking_ic_prompt" in names
 
     def test_filters_character_description_prompts(self) -> None:
         """Character Description listing must exclude chat translation prompts."""
         names = list_prompt_names("character_description")
         assert "system_prompt_v01" in names
         assert "system_prompt_v04_contrast" in names
-        assert "ic_v01_undertaking" not in names
+        assert "pipeworks_web_ic_prompt" not in names
 
     def test_filters_chat_translation_prompts(self) -> None:
         """Chat Translation listing must exclude character description prompts."""
         names = list_prompt_names("chat_translation")
-        assert "ic_v01_undertaking" in names
-        assert "ic_v03_development" in names
+        assert "pipeworks_web_ic_prompt" in names
+        assert "daily_undertaking_ic_prompt" in names
         assert "system_prompt_v01" not in names

@@ -64,7 +64,7 @@ EXAMPLES_DIR = _HERE / "examples"
 type PromptPurpose = Literal["character_description", "chat_translation"]
 
 DEFAULT_CHARACTER_DESCRIPTION_PROMPT = "system_prompt_v01"
-DEFAULT_CHAT_TRANSLATION_PROMPT = "ic_v01_undertaking"
+DEFAULT_CHAT_TRANSLATION_PROMPT = "pipeworks_web_ic_prompt"
 
 
 def _prompt_dirs() -> dict[PromptPurpose, Path]:
@@ -187,8 +187,8 @@ def load_chat_default_prompt() -> str:
     Read the default Chat Translation prompt from disk.
 
     Returns the text of the default standalone chat prompt,
-    ``app/prompts/chat_translation/ic_v01_undertaking.txt``, stripped of
-    leading and trailing whitespace.
+    ``app/prompts/chat_translation/pipeworks_web_ic_prompt.txt``, stripped
+    of leading and trailing whitespace.
 
     Returns
     -------
