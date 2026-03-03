@@ -30,7 +30,7 @@
 
 .app-grid {
   display: grid;
-  grid-template-columns: 320px 470px 1fr 380px;
+  grid-template-columns: 430px minmax(540px, 1fr) 380px;
   gap: 1px;                          /* gap becomes the border between panels */
   background: var(--col-border);     /* the border colour shows through the gap */
 
@@ -50,15 +50,26 @@
   background: var(--col-bg);
 }
 
-/* Let the JSON textarea fill all remaining vertical space in the left panel */
-.panel--left .code-editor {
-  flex: 1 1 0;
-  min-height: 8rem;
+/* The combined control column needs its slider list to absorb spare height
+   while the payload/system-prompt editors retain explicit sizes. */
+.panel--controls .slider-panel {
+  flex: 1 1 auto;
+  min-height: 14rem;
 }
 
-/* ─── Axes panel: dedicated slider column ──────────────────────────────── */
-.panel--axes {
-  background: var(--col-surface);
+.axis-toolbar {
+  align-items: center;
+  row-gap: var(--sp-2);
+}
+
+.axis-toolbar__actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-left: auto;
+}
+
+.code-editor--axis-json {
+  min-height: 18rem;
 }
 
 /* ─── Centre panel: default surface ───────────────────────────────────── */
@@ -885,10 +896,10 @@
   overflow-y: auto;
 }
 
-/* Cancel the .panel--left .code-editor { flex: 1 1 0; min-height: 8rem } rule
-   for chat panels.  Both properties must be reset — flex prevents growth
-   competition with the slider panel; min-height prevents Character A's OOC
-   textarea from being forced taller than Character B's. */
+/* Keep chat-panel textareas content-sized rather than allowing them to
+   compete with the slider panel for vertical space.  flex: none prevents
+   growth competition, while min-height: unset avoids forcing Character A's
+   OOC textarea taller than Character B's equivalent panel. */
 .chat-char-panel .code-editor {
   flex: none;
   min-height: unset;

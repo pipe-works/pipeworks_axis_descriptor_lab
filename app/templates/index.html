@@ -12,16 +12,17 @@
   entry point: mod-init.js).
   All visual styles live in static/styles.css.
 
-  Layout (four-column + footer)
+  Layout (three-column + footer)
   ───────────────────────────────
   ┌──────────────────────────────────────────────────────────────────────────┐
   │ header                                                                   │
-  ├────────────────┬──────────────┬───────────────────┬─────────────────────┤
-  │ LEFT PANEL     │ AXES PANEL   │ CENTRE PANEL       │ RIGHT PANEL         │
-  │ JSON editor    │ Axis sliders │ Model settings     │ Output              │
-  │ Example loader │ Randomise    │ Generate button    │ Δ word-level diff   │
-  │ System prompt  │ Label mode   │ A/B comparison     │                     │
-  ├────────────────┴──────────────┴───────────────────┴─────────────────────┤
+  ├──────────────────────────┬───────────────────┬──────────────────────────┤
+  │ LEFT PANEL               │ CENTRE PANEL      │ RIGHT PANEL              │
+  │ Payload selector         │ Model settings    │ Output                   │
+  │ Axis sliders             │ Generate button   │ Δ word-level diff        │
+  │ Axis JSON (collapsed)    │ A/B comparison    │ Signal isolation         │
+  │ System prompt override   │                   │                          │
+  ├──────────────────────────┴───────────────────┴──────────────────────────┤
   │ status bar                                                               │
   └──────────────────────────────────────────────────────────────────────────┘
 -->
@@ -66,8 +67,8 @@
 <div id="page-char-description">
 <main class="app-grid">
 
-  <!-- ── LEFT PANEL: JSON editor + example selector + system prompt ───────── -->
-  <section class="panel panel--left" aria-label="JSON Editor">
+  <!-- ── LEFT PANEL: Payload selector + axes + editable payload tools ─────── -->
+  <section class="panel panel--left panel--controls" aria-label="Payload and axis controls">
     <h2 class="panel__heading">Payload</h2>
 
     <!-- Example selector – lets the user pick from pre-built axis payloads.
@@ -86,31 +87,73 @@
       </button>
     </div>
 
-    <!-- Raw JSON textarea (source of truth).
-         The badge shows OK/ERR to indicate parse status.
-         data-tooltip on the badge explains its meaning. -->
-    <label for="json-textarea" class="control-label" style="margin-top:0.75rem;">
-      Axis JSON <span class="badge" id="json-status-badge"
-                      data-tooltip="Indicates whether the JSON below is valid. OK = well-formed JSON that can be sent to the LLM. ERR = syntax error that must be fixed before generating."
-                      >OK</span>
-    </label>
-    <!-- The JSON textarea is the canonical source of truth for the payload.
-         Edits here are debounce-parsed and reflected in the sliders.
-         data-tooltip explains the role of this editor. -->
-    <textarea
-      id="json-textarea"
-      class="code-editor"
-      spellcheck="false"
-      autocomplete="off"
-      aria-label="Axis payload JSON"
-      placeholder='{"axes": { ... }, "policy_hash": "...", "seed": 0, "world_id": "pipeworks_web"}'
-      data-tooltip="The raw AxisPayload JSON. This is the single source of truth — edits here update the sliders, and slider changes write back here. Must contain an 'axes' object with label + score pairs, plus policy_hash, seed, and world_id."
-    ></textarea>
+    <hr class="divider" />
+
+    <h2 class="panel__heading">Axes</h2>
+
+    <!-- Dynamic slider area – populated by mod-sync.js buildSlidersFromJson() -->
+    <div id="slider-panel" class="slider-panel">
+      <p class="placeholder-text">Load an example or paste JSON to see sliders.</p>
+    </div>
+
+    <!-- Label mode toggle – controls whether axis labels are manually
+         editable or automatically computed by the server's policy table.
+         When Auto is ON, label inputs are disabled and the server maps
+         score ranges to canonical label strings (e.g. age 0.25 → "young"). -->
+    <div class="control-row axis-toolbar">
+      <label class="control-label">Label mode</label>
+      <label class="toggle-label"
+             data-tooltip="When enabled, axis labels are automatically assigned by the server's policy table based on each axis score. Label inputs become read-only. When disabled, you can manually type any label for each axis."
+             >
+        <input type="checkbox" id="auto-label-toggle" role="switch" />
+        <span class="toggle-text">Auto (policy)</span>
+      </label>
+      <div class="axis-toolbar__actions">
+        <!-- Randomise button – assigns cryptographically random scores
+             (0.0–1.0) to every axis slider. Uses crypto.getRandomValues()
+             which is completely isolated from the payload seed and
+             Ollama's RNG. Labels are left unchanged (or recomputed if
+             Auto mode is on). -->
+        <button id="btn-randomise" class="btn btn--secondary" type="button"
+                data-tooltip="Assign a random score (0.0–1.0) to every axis. Uses the browser's cryptographic RNG (crypto.getRandomValues), which is completely isolated from the payload seed used for Ollama generation. Labels are preserved unless Auto (policy) mode is on, in which case they are recomputed from the new scores."
+                >
+          Randomise
+        </button>
+        <button id="btn-relabel" class="btn btn--secondary" type="button"
+                data-tooltip="Send the current payload to the server's /api/relabel endpoint. The server applies its policy table to map each axis score to a canonical label (e.g. physique 0.8 → 'robust'). Useful after adjusting scores to see the policy's interpretation."
+                >
+          Recompute
+        </button>
+      </div>
+    </div>
+
+    <!-- Raw JSON textarea (source of truth) – collapsed by default so the
+         sliders stay primary while preserving direct access to the
+         authoritative payload below the slider controls. -->
+    <details class="collapsible" id="axis-json-details">
+      <summary class="collapsible__summary"
+               data-tooltip="Show or hide the raw AxisPayload JSON. This textarea remains the authoritative source of truth — edits here update the sliders, and slider changes write back here. The badge indicates whether the current JSON is valid."
+               >Axis JSON <span class="badge" id="json-status-badge"
+                                data-tooltip="Indicates whether the JSON below is valid. OK = well-formed JSON that can be sent to the LLM. ERR = syntax error that must be fixed before generating."
+                                >OK</span></summary>
+      <label for="json-textarea" class="control-label" style="margin-top:0.5rem;">
+        The raw AxisPayload remains authoritative.
+      </label>
+      <textarea
+        id="json-textarea"
+        class="code-editor code-editor--axis-json"
+        spellcheck="false"
+        autocomplete="off"
+        aria-label="Axis payload JSON"
+        placeholder='{"axes": { ... }, "policy_hash": "...", "seed": 0, "world_id": "pipeworks_web"}'
+        data-tooltip="The raw AxisPayload JSON. This is the single source of truth — edits here update the sliders, and slider changes write back here. Must contain an 'axes' object with label + score pairs, plus policy_hash, seed, and world_id."
+      ></textarea>
+    </details>
 
     <!-- System prompt override – allows the user to replace the default
          system prompt (system_prompt_v01.txt) with custom instructions.
          data-tooltip on the summary explains what this section does. -->
-    <details class="collapsible" id="system-prompt-details">
+    <details class="collapsible" id="system-prompt-details" open>
       <summary class="collapsible__summary"
                data-tooltip="Override the default system prompt sent to the LLM before each generation. The system prompt instructs the model how to interpret axis data and produce descriptive text. Leave blank to use the server default (system_prompt_v01.txt)."
                >System Prompt <span class="badge badge--muted" id="system-prompt-badge">override</span></summary>
@@ -142,50 +185,6 @@
         </button>
       </div>
     </details>
-  </section>
-
-  <!-- ── AXES PANEL: Sliders + label controls ─────────────────────────────── -->
-  <section class="panel panel--axes" aria-label="Axis Sliders">
-    <h2 class="panel__heading">Axes</h2>
-
-    <!-- Dynamic slider area – populated by mod-sync.js buildSlidersFromJson() -->
-    <div id="slider-panel" class="slider-panel">
-      <p class="placeholder-text">Load an example or paste JSON to see sliders.</p>
-    </div>
-
-    <!-- Randomise button – assigns cryptographically random scores (0.0–1.0)
-         to every axis slider.  Uses crypto.getRandomValues() which is
-         completely isolated from the payload seed and Ollama's RNG.
-         Labels are left unchanged (or recomputed if Auto mode is on). -->
-    <div class="control-row" style="margin-top:0.25rem;">
-      <button id="btn-randomise" class="btn btn--secondary" type="button"
-              data-tooltip="Assign a random score (0.0–1.0) to every axis. Uses the browser's cryptographic RNG (crypto.getRandomValues), which is completely isolated from the payload seed used for Ollama generation. Labels are preserved unless Auto (policy) mode is on, in which case they are recomputed from the new scores."
-              >
-        Randomise
-      </button>
-    </div>
-
-    <!-- Divider -->
-    <hr class="divider" />
-
-    <!-- Label mode toggle – controls whether axis labels are manually
-         editable or automatically computed by the server's policy table.
-         When Auto is ON, label inputs are disabled and the server maps
-         score ranges to canonical label strings (e.g. age 0.25 → "young"). -->
-    <div class="control-row" style="margin-top:0.5rem;">
-      <label class="control-label">Label mode</label>
-      <label class="toggle-label"
-             data-tooltip="When enabled, axis labels are automatically assigned by the server's policy table based on each axis score. Label inputs become read-only. When disabled, you can manually type any label for each axis."
-             >
-        <input type="checkbox" id="auto-label-toggle" role="switch" />
-        <span class="toggle-text">Auto (policy)</span>
-      </label>
-      <button id="btn-relabel" class="btn btn--secondary" type="button"
-              data-tooltip="Send the current payload to the server's /api/relabel endpoint. The server applies its policy table to map each axis score to a canonical label (e.g. physique 0.8 → 'robust'). Useful after adjusting scores to see the policy's interpretation."
-              >
-        Recompute
-      </button>
-    </div>
   </section>
 
   <!-- ── CENTRE PANEL: Run controls + A/B diff ─────────────────────────────── -->

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -20,6 +21,34 @@ class TestIndexRoute:
             resp = client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
+
+    def test_character_description_layout_matches_three_column_structure(
+        self, client: TestClient
+    ) -> None:
+        """The Character Description page must keep the requested panel order."""
+        with patch("app.main.ChatRenderer.list_models", return_value=["gemma2:2b"]):
+            resp = client.get("/")
+
+        page = resp.text.split('<div id="page-char-description">', 1)[1].split(
+            "</div><!-- #page-char-description -->", 1
+        )[0]
+
+        assert page.count('<section class="panel ') == 3
+        assert page.index(">Payload</h2>") < page.index(">Axes</h2>")
+        assert page.index('id="axis-json-details"') < page.index('id="system-prompt-details"')
+        assert page.index('id="btn-randomise"') < page.index('id="btn-relabel"')
+
+        axis_json_details = re.search(
+            r'<details class="collapsible" id="axis-json-details"([^>]*)>', page
+        )
+        assert axis_json_details is not None
+        assert "open" not in axis_json_details.group(1)
+
+        system_prompt_details = re.search(
+            r'<details class="collapsible" id="system-prompt-details"([^>]*)>', page
+        )
+        assert system_prompt_details is not None
+        assert "open" in system_prompt_details.group(1)
 
 
 class TestListExamples:
