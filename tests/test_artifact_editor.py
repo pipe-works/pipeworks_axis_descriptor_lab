@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from app.mud_server_client import MudServerConnectionError, MudServerSessionExpiredError
+
 
 class TestLocalPromptArtifacts:
     """Local prompt-artifact listing, loading, and draft creation."""
@@ -133,3 +135,40 @@ class TestServerPromptManifest:
             resp = client.get("/api/artifacts/server/chat-prompts/pipeworks_web")
 
         assert resp.status_code == 401
+
+    def test_server_manifest_requires_configured_mud_client(self, client: TestClient) -> None:
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=None):
+            resp = client.get("/api/artifacts/server/chat-prompts/pipeworks_web")
+
+        assert resp.status_code == 503
+
+    def test_server_manifest_handles_expired_session(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+
+        with (
+            patch("app.routes_artifact_editor.get_mud_client", return_value=mock),
+            patch(
+                "app.routes_artifact_editor.get_server_prompt_manifest",
+                side_effect=MudServerSessionExpiredError("expired"),
+            ),
+        ):
+            resp = client.get("/api/artifacts/server/chat-prompts/pipeworks_web")
+
+        assert resp.status_code == 401
+        assert "session expired" in resp.json()["detail"].lower()
+
+    def test_server_manifest_handles_connection_error(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+
+        with (
+            patch("app.routes_artifact_editor.get_mud_client", return_value=mock),
+            patch(
+                "app.routes_artifact_editor.get_server_prompt_manifest",
+                side_effect=MudServerConnectionError("down"),
+            ),
+        ):
+            resp = client.get("/api/artifacts/server/chat-prompts/pipeworks_web")
+
+        assert resp.status_code == 502
