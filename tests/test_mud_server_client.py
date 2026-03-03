@@ -546,6 +546,81 @@ class TestWorldPrompts:
             client.world_prompts("pipeworks_web")
 
 
+class TestWorldPromptDrafts:
+    """Prompt-draft mud-server helpers round-trip the expected payloads."""
+
+    def test_create_world_prompt_draft_posts_payload(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "name": "ic_prompt_variant",
+            "origin_path": "policies/drafts/ic_prompt_variant.txt",
+            "world_id": "pipeworks_web",
+            "based_on_name": "ic_prompt",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
+
+        result = client.create_world_prompt_draft(
+            world_id="pipeworks_web",
+            draft_name="ic_prompt_variant",
+            content="Prompt {{profile_summary}}\n",
+            based_on_name="ic_prompt",
+        )
+
+        assert result["name"] == "ic_prompt_variant"
+        body = client._client.post.call_args[1]["json"]
+        assert body["draft_name"] == "ic_prompt_variant"
+        assert body["content"] == "Prompt {{profile_summary}}\n"
+        assert body["based_on_name"] == "ic_prompt"
+
+    def test_world_prompt_drafts_returns_dict(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "world_id": "pipeworks_web",
+            "drafts": [
+                {
+                    "name": "ic_prompt_variant",
+                    "origin_path": "policies/drafts/ic_prompt_variant.txt",
+                    "world_id": "pipeworks_web",
+                }
+            ],
+        }
+        client._client.get.return_value = mock_resp
+
+        result = client.world_prompt_drafts("pipeworks_web")
+
+        assert result["world_id"] == "pipeworks_web"
+        assert result["drafts"][0]["name"] == "ic_prompt_variant"
+
+    def test_world_prompt_draft_returns_dict(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "name": "ic_prompt_variant",
+            "origin_path": "policies/drafts/ic_prompt_variant.txt",
+            "world_id": "pipeworks_web",
+            "content": "Prompt {{profile_summary}}\n",
+        }
+        client._client.get.return_value = mock_resp
+
+        result = client.world_prompt_draft("pipeworks_web", "ic_prompt_variant")
+
+        assert result["name"] == "ic_prompt_variant"
+        assert result["content"].startswith("Prompt")
+
+    def test_world_prompt_drafts_not_authenticated_raises(self, client: MudServerClient) -> None:
+        with pytest.raises(MudServerSessionExpiredError):
+            client.world_prompt_drafts("pipeworks_web")
+
+
 class TestTranslatePromptOverride:
     """translate() with prompt_template_override."""
 

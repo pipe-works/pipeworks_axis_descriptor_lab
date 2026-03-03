@@ -12,6 +12,8 @@ Responsibilities in this module:
 - create new local draft prompt files without overwriting any existing file
 - derive prompt reference metadata for the editor sidebar
 - normalise server-backed prompt manifests from the mud-server proxy client
+- create, list, and load mud-server prompt drafts without overwriting
+  canonical server files
 
 This module intentionally keeps the mud server authoritative.  Server-backed
 editing loads canonical artifacts from the mud server and may create new
@@ -67,6 +69,9 @@ from app.schema.artifact import (
     PolicyBundleReference,
     PromptArtifactDocument,
     PromptArtifactSummary,
+    ServerPromptArtifactListResponse,
+    ServerPromptDraftCreateRequest,
+    ServerPromptDraftCreateResponse,
     ServerPolicyBundleDraftCreateRequest,
     ServerPolicyBundleArtifactListResponse,
     ServerPolicyBundleDraftCreateResponse,
@@ -1167,6 +1172,80 @@ def get_server_policy_bundle_artifact(
         world_id=payload.world_id,
         version=payload.version,
         reference=_policy_bundle_reference(),
+    )
+
+
+def create_server_prompt_draft(
+    *,
+    world_id: str,
+    req: ServerPromptDraftCreateRequest,
+    mud_client: MudServerClient,
+) -> ServerPromptDraftCreateResponse:
+    """Validate and forward a create-only mud-server prompt draft request."""
+
+    data = mud_client.create_world_prompt_draft(
+        world_id=world_id,
+        draft_name=req.draft_name.strip(),
+        content=req.content.rstrip() + "\n",
+        based_on_name=req.based_on_name,
+    )
+    return ServerPromptDraftCreateResponse.model_validate(data)
+
+
+def list_server_prompt_artifacts(
+    world_id: str,
+    mud_client: MudServerClient,
+) -> ServerPromptArtifactListResponse:
+    """Return mud-server prompt drafts for one selected world."""
+
+    world_cfg = mud_client.world_config(world_id)
+    active_axes = list(world_cfg.get("active_axes") or [])
+    data = mud_client.world_prompt_drafts(world_id)
+    prompts = [
+        PromptArtifactSummary(
+            name=str(entry.get("name") or ""),
+            purpose="chat_translation",
+            is_draft=True,
+            is_active=False,
+            origin_path=str(entry.get("origin_path") or ""),
+        )
+        for entry in data.get("drafts", [])
+    ]
+    return ServerPromptArtifactListResponse(
+        world_id=world_id,
+        prompts=prompts,
+        reference=build_prompt_reference(
+            "chat_translation",
+            source_mode="server",
+            world_id=world_id,
+            active_axes=active_axes,
+        ),
+    )
+
+
+def load_server_prompt_draft_artifact(
+    *,
+    world_id: str,
+    draft_name: str,
+    mud_client: MudServerClient,
+) -> PromptArtifactDocument:
+    """Load one mud-server prompt draft into the editor document shape."""
+
+    world_cfg = mud_client.world_config(world_id)
+    active_axes = list(world_cfg.get("active_axes") or [])
+    data = mud_client.world_prompt_draft(world_id, draft_name)
+    return PromptArtifactDocument(
+        name=str(data.get("name") or draft_name),
+        purpose="chat_translation",
+        content=str(data.get("content") or ""),
+        is_draft=True,
+        origin_path=str(data.get("origin_path") or ""),
+        reference=build_prompt_reference(
+            "chat_translation",
+            source_mode="server",
+            world_id=world_id,
+            active_axes=active_axes,
+        ),
     )
 
 

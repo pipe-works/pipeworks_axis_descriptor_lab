@@ -9,6 +9,7 @@ is intentionally narrow:
 - local deterministic JSON artifact browsing and draft creation
 - server-backed prompt manifests derived from the mud server's canonical lab
   endpoints
+- server-backed prompt draft listing, loading, and create-only draft creation
 - server-backed policy bundle inspection and create-only draft creation
 
 The route layer stays thin and delegates all file policy and manifest shaping
@@ -24,18 +25,21 @@ from fastapi import APIRouter, HTTPException
 
 from app.artifact_editor import (
     create_server_policy_bundle_draft,
+    create_server_prompt_draft,
     create_local_axis_payload_draft,
     create_local_lexicon_json_draft,
     create_local_policy_bundle_draft,
     create_local_prompt_draft,
     get_server_policy_bundle_artifact,
     get_server_prompt_manifest,
+    list_server_prompt_artifacts,
     list_server_policy_bundle_artifacts,
     list_local_axis_payload_artifacts,
     list_local_lexicon_json_artifacts,
     list_local_policy_bundle_artifacts,
     list_local_prompt_artifacts,
     load_server_policy_bundle_draft_artifact,
+    load_server_prompt_draft_artifact,
     load_local_axis_payload_artifact,
     load_local_lexicon_json_artifact,
     load_local_policy_bundle_artifact,
@@ -63,6 +67,9 @@ from app.schema import (
     LocalPromptDraftCreateResponse,
     PolicyBundleArtifactDocument,
     PromptArtifactDocument,
+    ServerPromptArtifactListResponse,
+    ServerPromptDraftCreateRequest,
+    ServerPromptDraftCreateResponse,
     ServerPolicyBundleArtifactListResponse,
     ServerPolicyBundleDraftCreateRequest,
     ServerPolicyBundleDraftCreateResponse,
@@ -241,8 +248,8 @@ def create_local_policy_bundle_draft_route(
 def get_server_chat_prompts(world_id: str) -> ServerPromptManifestResponse:
     """Return canonical world prompt data for the Artifact Editor.
 
-    The first cut is read-only: the lab consumes the mud server's world prompt
-    files and contract metadata but does not write any server files.
+    The mud server remains authoritative: this route exposes canonical prompt
+    files only and never mutates server state.
     """
 
     client = get_mud_client()
@@ -253,6 +260,92 @@ def get_server_chat_prompts(world_id: str) -> ServerPromptManifestResponse:
 
     try:
         return get_server_prompt_manifest(world_id, client)
+    except MudServerSessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        ) from exc
+    except MudServerConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_mud_http_error(exc)
+
+
+@router.get(
+    "/api/artifacts/server/chat-prompts/{world_id}/drafts",
+    response_model=ServerPromptArtifactListResponse,
+    summary="List mud-server prompt drafts",
+)
+def list_server_chat_prompt_drafts(world_id: str) -> ServerPromptArtifactListResponse:
+    """Return draft prompt files for one mud-server world."""
+
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    if not client.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+
+    try:
+        return list_server_prompt_artifacts(world_id, client)
+    except MudServerSessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        ) from exc
+    except MudServerConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_mud_http_error(exc)
+
+
+@router.get(
+    "/api/artifacts/server/chat-prompts/{world_id}/drafts/{name}",
+    response_model=PromptArtifactDocument,
+    summary="Load one mud-server prompt draft",
+)
+def get_server_chat_prompt_draft(world_id: str, name: str) -> PromptArtifactDocument:
+    """Load one draft prompt file for the selected mud-server world."""
+
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    if not client.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+
+    try:
+        return load_server_prompt_draft_artifact(
+            world_id=world_id, draft_name=name, mud_client=client
+        )
+    except MudServerSessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        ) from exc
+    except MudServerConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_mud_http_error(exc)
+
+
+@router.post(
+    "/api/artifacts/server/chat-prompts/{world_id}/drafts",
+    response_model=ServerPromptDraftCreateResponse,
+    summary="Create a new mud-server prompt draft",
+)
+def create_server_chat_prompt_draft_route(
+    world_id: str,
+    req: ServerPromptDraftCreateRequest,
+) -> ServerPromptDraftCreateResponse:
+    """Create a new draft under the mud server's prompt draft directory."""
+
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    if not client.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+
+    try:
+        return create_server_prompt_draft(world_id=world_id, req=req, mud_client=client)
     except MudServerSessionExpiredError as exc:
         raise HTTPException(
             status_code=401,

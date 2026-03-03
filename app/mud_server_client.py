@@ -256,6 +256,40 @@ class MudServerClient:
             raise TypeError(f"Expected dict from world-prompts, got {type(result).__name__}")
         return result
 
+    def create_world_prompt_draft(
+        self,
+        *,
+        world_id: str,
+        draft_name: str,
+        content: str,
+        based_on_name: str | None = None,
+    ) -> dict:
+        """POST /api/lab/world-prompts/{world_id}/drafts → create one server draft."""
+
+        body = {
+            "session_id": self._session_id,
+            "draft_name": draft_name,
+            "content": content,
+            "based_on_name": based_on_name,
+        }
+        return self._post(f"/api/lab/world-prompts/{world_id}/drafts", body)
+
+    def world_prompt_drafts(self, world_id: str) -> dict:
+        """GET /api/lab/world-prompts/{world_id}/drafts → list server prompt drafts."""
+
+        result = self._get(f"/api/lab/world-prompts/{world_id}/drafts")
+        if not isinstance(result, dict):  # pragma: no cover
+            raise TypeError(f"Expected dict from world-prompt drafts, got {type(result).__name__}")
+        return result
+
+    def world_prompt_draft(self, world_id: str, draft_name: str) -> dict:
+        """GET /api/lab/world-prompts/{world_id}/drafts/{name} → load one server draft."""
+
+        result = self._get(f"/api/lab/world-prompts/{world_id}/drafts/{draft_name}")
+        if not isinstance(result, dict):  # pragma: no cover
+            raise TypeError(f"Expected dict from world-prompt draft, got {type(result).__name__}")
+        return result
+
     def world_policy_bundle(self, world_id: str) -> dict:
         """GET /api/lab/world-policy-bundle/{world_id} → return normalized policy bundle."""
 
