@@ -25,6 +25,7 @@ from app.artifact_editor import (
     create_local_lexicon_json_draft,
     create_local_policy_bundle_draft,
     create_local_prompt_draft,
+    get_server_policy_bundle_artifact,
     get_server_prompt_manifest,
     list_local_axis_payload_artifacts,
     list_local_lexicon_json_artifacts,
@@ -228,6 +229,31 @@ def get_server_chat_prompts(world_id: str) -> ServerPromptManifestResponse:
 
     try:
         return get_server_prompt_manifest(world_id, client)
+    except MudServerSessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        ) from exc
+    except MudServerConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+
+
+@router.get(
+    "/api/artifacts/server/policy-bundles/{world_id}",
+    response_model=PolicyBundleArtifactDocument,
+    summary="Get a server-backed canonical policy bundle artifact",
+)
+def get_server_policy_bundle(world_id: str) -> PolicyBundleArtifactDocument:
+    """Return the mud server's normalized canonical policy bundle for one world."""
+
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    if not client.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+
+    try:
+        return get_server_policy_bundle_artifact(world_id, client)
     except MudServerSessionExpiredError as exc:
         raise HTTPException(
             status_code=401,

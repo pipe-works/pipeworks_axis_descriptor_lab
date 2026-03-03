@@ -441,3 +441,64 @@ class TestServerPromptManifest:
             resp = client.get("/api/artifacts/server/chat-prompts/pipeworks_web")
 
         assert resp.status_code == 502
+
+
+class TestServerPolicyBundleArtifact:
+    """Server-backed policy bundle normalization and proxy error handling."""
+
+    def test_returns_server_policy_bundle_artifact(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+        mock.world_policy_bundle.return_value = {
+            "world_id": "pipeworks_web",
+            "version": "0.1.0",
+            "source": "mud_server policy package normalized to JSON",
+            "policy_hash": "abc123",
+            "source_files": [
+                "policies/axes.yaml",
+                "policies/thresholds.yaml",
+                "policies/resolution.yaml",
+            ],
+            "axes_order": ["demeanor"],
+            "axes": {
+                "demeanor": {
+                    "group": "character",
+                    "ordering": ["timid", "proud"],
+                    "thresholds": [
+                        {"label": "timid", "min": 0.0, "max": 0.49},
+                        {"label": "proud", "min": 0.5, "max": 1.0},
+                    ],
+                }
+            },
+            "chat_rules": {
+                "channel_multipliers": {"say": 1.0, "yell": 1.5, "whisper": 0.5},
+                "min_gap_threshold": 0.05,
+                "axes": {"demeanor": {"resolver": "dominance_shift", "base_magnitude": 0.03}},
+            },
+        }
+
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=mock):
+            resp = client.get("/api/artifacts/server/policy-bundles/pipeworks_web")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "pipeworks_web_policy_bundle"
+        assert data["world_id"] == "pipeworks_web"
+        assert data["version"] == "0.1.0"
+        assert "policies/axes.yaml" in data["origin_path"]
+        assert '"chat_rules"' in data["content"]
+
+    def test_server_policy_bundle_requires_configured_mud_client(self, client: TestClient) -> None:
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=None):
+            resp = client.get("/api/artifacts/server/policy-bundles/pipeworks_web")
+
+        assert resp.status_code == 503
+
+    def test_server_policy_bundle_requires_authentication(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = False
+
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=mock):
+            resp = client.get("/api/artifacts/server/policy-bundles/pipeworks_web")
+
+        assert resp.status_code == 401

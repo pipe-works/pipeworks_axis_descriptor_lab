@@ -233,6 +233,30 @@ class TestWorldConfig:
         assert result["world_id"] == "pipeworks_web"
 
 
+class TestWorldPolicyBundle:
+    """world_policy_bundle returns the server's normalized policy bundle."""
+
+    def test_world_policy_bundle_returns_dict(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "world_id": "pipeworks_web",
+            "version": "0.1.0",
+            "axes_order": ["demeanor"],
+            "axes": {"demeanor": {"ordering": ["timid", "proud"]}},
+            "chat_rules": {"axes": {"demeanor": {"resolver": "dominance_shift"}}},
+        }
+        client._client.get.return_value = mock_resp
+
+        result = client.world_policy_bundle("pipeworks_web")
+
+        assert isinstance(result, dict)
+        assert result["world_id"] == "pipeworks_web"
+        assert result["axes_order"] == ["demeanor"]
+
+
 # ---------------------------------------------------------------------------
 # Translate
 # ---------------------------------------------------------------------------

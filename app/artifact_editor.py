@@ -1064,6 +1064,36 @@ def create_local_policy_bundle_draft(
     )
 
 
+def get_server_policy_bundle_artifact(
+    world_id: str,
+    mud_client: MudServerClient,
+) -> PolicyBundleArtifactDocument:
+    """Build a normalized policy bundle document from the mud server's lab endpoint."""
+
+    data = mud_client.world_policy_bundle(world_id)
+    payload = _parse_policy_bundle_payload(
+        {
+            "world_id": data.get("world_id"),
+            "version": data.get("version"),
+            "source": data.get("source"),
+            "policy_hash": data.get("policy_hash"),
+            "axes_order": data.get("axes_order"),
+            "axes": data.get("axes"),
+            "chat_rules": data.get("chat_rules"),
+        }
+    )
+    normalized = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
+    return PolicyBundleArtifactDocument(
+        name=f"{world_id}_policy_bundle",
+        content=normalized,
+        is_draft=False,
+        origin_path=", ".join(data.get("source_files") or []),
+        world_id=payload.world_id,
+        version=payload.version,
+        reference=_policy_bundle_reference(),
+    )
+
+
 def get_server_prompt_manifest(
     world_id: str,
     mud_client: MudServerClient,
