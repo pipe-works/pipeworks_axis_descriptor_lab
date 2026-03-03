@@ -10,7 +10,7 @@ The lab has three pages:
 
 - **Character Description** -- generate descriptive paragraphs from axis payloads with A/B diffing, signal isolation, and transformation-map analysis.
 - **Chat Translation** -- translate out-of-character (OOC) player messages into in-character (IC) speech using axis-defined character profiles. Works standalone (local Ollama) or connected to a [Pipe-Works mud server](https://github.com/pipe-works/pipeworks_mud_server) for canonical pipeline translation.
-- **Artifact Editor** -- inspect canonical prompt contracts, edit raw local drafts, and validate deterministic JSON artifacts such as Axis Payload examples, normalized policy bundles, and micro-indicator lexicon files without overwriting shipped files.
+- **Artifact Editor** -- inspect canonical prompt contracts, edit raw local drafts, validate deterministic JSON artifacts such as Axis Payload examples, normalized policy bundles, and micro-indicator lexicon files, and create server-backed policy bundle drafts without overwriting canonical files.
 
 <p align="center">
   <img src="docs/images/lab_ui_dark_v2.png" alt="Axis Descriptor Lab – dark theme with micro-indicators" width="90%">
@@ -70,10 +70,11 @@ Then open **<http://127.0.0.1:8242>** in your browser.
 ### Artifact Editor page
 
 1. Choose an artifact type such as **Prompt Template**, **Axis Payload JSON**, **Policy Bundle JSON**, or **Lexicon JSON**.
-2. Use **Local drafts** to browse shipped artifacts plus local drafts, or switch supported artifact types to **Mud server canonical** for read-only world-backed inspection.
+2. Use **Local drafts** to browse shipped artifacts plus local drafts, or switch supported artifact types to **Mud server canonical** for world-backed inspection.
 3. Load an artifact to inspect its origin, contract notes, and raw text/JSON.
 4. Edit the artifact in the textarea; the right-hand panel shows placeholder or schema guidance, while the preview panel shows sample prompt rendering or normalised JSON.
-5. Save a new draft name to write a validated create-only copy under `app/prompts/*/drafts`, `app/examples/drafts`, or `app/data/drafts` depending on artifact type.
+5. Save a new draft name to write a validated create-only copy under `app/prompts/*/drafts`, `app/examples/drafts`, `app/artifacts/policy_bundles/drafts`, or `app/data/drafts` depending on artifact type.
+6. In **Mud server canonical** mode for **Policy Bundle JSON**, use **Save server draft** to create a new bundle under the mud server world's `policies/drafts/` directory without overwriting any canonical files.
 
 ## Interpretive Provenance Chain (IPC)
 

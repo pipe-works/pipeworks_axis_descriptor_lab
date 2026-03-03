@@ -13,9 +13,9 @@ Responsibilities in this module:
 - derive prompt reference metadata for the editor sidebar
 - normalise server-backed prompt manifests from the mud-server proxy client
 
-This module intentionally does not write to the mud server.  Server-backed
-editing is read-only in the first cut so the mud server remains the canonical
-source of truth while the lab provides the editing UX.
+This module intentionally keeps the mud server authoritative.  Server-backed
+editing loads canonical artifacts from the mud server and may create new
+draft files there, but it never overwrites active canonical files.
 
 The local-only JSON slices extend that same pattern to deterministic artifacts
 owned entirely by the lab, including:
@@ -67,6 +67,9 @@ from app.schema.artifact import (
     PolicyBundleReference,
     PromptArtifactDocument,
     PromptArtifactSummary,
+    ServerPolicyBundleDraftCreateRequest,
+    ServerPolicyBundleArtifactListResponse,
+    ServerPolicyBundleDraftCreateResponse,
     ServerPromptManifestResponse,
 )
 
@@ -1061,6 +1064,79 @@ def create_local_policy_bundle_draft(
         world_id=payload.world_id,
         version=payload.version,
         based_on_name=req.based_on_name,
+    )
+
+
+def create_server_policy_bundle_draft(
+    *,
+    world_id: str,
+    req: ServerPolicyBundleDraftCreateRequest,
+    mud_client: MudServerClient,
+) -> ServerPolicyBundleDraftCreateResponse:
+    """Validate and forward a create-only mud-server policy bundle draft request."""
+
+    payload = _parse_policy_bundle_payload(req.content)
+    if payload.world_id != world_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Policy bundle world_id must match the selected mud-server world before "
+                "creating a server draft."
+            ),
+        )
+
+    data = mud_client.create_world_policy_bundle_draft(
+        world_id=world_id,
+        draft_name=req.draft_name.strip(),
+        content=payload.model_dump(),
+        based_on_name=req.based_on_name,
+    )
+    return ServerPolicyBundleDraftCreateResponse.model_validate(data)
+
+
+def list_server_policy_bundle_artifacts(
+    world_id: str,
+    mud_client: MudServerClient,
+) -> ServerPolicyBundleArtifactListResponse:
+    """Return mud-server policy bundle drafts for one selected world."""
+
+    data = mud_client.world_policy_bundle_drafts(world_id)
+    bundles = [
+        PolicyBundleArtifactSummary(
+            name=str(entry.get("name") or ""),
+            is_draft=True,
+            origin_path=str(entry.get("origin_path") or ""),
+            world_id=str(entry.get("world_id") or world_id),
+            version=str(entry.get("version") or ""),
+        )
+        for entry in data.get("drafts", [])
+    ]
+    return ServerPolicyBundleArtifactListResponse(
+        world_id=world_id,
+        bundles=bundles,
+        reference=_policy_bundle_reference(),
+    )
+
+
+def load_server_policy_bundle_draft_artifact(
+    *,
+    world_id: str,
+    draft_name: str,
+    mud_client: MudServerClient,
+) -> PolicyBundleArtifactDocument:
+    """Load one mud-server policy bundle draft into the editor document shape."""
+
+    data = mud_client.world_policy_bundle_draft(world_id, draft_name)
+    payload = _parse_policy_bundle_payload(data.get("content") or {})
+    normalized = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
+    return PolicyBundleArtifactDocument(
+        name=str(data.get("name") or draft_name),
+        content=normalized,
+        is_draft=True,
+        origin_path=str(data.get("origin_path") or ""),
+        world_id=payload.world_id,
+        version=payload.version,
+        reference=_policy_bundle_reference(),
     )
 
 

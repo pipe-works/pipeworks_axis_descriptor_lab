@@ -256,6 +256,100 @@ class TestWorldPolicyBundle:
         assert result["world_id"] == "pipeworks_web"
         assert result["axes_order"] == ["demeanor"]
 
+    def test_create_world_policy_bundle_draft_posts_expected_body(
+        self, client: MudServerClient
+    ) -> None:
+        """create_world_policy_bundle_draft sends a create-only draft body."""
+
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "name": "pipeworks_web_bundle_alt",
+            "origin_path": "policies/drafts/pipeworks_web_bundle_alt.json",
+            "world_id": "pipeworks_web",
+            "version": "0.2.0",
+            "based_on_name": "pipeworks_web_policy_bundle",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
+
+        result = client.create_world_policy_bundle_draft(
+            world_id="pipeworks_web",
+            draft_name="pipeworks_web_bundle_alt",
+            content={
+                "world_id": "pipeworks_web",
+                "version": "0.2.0",
+                "source": "test",
+                "policy_hash": None,
+                "axes_order": ["demeanor"],
+                "axes": {"demeanor": {"ordering": ["timid", "proud"]}},
+                "chat_rules": {"axes": {"demeanor": {"resolver": "dominance_shift"}}},
+            },
+            based_on_name="pipeworks_web_policy_bundle",
+        )
+
+        call_args = client._client.post.call_args
+        body = call_args[1]["json"]
+        assert body["session_id"] == "abc-123"
+        assert body["draft_name"] == "pipeworks_web_bundle_alt"
+        assert body["based_on_name"] == "pipeworks_web_policy_bundle"
+        assert body["content"]["world_id"] == "pipeworks_web"
+        assert result["origin_path"] == "policies/drafts/pipeworks_web_bundle_alt.json"
+
+    def test_world_policy_bundle_drafts_returns_dict(self, client: MudServerClient) -> None:
+        """world_policy_bundle_drafts returns the mud server's draft listing payload."""
+
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "world_id": "pipeworks_web",
+            "drafts": [
+                {
+                    "name": "pipeworks_web_bundle_alt",
+                    "origin_path": "policies/drafts/pipeworks_web_bundle_alt.json",
+                    "world_id": "pipeworks_web",
+                    "version": "0.2.0",
+                }
+            ],
+        }
+        client._client.get.return_value = mock_resp
+
+        result = client.world_policy_bundle_drafts("pipeworks_web")
+
+        assert result["drafts"][0]["name"] == "pipeworks_web_bundle_alt"
+
+    def test_world_policy_bundle_draft_returns_dict(self, client: MudServerClient) -> None:
+        """world_policy_bundle_draft returns one mud-server draft payload."""
+
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "name": "pipeworks_web_bundle_alt",
+            "origin_path": "policies/drafts/pipeworks_web_bundle_alt.json",
+            "world_id": "pipeworks_web",
+            "version": "0.2.0",
+            "content": {
+                "world_id": "pipeworks_web",
+                "version": "0.2.0",
+                "source": "test",
+                "policy_hash": None,
+                "axes_order": ["demeanor"],
+                "axes": {"demeanor": {"ordering": ["timid", "proud"]}},
+                "chat_rules": {"axes": {"demeanor": {"resolver": "dominance_shift"}}},
+            },
+        }
+        client._client.get.return_value = mock_resp
+
+        result = client.world_policy_bundle_draft("pipeworks_web", "pipeworks_web_bundle_alt")
+
+        assert result["name"] == "pipeworks_web_bundle_alt"
+
 
 # ---------------------------------------------------------------------------
 # Translate

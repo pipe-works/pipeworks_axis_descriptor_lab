@@ -13,10 +13,11 @@
  * - edit raw text in a single textarea
  * - inspect placeholder/schema reference metadata
  * - create new local draft files without overwriting shipped artifacts
+ * - create new mud-server policy bundle drafts without overwriting canonical files
  *
- * Server-backed mode remains prompt-only in this slice.  JSON artifact editing
- * is local-only until the mud server exposes canonical JSON artifact manifests
- * for additional artifact types.
+ * Server-backed prompts remain read-only in this slice. Policy Bundle JSON now
+ * supports canonical server inspection plus create-only draft writes to the mud
+ * server's draft area.
  */
 
 import { dom } from "./mod-state.js";
@@ -25,6 +26,7 @@ import { setStatus } from "./mod-status.js";
 const artifactState = {
   localListing: null,
   serverManifest: null,
+  serverPolicyBundleListing: null,
   currentDocument: null,
 };
 
@@ -356,6 +358,7 @@ async function loadLocalPromptArtifacts() {
 
   artifactState.localListing = await res.json();
   artifactState.serverManifest = null;
+  artifactState.serverPolicyBundleListing = null;
   artifactState.currentDocument = null;
   renderArtifactOptions(artifactState.localListing.prompts);
   renderReferencePanel(artifactState.localListing.reference);
@@ -375,6 +378,7 @@ async function loadLocalAxisPayloadArtifacts() {
 
   artifactState.localListing = await res.json();
   artifactState.serverManifest = null;
+  artifactState.serverPolicyBundleListing = null;
   artifactState.currentDocument = null;
   renderArtifactOptions(artifactState.localListing.payloads);
   renderReferencePanel(artifactState.localListing.reference);
@@ -392,6 +396,7 @@ async function loadLocalLexiconArtifacts() {
 
   artifactState.localListing = await res.json();
   artifactState.serverManifest = null;
+  artifactState.serverPolicyBundleListing = null;
   artifactState.currentDocument = null;
   renderArtifactOptions(artifactState.localListing.lexicons);
   renderReferencePanel(artifactState.localListing.reference);
@@ -409,6 +414,7 @@ async function loadLocalPolicyBundleArtifacts() {
 
   artifactState.localListing = await res.json();
   artifactState.serverManifest = null;
+  artifactState.serverPolicyBundleListing = null;
   artifactState.currentDocument = null;
   renderArtifactOptions(artifactState.localListing.bundles);
   renderReferencePanel(artifactState.localListing.reference);
@@ -434,6 +440,7 @@ async function loadServerArtifacts() {
 
   artifactState.serverManifest = await res.json();
   artifactState.localListing = null;
+  artifactState.serverPolicyBundleListing = null;
   artifactState.currentDocument = null;
   renderArtifactOptions(
     artifactState.serverManifest.prompts,
@@ -456,7 +463,7 @@ async function loadServerArtifacts() {
   }
 }
 
-async function loadServerPolicyBundleArtifact() {
+async function loadServerPolicyBundleArtifact(preferredName = "") {
   const worldId = dom.artifactWorld.value;
   if (!worldId) {
     renderArtifactOptions([]);
@@ -465,19 +472,35 @@ async function loadServerPolicyBundleArtifact() {
     return;
   }
 
-  const res = await fetch(`/api/artifacts/server/policy-bundles/${encodeURIComponent(worldId)}`);
-  if (!res.ok) {
-    throw new Error(`server policy bundle request failed (${res.status})`);
+  const [canonicalRes, draftsRes] = await Promise.all([
+    fetch(`/api/artifacts/server/policy-bundles/${encodeURIComponent(worldId)}`),
+    fetch(`/api/artifacts/server/policy-bundles/${encodeURIComponent(worldId)}/drafts`),
+  ]);
+  if (!canonicalRes.ok) {
+    throw new Error(`server policy bundle request failed (${canonicalRes.status})`);
+  }
+  if (!draftsRes.ok) {
+    throw new Error(`server policy bundle draft listing failed (${draftsRes.status})`);
   }
 
-  const doc = await res.json();
+  const doc = await canonicalRes.json();
+  const draftListing = await draftsRes.json();
   artifactState.serverManifest = null;
   artifactState.localListing = null;
+  artifactState.serverPolicyBundleListing = {
+    worldId,
+    canonical: doc,
+    drafts: draftListing.bundles || [],
+  };
   artifactState.currentDocument = doc;
   renderArtifactOptions(
-    [{ name: doc.name, world_id: doc.world_id, is_draft: false }],
-    doc.name
+    [{ name: doc.name, world_id: doc.world_id, is_draft: false }, ...artifactState.serverPolicyBundleListing.drafts],
+    preferredName || doc.name
   );
+  if (preferredName && preferredName !== doc.name) {
+    await loadSelectedArtifact();
+    return;
+  }
   renderLoadedDocument(doc, "Canonical mud-server policy bundle");
   setStatus(`Artifact Editor — loaded server policy bundle for '${worldId}'.`);
 }
@@ -486,6 +509,7 @@ function syncControlState() {
   const server = isServerSource();
   const serverBackedArtifact = supportsServerSource();
   const promptArtifact = isPromptArtifact();
+  const serverPolicyBundle = server && isPolicyBundleArtifact();
 
   dom.artifactPurpose.disabled = !promptArtifact || server;
   dom.artifactWorld.disabled = !server || !serverBackedArtifact;
@@ -496,16 +520,21 @@ function syncControlState() {
   }
 
   if (promptArtifact) {
+    dom.artifactSaveDraft.textContent = "Save local draft";
     dom.artifactSaveHint.textContent = server
       ? "Canonical mud-server files are read-only here. Use Save local draft to clone the loaded prompt into the lab draft library."
       : "Local mode can create new draft files under app/prompts/*/drafts but never overwrites shipped prompt files.";
   } else if (isAxisPayloadArtifact()) {
+    dom.artifactSaveDraft.textContent = "Save local draft";
     dom.artifactSaveHint.textContent =
       "Axis Payload JSON is local-only for now. Drafts are validated and saved under app/examples/drafts without overwriting shipped examples.";
   } else if (isPolicyBundleArtifact()) {
-    dom.artifactSaveHint.textContent =
-      "Policy Bundle JSON is local-only for now. Drafts are validated and saved under app/artifacts/policy_bundles/drafts without overwriting shipped starter bundles.";
+    dom.artifactSaveDraft.textContent = serverPolicyBundle ? "Save server draft" : "Save local draft";
+    dom.artifactSaveHint.textContent = serverPolicyBundle
+      ? "Mud-server policy bundles are canonical read-only bases here. Save server draft creates a new JSON bundle under the world's policies/drafts directory and never overwrites existing files."
+      : "Local mode validates Policy Bundle JSON drafts and saves them under app/artifacts/policy_bundles/drafts without overwriting shipped starter bundles.";
   } else {
+    dom.artifactSaveDraft.textContent = "Save local draft";
     dom.artifactSaveHint.textContent =
       "Lexicon JSON is local-only for now. Drafts are validated and saved under app/data/drafts without overwriting shipped canonical files.";
   }
@@ -600,13 +629,31 @@ async function loadSelectedArtifact() {
   }
 
   if (isPolicyBundleArtifact() && isServerSource()) {
-    const doc = artifactState.currentDocument;
-    if (!doc || doc.name !== selectedName) {
+    const listing = artifactState.serverPolicyBundleListing;
+    if (!listing) {
       await loadServerPolicyBundleArtifact();
       return;
     }
-    renderLoadedDocument(doc, "Canonical mud-server policy bundle");
-    setStatus(`Artifact Editor — loaded server policy bundle '${selectedName}'.`);
+    if (selectedName === listing.canonical.name) {
+      renderLoadedDocument(listing.canonical, "Canonical mud-server policy bundle");
+      setStatus(`Artifact Editor — loaded server policy bundle '${selectedName}'.`);
+      return;
+    }
+
+    const res = await fetch(
+      `/api/artifacts/server/policy-bundles/${encodeURIComponent(
+        dom.artifactWorld.value
+      )}/drafts/${encodeURIComponent(selectedName)}`
+    );
+    if (!res.ok) {
+      setStatus(`Artifact Editor — failed to load server draft '${selectedName}' (${res.status}).`);
+      return;
+    }
+
+    const doc = await res.json();
+    artifactState.currentDocument = doc;
+    renderLoadedDocument(doc, "Mud-server policy bundle draft");
+    setStatus(`Artifact Editor — loaded server draft '${selectedName}'.`);
     return;
   }
 
@@ -649,13 +696,21 @@ async function saveDraft() {
     setStatus("Artifact Editor — cannot save an empty draft.");
     return;
   }
+  if (isPolicyBundleArtifact() && isServerSource() && !dom.artifactWorld.value) {
+    setStatus("Artifact Editor — choose a mud-server world before saving a server draft.");
+    return;
+  }
 
   const endpoint = isPromptArtifact()
     ? "/api/artifacts/local/chat-prompts/drafts"
     : isAxisPayloadArtifact()
       ? "/api/artifacts/local/axis-payloads/drafts"
       : isPolicyBundleArtifact()
-        ? "/api/artifacts/local/policy-bundles/drafts"
+        ? isServerSource()
+          ? `/api/artifacts/server/policy-bundles/${encodeURIComponent(
+              dom.artifactWorld.value
+            )}/drafts`
+          : "/api/artifacts/local/policy-bundles/drafts"
         : "/api/artifacts/local/lexicons/drafts";
   const body = isPromptArtifact()
     ? {
@@ -683,14 +738,22 @@ async function saveDraft() {
   }
 
   const created = await res.json();
-  dom.artifactSource.value = "local";
-  if (isPromptArtifact()) {
-    dom.artifactPurpose.value = created.purpose;
+  const savedToServer = isPolicyBundleArtifact() && isServerSource();
+  if (!savedToServer) {
+    dom.artifactSource.value = "local";
+    if (isPromptArtifact()) {
+      dom.artifactPurpose.value = created.purpose;
+    }
+    await refreshArtifactSource();
+    dom.artifactSelect.value = created.name;
+    await loadSelectedArtifact();
   }
   dom.artifactDraftName.value = "";
-  await refreshArtifactSource();
-  dom.artifactSelect.value = created.name;
-  await loadSelectedArtifact();
+  if (savedToServer) {
+    await loadServerPolicyBundleArtifact(created.name);
+    setStatus(`Artifact Editor — created mud-server draft '${created.name}'.`);
+    return;
+  }
   setStatus(`Artifact Editor — created local draft '${created.name}'.`);
 }
 
