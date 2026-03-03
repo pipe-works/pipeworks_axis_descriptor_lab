@@ -49,6 +49,10 @@ POST /api/mud/mode             → switch runtime chat mode
 GET  /api/mud/session          → return auth status + translation mode
 GET  /api/mud/worlds           → proxy list worlds from mud server
 GET  /api/mud/world-config/{id}→ proxy world config from mud server
+GET  /api/artifacts/local/chat-prompts          → list local prompt artifacts
+GET  /api/artifacts/local/chat-prompts/{name}   → load one local prompt artifact
+POST /api/artifacts/local/chat-prompts/drafts   → create a new local prompt draft
+GET  /api/artifacts/server/chat-prompts/{id}    → server-backed canonical prompt manifest
 POST /api/mud/select-world     → store selected world_id
 
 Architecture notes
@@ -120,6 +124,7 @@ from app.schema import (
 )
 from app.micro_indicators import IndicatorConfig as _IndicatorConfig
 from app.routes_chat import router as chat_router
+from app.routes_artifact_editor import router as artifact_editor_router
 from app.routes_mud import router as mud_router
 from app.routes_save import router as save_router
 from app.micro_indicators import classify_rows
@@ -168,6 +173,7 @@ def close_runtime_clients() -> None:
 app.add_event_handler("shutdown", close_runtime_clients)
 
 app.include_router(chat_router)
+app.include_router(artifact_editor_router)
 app.include_router(mud_router, prefix="/api/mud")
 app.include_router(save_router)
 

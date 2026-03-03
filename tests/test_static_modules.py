@@ -146,6 +146,10 @@ MODULE_MANIFEST: dict[str, dict] = {
         "exports": ["wireNavigationEvents"],
         "imports_from": ["mod-state.js"],
     },
+    "mod-artifact-editor.js": {
+        "exports": ["initArtifactEditor", "wireArtifactEditorEvents"],
+        "imports_from": ["mod-state.js", "mod-status.js"],
+    },
     "mod-chat-state.js": {
         "exports": ["chatState", "charDom"],
         "imports_from": ["mod-state.js"],
@@ -229,6 +233,7 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-indicator-modal.js",
             "mod-navigation.js",
             "mod-chat-translation.js",
+            "mod-artifact-editor.js",
         ],
     },
     "mod-init.js": {
@@ -241,6 +246,7 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-events.js",
             "mod-loaders.js",
             "mod-chat-translation.js",
+            "mod-artifact-editor.js",
         ],
     },
 }

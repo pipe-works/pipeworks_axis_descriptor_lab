@@ -20,6 +20,7 @@
  *   5. wireAxisEvents()             — relabel, randomise, auto-label, Ollama host
  *   6. wirePersistenceEvents()      — save, export, import, clear output
  *   7. wireIndicatorModalEvents()   — indicator tag click → modal
+ *   8. wireArtifactEditorEvents()   — prompt artifact editor controls
  *
  * Called once during startup by `init()` in `mod-init.js`.
  *
@@ -36,6 +37,7 @@ import { wirePersistenceEvents } from "./mod-persistence.js";
 import { wireIndicatorModalEvents } from "./mod-indicator-modal.js";
 import { wireNavigationEvents } from "./mod-navigation.js";
 import { wireChatTranslationEvents } from "./mod-chat-translation.js";
+import { wireArtifactEditorEvents } from "./mod-artifact-editor.js";
 
 /**
  * Wire all interactive event listeners across the application.
@@ -57,4 +59,5 @@ export function wireEvents() {
   wirePersistenceEvents();
   wireIndicatorModalEvents();
   wireChatTranslationEvents();
+  wireArtifactEditorEvents();
 }

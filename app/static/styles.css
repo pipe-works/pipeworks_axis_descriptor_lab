@@ -855,20 +855,23 @@
   color: var(--col-primary);
 }
 
-/* Page wrappers — both pages are children of <body>; hidden class from base CSS. */
+/* Page wrappers — page containers are children of <body>; hidden class from base CSS. */
 #page-char-description,
-#page-chat-translation {
+#page-chat-translation,
+#page-artifact-editor {
   display: contents; /* transparent wrappers — grid children render normally */
 }
 
 #page-chat-translation.hidden,
-#page-char-description.hidden {
+#page-char-description.hidden,
+#page-artifact-editor.hidden {
   display: none;
 }
 
 /* Push grids below header + nav bar */
 .app-grid,
-.chat-grid {
+.chat-grid,
+.artifact-grid {
   top: calc(var(--header-h) + var(--nav-h, 2.5rem));
 }
 
@@ -886,6 +889,50 @@
   bottom: var(--statusbar-h);
   left: 0; right: 0;
   overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ARTIFACT EDITOR
+════════════════════════════════════════════════════════════════════════════ */
+
+.artifact-grid .panel--left  { background: var(--col-bg); }
+.artifact-grid .panel--centre { background: var(--col-surface); }
+.artifact-grid .panel--right  { background: var(--col-surface-2); }
+
+.artifact-panel {
+  overflow-y: auto;
+}
+
+.artifact-editor__textarea {
+  min-height: 24rem;
+  flex: 1 1 auto;
+}
+
+.artifact-note {
+  font-size: var(--text-xs);
+  color: var(--col-text-muted);
+  line-height: 1.5;
+}
+
+.artifact-meta,
+.artifact-reference,
+.artifact-preview {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--col-text-muted);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.artifact-reference {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.artifact-preview {
+  margin-top: var(--sp-3);
+  border-top: 1px solid var(--col-border);
+  padding-top: var(--sp-2);
 }
 
 /* ── Chat character panels ─────────────────────────────────────────────── */

@@ -1,15 +1,17 @@
 /**
  * mod-navigation.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Page switching between Character Description and Chat Translation.
+ * Page switching between Character Description, Chat Translation, and the
+ * Artifact Editor.
  *
  * Layout model
  * ────────────
- * The application has two top-level "pages" that share a single HTML document.
+ * The application has three top-level "pages" that share a single HTML document.
  * They live as sibling <div> elements below the shared header + nav bar:
  *
  *   <div id="page-char-description">   ← Character Description page
  *   <div id="page-chat-translation">   ← Chat Translation page
+ *   <div id="page-artifact-editor">    ← Artifact Editor page
  *
  * Only one page is visible at a time.  Switching is done by toggling the
  * "hidden" CSS class on the page divs (display:none / display:contents) and
@@ -28,25 +30,32 @@ import { dom } from "./mod-state.js";
 // ---------------------------------------------------------------------------
 
 /**
- * Activate one page and deactivate the other.
+ * Activate one page and deactivate the rest.
  *
- * Shows `activePage` and hides `inactivePage` by toggling the `"hidden"`
- * class.  Marks `activeBtn` as the current nav selection by adding the
- * `"is-active"` class and removing it from `inactiveBtn`.
+ * Shows the requested page and hides every other page by toggling the
+ * `"hidden"` class.  Marks the matching nav button as active and clears
+ * the active state from the others.
  *
- * Centralising this logic avoids the two click handlers duplicating the
- * same four class-list mutations.
- *
- * @param {HTMLElement} activePage   - The page div to show.
- * @param {HTMLElement} inactivePage - The page div to hide.
- * @param {HTMLElement} activeBtn    - Nav button to mark as active.
- * @param {HTMLElement} inactiveBtn  - Nav button to mark as inactive.
+ * @param {string} activeKey - Page key to activate.
  */
-function switchPage(activePage, inactivePage, activeBtn, inactiveBtn) {
-  activePage.classList.remove("hidden");
-  inactivePage.classList.add("hidden");
-  activeBtn.classList.add("is-active");
-  inactiveBtn.classList.remove("is-active");
+function switchPage(activeKey) {
+  const pages = {
+    char: dom.pageCharDescription,
+    chat: dom.pageChatTranslation,
+    artifact: dom.pageArtifactEditor,
+  };
+  const buttons = {
+    char: dom.navCharDesc,
+    chat: dom.navChatTrans,
+    artifact: dom.navArtifactEditor,
+  };
+
+  for (const [key, page] of Object.entries(pages)) {
+    page.classList.toggle("hidden", key !== activeKey);
+  }
+  for (const [key, button] of Object.entries(buttons)) {
+    button.classList.toggle("is-active", key === activeKey);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -56,9 +65,10 @@ function switchPage(activePage, inactivePage, activeBtn, inactiveBtn) {
 /**
  * Wire the navigation bar button event listeners.
  *
- * Attaches "click" handlers to the two nav buttons:
+ * Attaches "click" handlers to the three nav buttons:
  *   - "Character Description" (#nav-char-desc) → shows #page-char-description
  *   - "Chat Translation"      (#nav-chat-trans) → shows #page-chat-translation
+ *   - "Artifact Editor"       (#nav-artifact-editor) → shows #page-artifact-editor
  *
  * Called once during startup by the mod-events coordinator
  * ({@link module:mod-events~wireEvents}).
@@ -68,24 +78,20 @@ function switchPage(activePage, inactivePage, activeBtn, inactiveBtn) {
 export function wireNavigationEvents() {
   // ── Character Description nav button ────────────────────────────────── //
   dom.navCharDesc.addEventListener("click", () => {
-    switchPage(
-      dom.pageCharDescription, // show
-      dom.pageChatTranslation,  // hide
-      dom.navCharDesc,          // mark active
-      dom.navChatTrans,         // mark inactive
-    );
+    switchPage("char");
   });
 
   // ── Chat Translation nav button ──────────────────────────────────────── //
   dom.navChatTrans.addEventListener("click", () => {
-    switchPage(
-      dom.pageChatTranslation,  // show
-      dom.pageCharDescription,  // hide
-      dom.navChatTrans,         // mark active
-      dom.navCharDesc,          // mark inactive
-    );
+    switchPage("chat");
     // Notify the chat translation module so it can re-check session state
     // (prevents stale auth after returning from the Character Description page).
     document.dispatchEvent(new CustomEvent("chat-translation-activated"));
+  });
+
+  // ── Artifact Editor nav button ───────────────────────────────────────── //
+  dom.navArtifactEditor.addEventListener("click", () => {
+    switchPage("artifact");
+    document.dispatchEvent(new CustomEvent("artifact-editor-activated"));
   });
 }
