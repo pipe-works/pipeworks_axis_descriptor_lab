@@ -16,6 +16,12 @@ Responsibilities in this module:
 This module intentionally does not write to the mud server.  Server-backed
 editing is read-only in the first cut so the mud server remains the canonical
 source of truth while the lab provides the editing UX.
+
+The local-only JSON slices extend that same pattern to deterministic artifacts
+owned entirely by the lab, including:
+
+- AxisPayload JSON examples under ``app/examples``
+- micro-indicator lexicon/config JSON files under ``app/data``
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import HTTPException
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.file_loaders import EXAMPLES_DIR, PROMPTS_DIR, load_prompt
 from app.mud_server_client import MudServerClient
@@ -40,6 +47,13 @@ from app.schema.artifact import (
     LocalAxisPayloadArtifactListResponse,
     LocalAxisPayloadDraftCreateRequest,
     LocalAxisPayloadDraftCreateResponse,
+    LexiconJsonArtifactDocument,
+    LexiconJsonArtifactSummary,
+    LexiconJsonFieldInfo,
+    LexiconJsonReference,
+    LocalLexiconJsonArtifactListResponse,
+    LocalLexiconJsonDraftCreateRequest,
+    LocalLexiconJsonDraftCreateResponse,
     LocalPromptArtifactListResponse,
     LocalPromptDraftCreateRequest,
     LocalPromptDraftCreateResponse,
@@ -49,8 +63,39 @@ from app.schema.artifact import (
 )
 
 type PromptPurpose = Literal["character_description", "chat_translation"]
+type LexiconKind = Literal["abstraction", "embodiment", "intensity"]
 
 _DRAFT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+DATA_DIR = Path(__file__).parent / "data"
+
+
+class AbstractionLexiconPayload(BaseModel):
+    """Validated structure for abstraction/concrete lexicon JSON files."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str
+    abstract_terms: list[str]
+    concrete_terms: list[str]
+
+
+class EmbodimentLexiconPayload(BaseModel):
+    """Validated structure for embodiment lexicon JSON files."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str
+    abstract: list[str]
+    physical: list[str]
+
+
+class IntensityLexiconPayload(BaseModel):
+    """Validated structure for intensity-scale lexicon JSON files."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str
+    scales: dict[str, list[str]]
 
 
 def _prompt_root(purpose: PromptPurpose) -> Path:
@@ -63,6 +108,12 @@ def _examples_root() -> Path:
     """Return the filesystem root for AxisPayload example files."""
 
     return EXAMPLES_DIR
+
+
+def _data_root() -> Path:
+    """Return the filesystem root for deterministic lexicon JSON files."""
+
+    return DATA_DIR
 
 
 def _iter_prompt_files(purpose: PromptPurpose) -> list[Path]:
@@ -99,6 +150,24 @@ def _axis_payload_origin_path(path: Path) -> str:
     """Return a payload path relative to the examples root."""
 
     return path.relative_to(_examples_root()).as_posix()
+
+
+def _iter_lexicon_json_files() -> list[Path]:
+    """Return deterministic lexicon JSON files, including local drafts."""
+
+    return sorted(_data_root().rglob("*.json"))
+
+
+def _lexicon_is_draft(path: Path) -> bool:
+    """Return True when the lexicon file lives under data/drafts/."""
+
+    return "drafts" in path.relative_to(_data_root()).parts
+
+
+def _lexicon_origin_path(path: Path) -> str:
+    """Return a lexicon path relative to the data root."""
+
+    return path.relative_to(_data_root()).as_posix()
 
 
 def _build_profile_summary_example(active_axes: list[str]) -> str:
@@ -251,6 +320,161 @@ def _axis_payload_reference() -> AxisPayloadReference:
     )
 
 
+def _lexicon_catalog_reference() -> LexiconJsonReference:
+    """Return generic reference metadata for the lexicon artifact catalog."""
+
+    sample_catalog = {
+        "abstraction_v0_1": "abstract_terms + concrete_terms",
+        "embodiment_v0_1": "abstract + physical",
+        "intensity_v0_1": "scales[name] = ordered words",
+    }
+    return LexiconJsonReference(
+        artifact_kind="catalog",
+        fields=[
+            LexiconJsonFieldInfo(
+                name="version",
+                type="string",
+                description="Semantic data version embedded in the file.",
+            ),
+            LexiconJsonFieldInfo(
+                name="contract-specific fields",
+                type="object",
+                description="Each lexicon kind has a fixed top-level shape validated before draft save.",
+            ),
+        ],
+        sample_json=json.dumps(sample_catalog, ensure_ascii=False, indent=2),
+        notes=[
+            "These JSON files drive deterministic micro-indicator heuristics in app/micro_indicators.py.",
+            "Draft saves are validated against one supported lexicon contract before they are written.",
+            "Local drafts are stored under app/data/drafts and never overwrite shipped lexicon files.",
+        ],
+    )
+
+
+def _lexicon_reference(kind: LexiconKind) -> LexiconJsonReference:
+    """Return schema/reference metadata for one deterministic lexicon contract."""
+
+    if kind == "abstraction":
+        sample_payload: dict[str, object] = {
+            "version": "0.1",
+            "abstract_terms": ["authority", "instability", "influence"],
+            "concrete_terms": ["coat", "boots", "hands"],
+        }
+        fields = [
+            LexiconJsonFieldInfo(
+                name="version",
+                type="string",
+                description="Data version used by the deterministic abstraction lexicon.",
+            ),
+            LexiconJsonFieldInfo(
+                name="abstract_terms",
+                type="string[]",
+                description="Lowercase abstract terms used by the abstraction-up indicator.",
+            ),
+            LexiconJsonFieldInfo(
+                name="concrete_terms",
+                type="string[]",
+                description="Lowercase concrete terms used by the abstraction-up indicator.",
+            ),
+        ]
+        notes = [
+            "The micro-indicator pipeline lowercases these terms for deterministic membership checks.",
+            "Unknown top-level keys are rejected when saving drafts.",
+        ]
+    elif kind == "embodiment":
+        sample_payload = {
+            "version": "0.1",
+            "abstract": ["tension", "instability", "conflict"],
+            "physical": ["hand", "hands", "shoulder"],
+        }
+        fields = [
+            LexiconJsonFieldInfo(
+                name="version",
+                type="string",
+                description="Data version used by the deterministic embodiment lexicon.",
+            ),
+            LexiconJsonFieldInfo(
+                name="abstract",
+                type="string[]",
+                description="Lowercase abstract words used on the removed-text side of embodiment shift detection.",
+            ),
+            LexiconJsonFieldInfo(
+                name="physical",
+                type="string[]",
+                description="Lowercase physical words used on the added-text side of embodiment shift detection.",
+            ),
+        ]
+        notes = [
+            "Embodiment shift looks for abstract words removed and physical words added.",
+            "Unknown top-level keys are rejected when saving drafts.",
+        ]
+    else:
+        sample_payload = {
+            "version": "0.1",
+            "scales": {
+                "unease_scale": ["uneasy", "tense", "troubled"],
+                "confidence_scale": ["hesitant", "steady", "assured"],
+            },
+        }
+        fields = [
+            LexiconJsonFieldInfo(
+                name="version",
+                type="string",
+                description="Data version used by the deterministic intensity lexicon.",
+            ),
+            LexiconJsonFieldInfo(
+                name="scales",
+                type="object<string,string[]>",
+                description="Ordered per-scale word lists used to detect upward and downward intensity moves.",
+            ),
+        ]
+        notes = [
+            "Each scale is ordered from lower to higher intensity.",
+            "Unknown top-level keys are rejected when saving drafts.",
+        ]
+
+    notes.append(
+        "Drafts are saved under app/data/drafts and do not affect runtime canonical files."
+    )
+    return LexiconJsonReference(
+        artifact_kind=kind,
+        fields=fields,
+        sample_json=json.dumps(sample_payload, ensure_ascii=False, indent=2),
+        notes=notes,
+    )
+
+
+def _parse_lexicon_payload(raw: str | bytes | dict) -> tuple[LexiconKind, BaseModel]:
+    """Validate one deterministic lexicon payload and return its contract kind."""
+
+    if isinstance(raw, (str, bytes)):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc.msg}") from exc
+    else:
+        parsed = raw
+
+    validators: tuple[tuple[LexiconKind, type[BaseModel]], ...] = (
+        ("abstraction", AbstractionLexiconPayload),
+        ("embodiment", EmbodimentLexiconPayload),
+        ("intensity", IntensityLexiconPayload),
+    )
+    validation_errors: list[str] = []
+    for kind, model_cls in validators:
+        try:
+            return kind, model_cls.model_validate(parsed)
+        except ValidationError as exc:
+            validation_errors.append(f"{kind}: {exc.errors()[0]['msg']}")
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "JSON does not match any supported lexicon contract. " + "; ".join(validation_errors)
+        ),
+    )
+
+
 def build_prompt_reference(
     purpose: PromptPurpose,
     *,
@@ -310,6 +534,28 @@ def list_local_axis_payload_artifacts() -> LocalAxisPayloadArtifactListResponse:
     )
 
 
+def list_local_lexicon_json_artifacts() -> LocalLexiconJsonArtifactListResponse:
+    """List shipped and draft deterministic lexicon JSON files under app/data."""
+
+    lexicons: list[LexiconJsonArtifactSummary] = []
+    for path in _iter_lexicon_json_files():
+        kind, payload = _parse_lexicon_payload(path.read_text(encoding="utf-8"))
+        lexicons.append(
+            LexiconJsonArtifactSummary(
+                name=path.stem,
+                artifact_kind=kind,
+                is_draft=_lexicon_is_draft(path),
+                origin_path=_lexicon_origin_path(path),
+                version=str(payload.model_dump()["version"]),
+            )
+        )
+
+    return LocalLexiconJsonArtifactListResponse(
+        lexicons=lexicons,
+        reference=_lexicon_catalog_reference(),
+    )
+
+
 def load_local_prompt_artifact(name: str, purpose: PromptPurpose) -> PromptArtifactDocument:
     """Load one local prompt file together with its editor contract."""
 
@@ -353,6 +599,31 @@ def load_local_axis_payload_artifact(name: str) -> AxisPayloadArtifactDocument:
         origin_path=_axis_payload_origin_path(target),
         world_id=payload.world_id,
         reference=_axis_payload_reference(),
+    )
+
+
+def load_local_lexicon_json_artifact(name: str) -> LexiconJsonArtifactDocument:
+    """Load one local deterministic lexicon JSON artifact and its reference contract."""
+
+    target: Path | None = None
+    for path in _iter_lexicon_json_files():
+        if path.stem == name:
+            target = path
+            break
+
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Lexicon artifact '{name}' not found.")
+
+    kind, payload = _parse_lexicon_payload(target.read_text(encoding="utf-8"))
+    normalized = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
+    return LexiconJsonArtifactDocument(
+        name=name,
+        artifact_kind=kind,
+        content=normalized,
+        is_draft=_lexicon_is_draft(target),
+        origin_path=_lexicon_origin_path(target),
+        version=str(payload.model_dump()["version"]),
+        reference=_lexicon_reference(kind),
     )
 
 
@@ -435,6 +706,44 @@ def create_local_axis_payload_draft(
         name=draft_name,
         origin_path=_axis_payload_origin_path(target),
         world_id=payload.world_id,
+        based_on_name=req.based_on_name,
+    )
+
+
+def create_local_lexicon_json_draft(
+    req: LocalLexiconJsonDraftCreateRequest,
+) -> LocalLexiconJsonDraftCreateResponse:
+    """Create a new validated deterministic lexicon JSON draft under app/data/drafts."""
+
+    draft_name = req.draft_name.strip()
+    if not _DRAFT_NAME_RE.fullmatch(draft_name):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Draft names must use lowercase letters, numbers, underscores, or hyphens "
+                "and must not include a file extension."
+            ),
+        )
+
+    existing_names = {path.stem for path in _iter_lexicon_json_files()}
+    if draft_name in existing_names:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A lexicon artifact named '{draft_name}' already exists.",
+        )
+
+    kind, payload = _parse_lexicon_payload(req.content)
+    drafts_dir = _data_root() / "drafts"
+    drafts_dir.mkdir(parents=True, exist_ok=True)
+    target = drafts_dir / f"{draft_name}.json"
+    normalized = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
+    target.write_text(normalized + "\n", encoding="utf-8")
+
+    return LocalLexiconJsonDraftCreateResponse(
+        name=draft_name,
+        artifact_kind=kind,
+        origin_path=_lexicon_origin_path(target),
+        version=str(payload.model_dump()["version"]),
         based_on_name=req.based_on_name,
     )
 

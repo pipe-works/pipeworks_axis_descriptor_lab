@@ -298,3 +298,119 @@ class LocalAxisPayloadDraftCreateResponse(BaseModel):
         default=None,
         description="Source payload name copied into the request, if any.",
     )
+
+
+class LexiconJsonFieldInfo(BaseModel):
+    """One documented field in a deterministic lexicon JSON artifact."""
+
+    name: str = Field(..., description="Top-level field name.")
+    type: str = Field(..., description="Human-readable type description.")
+    description: str = Field(..., description="Short explanation of the field's role.")
+
+
+class LexiconJsonReference(BaseModel):
+    """Reference metadata for deterministic lexicon JSON artifacts."""
+
+    artifact_kind: Literal["catalog", "abstraction", "embodiment", "intensity"] = Field(
+        ...,
+        description="Which lexicon contract this reference describes.",
+    )
+    fields: list[LexiconJsonFieldInfo] = Field(
+        default_factory=list,
+        description="Documented top-level fields in the selected lexicon contract.",
+    )
+    sample_json: str = Field(
+        ...,
+        description="Canonical pretty-printed example JSON shown in the editor sidebar.",
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Constraints and invariants for deterministic lexicon JSON files.",
+    )
+
+
+class LexiconJsonArtifactSummary(BaseModel):
+    """Metadata for one selectable deterministic lexicon JSON artifact."""
+
+    name: str = Field(..., description="Artifact stem without the .json extension.")
+    artifact_kind: Literal["abstraction", "embodiment", "intensity"] = Field(
+        ...,
+        description="Which deterministic lexicon contract this file follows.",
+    )
+    is_draft: bool = Field(
+        ...,
+        description="True when the file lives under a drafts/ directory rather than the shipped data root.",
+    )
+    origin_path: str = Field(
+        ...,
+        description="Path relative to the app/data root.",
+    )
+    version: str = Field(..., description="Version declared by the lexicon file.")
+
+
+class LocalLexiconJsonArtifactListResponse(BaseModel):
+    """Listing response for local deterministic lexicon JSON artifacts."""
+
+    lexicons: list[LexiconJsonArtifactSummary] = Field(
+        default_factory=list,
+        description="Selectable lexicon JSON files from the app/data tree.",
+    )
+    reference: LexiconJsonReference = Field(
+        ...,
+        description="Reference contract for lexicon JSON editing.",
+    )
+
+
+class LexiconJsonArtifactDocument(BaseModel):
+    """Full document payload for one deterministic lexicon JSON artifact."""
+
+    name: str = Field(..., description="Artifact stem without extension.")
+    artifact_kind: Literal["abstraction", "embodiment", "intensity"] = Field(
+        ...,
+        description="Which deterministic lexicon contract this file follows.",
+    )
+    content: str = Field(..., description="Pretty-printed raw JSON text.")
+    is_draft: bool = Field(..., description="True when stored under data/drafts/.")
+    origin_path: str = Field(..., description="Path relative to the data root.")
+    version: str = Field(..., description="Version declared by the lexicon file.")
+    reference: LexiconJsonReference = Field(
+        ...,
+        description="Reference contract to use while editing this lexicon.",
+    )
+
+
+class LocalLexiconJsonDraftCreateRequest(BaseModel):
+    """Create-only request for saving a new local deterministic lexicon JSON draft."""
+
+    draft_name: str = Field(
+        ...,
+        min_length=1,
+        description="Filename stem for the new draft, without the .json extension.",
+    )
+    content: str = Field(
+        ...,
+        description="Raw JSON text to validate and save.",
+    )
+    based_on_name: str | None = Field(
+        default=None,
+        description="Optional source lexicon name this draft was derived from.",
+    )
+
+
+class LocalLexiconJsonDraftCreateResponse(BaseModel):
+    """Response returned after creating a local deterministic lexicon JSON draft."""
+
+    name: str = Field(..., description="Created draft stem without extension.")
+    artifact_kind: Literal["abstraction", "embodiment", "intensity"] = Field(
+        ...,
+        description="Which deterministic lexicon contract the saved file follows.",
+    )
+    origin_path: str = Field(
+        ...,
+        description="Relative path of the newly created draft JSON file.",
+    )
+    version: str = Field(..., description="Version declared by the saved lexicon.")
+    based_on_name: str | None = Field(
+        default=None,
+        description="Source lexicon name copied into the request, if any.",
+    )
