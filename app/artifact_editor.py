@@ -72,6 +72,8 @@ from app.schema.artifact import (
     ServerPromptArtifactListResponse,
     ServerPromptDraftCreateRequest,
     ServerPromptDraftCreateResponse,
+    ServerPromptDraftPromoteRequest,
+    ServerPromptDraftPromoteResponse,
     ServerPolicyBundleDraftCreateRequest,
     ServerPolicyBundleArtifactListResponse,
     ServerPolicyBundleDraftCreateResponse,
@@ -1190,6 +1192,23 @@ def create_server_prompt_draft(
         based_on_name=req.based_on_name,
     )
     return ServerPromptDraftCreateResponse.model_validate(data)
+
+
+def promote_server_prompt_draft(
+    *,
+    world_id: str,
+    draft_name: str,
+    req: ServerPromptDraftPromoteRequest,
+    mud_client: MudServerClient,
+) -> ServerPromptDraftPromoteResponse:
+    """Forward an explicit mud-server prompt promotion request."""
+
+    data = mud_client.promote_world_prompt_draft(
+        world_id=world_id,
+        draft_name=draft_name,
+        target_name=req.target_name.strip(),
+    )
+    return ServerPromptDraftPromoteResponse.model_validate(data)
 
 
 def list_server_prompt_artifacts(

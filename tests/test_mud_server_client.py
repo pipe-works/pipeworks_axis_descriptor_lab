@@ -620,6 +620,31 @@ class TestWorldPromptDrafts:
         with pytest.raises(MudServerSessionExpiredError):
             client.world_prompt_drafts("pipeworks_web")
 
+    def test_promote_world_prompt_draft_posts_payload(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "name": "ic_prompt_variant",
+            "world_id": "pipeworks_web",
+            "canonical_name": "ic_prompt_v2",
+            "canonical_path": "policies/ic_prompt_v2.txt",
+            "active_prompt_path": "policies/ic_prompt_v2.txt",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
+
+        result = client.promote_world_prompt_draft(
+            world_id="pipeworks_web",
+            draft_name="ic_prompt_variant",
+            target_name="ic_prompt_v2",
+        )
+
+        assert result["canonical_name"] == "ic_prompt_v2"
+        body = client._client.post.call_args[1]["json"]
+        assert body["target_name"] == "ic_prompt_v2"
+
 
 class TestTranslatePromptOverride:
     """translate() with prompt_template_override."""
