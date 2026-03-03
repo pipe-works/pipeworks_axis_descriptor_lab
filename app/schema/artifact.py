@@ -198,3 +198,103 @@ class LocalPromptDraftCreateResponse(BaseModel):
         default=None,
         description="Source prompt name copied into the request, if any.",
     )
+
+
+class AxisPayloadFieldInfo(BaseModel):
+    """One documented field in the AxisPayload JSON contract."""
+
+    name: str = Field(..., description="Top-level field name.")
+    type: str = Field(..., description="Human-readable type description.")
+    description: str = Field(..., description="Short explanation of the field's role.")
+
+
+class AxisPayloadReference(BaseModel):
+    """Reference metadata for Axis Payload JSON artifacts."""
+
+    fields: list[AxisPayloadFieldInfo] = Field(
+        default_factory=list,
+        description="Documented top-level fields in the AxisPayload contract.",
+    )
+    sample_json: str = Field(
+        ...,
+        description="Canonical pretty-printed example JSON shown in the editor sidebar.",
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Constraints and invariants for AxisPayload JSON files.",
+    )
+
+
+class AxisPayloadArtifactSummary(BaseModel):
+    """Metadata for one selectable AxisPayload JSON artifact."""
+
+    name: str = Field(..., description="Artifact stem without the .json extension.")
+    is_draft: bool = Field(
+        ...,
+        description="True when the file lives under a drafts/ directory rather than the shipped examples root.",
+    )
+    origin_path: str = Field(
+        ...,
+        description="Path relative to the examples root.",
+    )
+    world_id: str = Field(..., description="World ID declared by the payload.")
+
+
+class LocalAxisPayloadArtifactListResponse(BaseModel):
+    """Listing response for local AxisPayload JSON artifacts."""
+
+    payloads: list[AxisPayloadArtifactSummary] = Field(
+        default_factory=list,
+        description="Selectable AxisPayload JSON files from the examples tree.",
+    )
+    reference: AxisPayloadReference = Field(
+        ...,
+        description="Reference contract for AxisPayload JSON editing.",
+    )
+
+
+class AxisPayloadArtifactDocument(BaseModel):
+    """Full document payload for one AxisPayload JSON artifact."""
+
+    name: str = Field(..., description="Artifact stem without extension.")
+    content: str = Field(..., description="Pretty-printed raw JSON text.")
+    is_draft: bool = Field(..., description="True when stored under examples/drafts/.")
+    origin_path: str = Field(..., description="Path relative to the examples root.")
+    world_id: str = Field(..., description="World ID declared by the payload.")
+    reference: AxisPayloadReference = Field(
+        ...,
+        description="Reference contract to use while editing this payload.",
+    )
+
+
+class LocalAxisPayloadDraftCreateRequest(BaseModel):
+    """Create-only request for saving a new local AxisPayload JSON draft."""
+
+    draft_name: str = Field(
+        ...,
+        min_length=1,
+        description="Filename stem for the new draft, without the .json extension.",
+    )
+    content: str = Field(
+        ...,
+        description="Raw JSON text to validate and save.",
+    )
+    based_on_name: str | None = Field(
+        default=None,
+        description="Optional source payload name this draft was derived from.",
+    )
+
+
+class LocalAxisPayloadDraftCreateResponse(BaseModel):
+    """Response returned after creating a local AxisPayload JSON draft."""
+
+    name: str = Field(..., description="Created draft stem without extension.")
+    origin_path: str = Field(
+        ...,
+        description="Relative path of the newly created draft JSON file.",
+    )
+    world_id: str = Field(..., description="World ID declared by the saved payload.")
+    based_on_name: str | None = Field(
+        default=None,
+        description="Source payload name copied into the request, if any.",
+    )

@@ -20,9 +20,12 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 
 from app.artifact_editor import (
+    create_local_axis_payload_draft,
     create_local_prompt_draft,
     get_server_prompt_manifest,
+    list_local_axis_payload_artifacts,
     list_local_prompt_artifacts,
+    load_local_axis_payload_artifact,
     load_local_prompt_artifact,
 )
 from app.mud_server_client import (
@@ -31,6 +34,10 @@ from app.mud_server_client import (
     get_mud_client,
 )
 from app.schema import (
+    AxisPayloadArtifactDocument,
+    LocalAxisPayloadArtifactListResponse,
+    LocalAxisPayloadDraftCreateRequest,
+    LocalAxisPayloadDraftCreateResponse,
     LocalPromptArtifactListResponse,
     LocalPromptDraftCreateRequest,
     LocalPromptDraftCreateResponse,
@@ -79,6 +86,41 @@ def create_local_chat_prompt_draft(
     """Create a new draft prompt file under the local prompt tree."""
 
     return create_local_prompt_draft(req)
+
+
+@router.get(
+    "/api/artifacts/local/axis-payloads",
+    response_model=LocalAxisPayloadArtifactListResponse,
+    summary="List local AxisPayload JSON artifacts for the Artifact Editor",
+)
+def list_local_axis_payloads() -> LocalAxisPayloadArtifactListResponse:
+    """Return local AxisPayload JSON files, including drafts."""
+
+    return list_local_axis_payload_artifacts()
+
+
+@router.get(
+    "/api/artifacts/local/axis-payloads/{name}",
+    response_model=AxisPayloadArtifactDocument,
+    summary="Load one local AxisPayload JSON artifact",
+)
+def get_local_axis_payload(name: str) -> AxisPayloadArtifactDocument:
+    """Load one AxisPayload JSON file together with its editor reference contract."""
+
+    return load_local_axis_payload_artifact(name)
+
+
+@router.post(
+    "/api/artifacts/local/axis-payloads/drafts",
+    response_model=LocalAxisPayloadDraftCreateResponse,
+    summary="Create a new local AxisPayload JSON draft",
+)
+def create_local_axis_payload_draft_route(
+    req: LocalAxisPayloadDraftCreateRequest,
+) -> LocalAxisPayloadDraftCreateResponse:
+    """Create a new validated AxisPayload JSON draft file."""
+
+    return create_local_axis_payload_draft(req)
 
 
 @router.get(

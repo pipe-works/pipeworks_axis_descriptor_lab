@@ -1,22 +1,20 @@
 /**
  * mod-artifact-editor.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Prompt-artifact editing workflow for the Artifact Editor page.
+ * Artifact Editor workflow for prompt templates and local Axis Payload JSON.
  *
- * First-cut scope
- * ───────────────
- * This module implements the initial prompt-artifact slice of the broader
- * Artifact Editor plan:
- *
+ * Current scope
+ * ─────────────
  * - browse local prompt files (including drafts)
  * - browse server-backed canonical world prompts via the lab backend
- * - edit prompt text in a raw textarea
- * - inspect placeholder/reference metadata
- * - create new local draft files without overwriting shipped prompts
+ * - browse local Axis Payload JSON files from app/examples plus drafts
+ * - edit raw text in a single textarea
+ * - inspect placeholder/schema reference metadata
+ * - create new local draft files without overwriting shipped artifacts
  *
- * The module intentionally does not write to the mud server.  Server-backed
- * mode is read-only in this first implementation so the mud server remains the
- * canonical source of truth while the lab provides the editing experience.
+ * Server-backed mode remains prompt-only in this slice.  Axis Payload JSON
+ * editing is local-only until the mud server exposes canonical JSON artifact
+ * manifests for additional artifact types.
  */
 
 import { dom } from "./mod-state.js";
@@ -30,6 +28,14 @@ const artifactState = {
 
 const PLACEHOLDER_RE = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
 
+function currentArtifactType() {
+  return dom.artifactType.value;
+}
+
+function isPromptArtifact() {
+  return currentArtifactType() === "prompt_template";
+}
+
 function isServerSource() {
   return dom.artifactSource.value === "server";
 }
@@ -39,9 +45,13 @@ function currentPurpose() {
 }
 
 function currentReference() {
-  if (isServerSource()) {
-    return artifactState.serverManifest?.reference ?? null;
+  if (isPromptArtifact()) {
+    if (isServerSource()) {
+      return artifactState.serverManifest?.reference ?? null;
+    }
+    return artifactState.localListing?.reference ?? artifactState.currentDocument?.reference ?? null;
   }
+
   return artifactState.localListing?.reference ?? artifactState.currentDocument?.reference ?? null;
 }
 
@@ -50,7 +60,16 @@ function renderArtifactOptions(items, preferredName = "") {
   for (const item of items) {
     const option = document.createElement("option");
     option.value = item.name;
-    const suffix = item.is_active ? " (active)" : item.is_draft ? " (draft)" : "";
+
+    let suffix = "";
+    if (item.is_active) {
+      suffix = " (active)";
+    } else if (item.is_draft) {
+      suffix = " (draft)";
+    } else if (item.world_id) {
+      suffix = ` (${item.world_id})`;
+    }
+
     option.textContent = `${item.name}${suffix}`;
     dom.artifactSelect.appendChild(option);
   }
@@ -68,12 +87,7 @@ function renderMetaPanel(text) {
   dom.artifactMeta.textContent = text;
 }
 
-function renderReferencePanel(reference) {
-  if (!reference) {
-    dom.artifactReference.textContent = "Reference metadata unavailable.";
-    return;
-  }
-
+function renderPromptReference(reference) {
   const placeholderLines = reference.placeholders.length
     ? reference.placeholders.map((row) => `${row.placeholder}  ${row.description}`)
     : ["(no system-prompt placeholders for this prompt family)"];
@@ -87,12 +101,33 @@ function renderReferencePanel(reference) {
     `Notes\n${noteLines.join("\n")}`;
 }
 
-function renderPreview(reference, content, unknownPlaceholders) {
+function renderAxisPayloadReference(reference) {
+  const fieldLines = reference.fields.map(
+    (row) => `${row.name} (${row.type})  ${row.description}`
+  );
+  const noteLines = reference.notes.length ? reference.notes.map((note) => `- ${note}`) : ["- none"];
+
+  dom.artifactReference.textContent =
+    `Fields\n${fieldLines.join("\n")}\n\n` +
+    `Notes\n${noteLines.join("\n")}\n\n` +
+    `Sample JSON\n${reference.sample_json}`;
+}
+
+function renderReferencePanel(reference) {
   if (!reference) {
-    dom.artifactPreview.textContent = "Preview unavailable.";
+    dom.artifactReference.textContent = "Reference metadata unavailable.";
     return;
   }
 
+  if (isPromptArtifact()) {
+    renderPromptReference(reference);
+    return;
+  }
+
+  renderAxisPayloadReference(reference);
+}
+
+function renderPromptPreview(reference, content, unknownPlaceholders) {
   let preview = content;
   for (const [key, value] of Object.entries(reference.sample_values || {})) {
     preview = preview.replaceAll(`{{${key}}}`, value);
@@ -109,7 +144,23 @@ function renderPreview(reference, content, unknownPlaceholders) {
     `${unknownLine}\n\n${summaryLine}Rendered preview\n${preview.trim() || "(empty)"}`;
 }
 
-function validateEditor() {
+function renderAxisPayloadPreview(reference, content, parseError) {
+  if (parseError) {
+    dom.artifactPreview.textContent = `JSON parse error\n${parseError}`;
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(content);
+    const normalised = JSON.stringify(parsed, null, 2);
+    dom.artifactPreview.textContent =
+      `JSON validation\nparse ok\n\nNormalised preview\n${normalised}\n\nSample JSON\n${reference.sample_json}`;
+  } catch (err) {
+    dom.artifactPreview.textContent = `JSON parse error\n${err.message}`;
+  }
+}
+
+function validatePromptEditor() {
   const reference = currentReference();
   const content = dom.artifactEditor.value;
   const supported = new Set(
@@ -132,20 +183,56 @@ function validateEditor() {
     setEditorBadge("ok", true);
   }
 
-  renderPreview(reference, content, [...unknown].sort());
+  renderPromptPreview(reference, content, [...unknown].sort());
+}
+
+function validateAxisPayloadEditor() {
+  const reference = currentReference();
+  const content = dom.artifactEditor.value;
+
+  if (!content.trim()) {
+    setEditorBadge("empty");
+    renderAxisPayloadPreview(reference, content, null);
+    return;
+  }
+
+  try {
+    JSON.parse(content);
+    setEditorBadge("json ok", true);
+    renderAxisPayloadPreview(reference, content, null);
+  } catch (err) {
+    setEditorBadge("json err");
+    renderAxisPayloadPreview(reference, content, err.message);
+  }
+}
+
+function validateEditor() {
+  if (isPromptArtifact()) {
+    validatePromptEditor();
+    return;
+  }
+  validateAxisPayloadEditor();
 }
 
 function renderLoadedDocument(doc, metaPrefix) {
   artifactState.currentDocument = doc;
   dom.artifactCurrentName.value = doc.name;
   dom.artifactEditor.value = doc.content;
-  renderMetaPanel(
-    `${metaPrefix}\n` +
-      `name: ${doc.name}\n` +
-      `purpose: ${doc.purpose}\n` +
-      `origin: ${doc.origin_path}\n` +
-      `draft: ${doc.is_draft ? "yes" : "no"}`
-  );
+
+  const metaLines = [
+    metaPrefix,
+    `name: ${doc.name}`,
+    `origin: ${doc.origin_path}`,
+    `draft: ${doc.is_draft ? "yes" : "no"}`,
+  ];
+  if (Object.hasOwn(doc, "purpose")) {
+    metaLines.splice(2, 0, `purpose: ${doc.purpose}`);
+  }
+  if (Object.hasOwn(doc, "world_id")) {
+    metaLines.splice(2, 0, `world: ${doc.world_id}`);
+  }
+
+  renderMetaPanel(metaLines.join("\n"));
   renderReferencePanel(doc.reference);
   validateEditor();
 }
@@ -168,7 +255,7 @@ async function loadServerWorlds() {
   }
 }
 
-async function loadLocalArtifacts() {
+async function loadLocalPromptArtifacts() {
   const purpose = currentPurpose();
   const res = await fetch(
     `/api/artifacts/local/chat-prompts?purpose=${encodeURIComponent(purpose)}`
@@ -185,6 +272,23 @@ async function loadLocalArtifacts() {
   renderMetaPanel(
     `Local prompt family\npurpose: ${artifactState.localListing.purpose}\nmode: create-only drafts`
   );
+  dom.artifactCurrentName.value = "";
+  dom.artifactEditor.value = "";
+  validateEditor();
+}
+
+async function loadLocalAxisPayloadArtifacts() {
+  const res = await fetch("/api/artifacts/local/axis-payloads");
+  if (!res.ok) {
+    throw new Error(`local axis payload listing failed (${res.status})`);
+  }
+
+  artifactState.localListing = await res.json();
+  artifactState.serverManifest = null;
+  artifactState.currentDocument = null;
+  renderArtifactOptions(artifactState.localListing.payloads);
+  renderReferencePanel(artifactState.localListing.reference);
+  renderMetaPanel("Local AxisPayload JSON artifacts\nmode: create-only drafts");
   dom.artifactCurrentName.value = "";
   dom.artifactEditor.value = "";
   validateEditor();
@@ -230,16 +334,39 @@ async function loadServerArtifacts() {
 
 function syncControlState() {
   const server = isServerSource();
-  dom.artifactWorld.disabled = !server;
-  dom.artifactRefreshWorlds.disabled = !server;
-  dom.artifactPurpose.disabled = server;
-  dom.artifactSaveHint.textContent = server
-    ? "Canonical mud-server files are read-only here. Use Save local draft to clone the loaded prompt into the lab draft library."
-    : "Local mode can create new draft files under app/prompts/*/drafts but never overwrites shipped prompt files.";
+  const promptArtifact = isPromptArtifact();
+
+  dom.artifactPurpose.disabled = !promptArtifact || server;
+  dom.artifactWorld.disabled = !server || !promptArtifact;
+  dom.artifactRefreshWorlds.disabled = !server || !promptArtifact;
+
+  if (!promptArtifact && server) {
+    dom.artifactSource.value = "local";
+  }
+
+  if (promptArtifact) {
+    dom.artifactSaveHint.textContent = server
+      ? "Canonical mud-server files are read-only here. Use Save local draft to clone the loaded prompt into the lab draft library."
+      : "Local mode can create new draft files under app/prompts/*/drafts but never overwrites shipped prompt files.";
+  } else {
+    dom.artifactSaveHint.textContent =
+      "Axis Payload JSON is local-only for now. Drafts are validated and saved under app/examples/drafts without overwriting shipped examples.";
+  }
 }
 
 async function refreshArtifactSource() {
   syncControlState();
+
+  if (!isPromptArtifact()) {
+    try {
+      await loadLocalAxisPayloadArtifacts();
+      setStatus("Artifact Editor — loaded local Axis Payload JSON artifacts.");
+    } catch (err) {
+      setStatus(`Artifact Editor — ${err.message}.`);
+    }
+    return;
+  }
+
   if (isServerSource()) {
     try {
       await loadServerWorlds();
@@ -247,7 +374,9 @@ async function refreshArtifactSource() {
       setStatus("Artifact Editor — loaded mud-server world list.");
     } catch (err) {
       renderArtifactOptions([]);
-      renderMetaPanel("Server-backed prompt loading is unavailable until a mud-server session is active.");
+      renderMetaPanel(
+        "Server-backed prompt loading is unavailable until a mud-server session is active."
+      );
       renderReferencePanel(null);
       setStatus(`Artifact Editor — ${err.message}.`);
     }
@@ -255,7 +384,7 @@ async function refreshArtifactSource() {
   }
 
   try {
-    await loadLocalArtifacts();
+    await loadLocalPromptArtifacts();
     setStatus("Artifact Editor — loaded local prompt artifacts.");
   } catch (err) {
     setStatus(`Artifact Editor — ${err.message}.`);
@@ -269,7 +398,7 @@ async function loadSelectedArtifact() {
     return;
   }
 
-  if (isServerSource()) {
+  if (isPromptArtifact() && isServerSource()) {
     const prompt = artifactState.serverManifest?.prompts?.find((entry) => entry.name === selectedName);
     if (!prompt) {
       setStatus("Artifact Editor — selected server prompt is no longer available.");
@@ -290,19 +419,21 @@ async function loadSelectedArtifact() {
     return;
   }
 
-  const res = await fetch(
-    `/api/artifacts/local/chat-prompts/${encodeURIComponent(selectedName)}?purpose=${encodeURIComponent(
-      currentPurpose()
-    )}`
-  );
+  const endpoint = isPromptArtifact()
+    ? `/api/artifacts/local/chat-prompts/${encodeURIComponent(selectedName)}?purpose=${encodeURIComponent(
+        currentPurpose()
+      )}`
+    : `/api/artifacts/local/axis-payloads/${encodeURIComponent(selectedName)}`;
+
+  const res = await fetch(endpoint);
   if (!res.ok) {
     setStatus(`Artifact Editor — failed to load '${selectedName}' (${res.status}).`);
     return;
   }
 
   const doc = await res.json();
-  renderLoadedDocument(doc, "Local prompt artifact");
-  setStatus(`Artifact Editor — loaded local prompt '${selectedName}'.`);
+  renderLoadedDocument(doc, isPromptArtifact() ? "Local prompt artifact" : "Local AxisPayload JSON");
+  setStatus(`Artifact Editor — loaded local artifact '${selectedName}'.`);
 }
 
 async function saveDraft() {
@@ -317,14 +448,23 @@ async function saveDraft() {
     return;
   }
 
-  const purpose = isServerSource() ? "chat_translation" : currentPurpose();
-  const body = {
-    purpose,
-    draft_name: draftName,
-    content,
-    based_on_name: dom.artifactCurrentName.value.trim() || null,
-  };
-  const res = await fetch("/api/artifacts/local/chat-prompts/drafts", {
+  const endpoint = isPromptArtifact()
+    ? "/api/artifacts/local/chat-prompts/drafts"
+    : "/api/artifacts/local/axis-payloads/drafts";
+  const body = isPromptArtifact()
+    ? {
+        purpose: isServerSource() ? "chat_translation" : currentPurpose(),
+        draft_name: draftName,
+        content,
+        based_on_name: dom.artifactCurrentName.value.trim() || null,
+      }
+    : {
+        draft_name: draftName,
+        content,
+        based_on_name: dom.artifactCurrentName.value.trim() || null,
+      };
+
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -338,7 +478,9 @@ async function saveDraft() {
 
   const created = await res.json();
   dom.artifactSource.value = "local";
-  dom.artifactPurpose.value = created.purpose;
+  if (isPromptArtifact()) {
+    dom.artifactPurpose.value = created.purpose;
+  }
   dom.artifactDraftName.value = "";
   await refreshArtifactSource();
   dom.artifactSelect.value = created.name;
@@ -351,6 +493,7 @@ export async function initArtifactEditor() {
 }
 
 export function wireArtifactEditorEvents() {
+  dom.artifactType.addEventListener("change", refreshArtifactSource);
   dom.artifactSource.addEventListener("change", refreshArtifactSource);
   dom.artifactPurpose.addEventListener("change", refreshArtifactSource);
   dom.artifactWorld.addEventListener("change", loadServerArtifacts);
@@ -360,7 +503,7 @@ export function wireArtifactEditorEvents() {
   dom.artifactEditor.addEventListener("input", validateEditor);
   dom.artifactSaveDraft.addEventListener("click", saveDraft);
   document.addEventListener("artifact-editor-activated", () => {
-    if (isServerSource()) {
+    if (isPromptArtifact() && isServerSource()) {
       refreshArtifactSource();
     }
   });
