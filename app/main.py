@@ -59,6 +59,7 @@ GET  /api/artifacts/local/policy-bundles        → list local normalized policy
 GET  /api/artifacts/local/policy-bundles/{name} → load one local normalized policy bundle artifact
 POST /api/artifacts/local/policy-bundles/drafts → create a new local normalized policy bundle draft
 GET  /api/artifacts/server/chat-prompts/{id}    → server-backed canonical prompt manifest
+GET  /api/artifacts/server/policy-bundles/{id}  → server-backed canonical policy bundle artifact
 POST /api/mud/select-world     → store selected world_id
 
 Architecture notes

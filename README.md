@@ -70,7 +70,7 @@ Then open **<http://127.0.0.1:8242>** in your browser.
 ### Artifact Editor page
 
 1. Choose an artifact type such as **Prompt Template**, **Axis Payload JSON**, **Policy Bundle JSON**, or **Lexicon JSON**.
-2. Use **Local drafts** to browse shipped artifacts plus local drafts, or switch prompt templates to **Mud server canonical** for read-only world-backed inspection.
+2. Use **Local drafts** to browse shipped artifacts plus local drafts, or switch supported artifact types to **Mud server canonical** for read-only world-backed inspection.
 3. Load an artifact to inspect its origin, contract notes, and raw text/JSON.
 4. Edit the artifact in the textarea; the right-hand panel shows placeholder or schema guidance, while the preview panel shows sample prompt rendering or normalised JSON.
 5. Save a new draft name to write a validated create-only copy under `app/prompts/*/drafts`, `app/examples/drafts`, or `app/data/drafts` depending on artifact type.

@@ -256,6 +256,14 @@ class MudServerClient:
             raise TypeError(f"Expected dict from world-prompts, got {type(result).__name__}")
         return result
 
+    def world_policy_bundle(self, world_id: str) -> dict:
+        """GET /api/lab/world-policy-bundle/{world_id} → return normalized policy bundle."""
+
+        result = self._get(f"/api/lab/world-policy-bundle/{world_id}")
+        if not isinstance(result, dict):  # pragma: no cover
+            raise TypeError(f"Expected dict from world-policy-bundle, got {type(result).__name__}")
+        return result
+
     def translate(
         self,
         *,

@@ -46,6 +46,10 @@ function isPolicyBundleArtifact() {
   return currentArtifactType() === "policy_bundle";
 }
 
+function supportsServerSource() {
+  return isPromptArtifact() || isPolicyBundleArtifact();
+}
+
 function isServerSource() {
   return dom.artifactSource.value === "server";
 }
@@ -452,15 +456,42 @@ async function loadServerArtifacts() {
   }
 }
 
+async function loadServerPolicyBundleArtifact() {
+  const worldId = dom.artifactWorld.value;
+  if (!worldId) {
+    renderArtifactOptions([]);
+    renderMetaPanel("Select a mud-server world to inspect its canonical policy bundle.");
+    renderReferencePanel(null);
+    return;
+  }
+
+  const res = await fetch(`/api/artifacts/server/policy-bundles/${encodeURIComponent(worldId)}`);
+  if (!res.ok) {
+    throw new Error(`server policy bundle request failed (${res.status})`);
+  }
+
+  const doc = await res.json();
+  artifactState.serverManifest = null;
+  artifactState.localListing = null;
+  artifactState.currentDocument = doc;
+  renderArtifactOptions(
+    [{ name: doc.name, world_id: doc.world_id, is_draft: false }],
+    doc.name
+  );
+  renderLoadedDocument(doc, "Canonical mud-server policy bundle");
+  setStatus(`Artifact Editor — loaded server policy bundle for '${worldId}'.`);
+}
+
 function syncControlState() {
   const server = isServerSource();
+  const serverBackedArtifact = supportsServerSource();
   const promptArtifact = isPromptArtifact();
 
   dom.artifactPurpose.disabled = !promptArtifact || server;
-  dom.artifactWorld.disabled = !server || !promptArtifact;
-  dom.artifactRefreshWorlds.disabled = !server || !promptArtifact;
+  dom.artifactWorld.disabled = !server || !serverBackedArtifact;
+  dom.artifactRefreshWorlds.disabled = !server || !serverBackedArtifact;
 
-  if (!promptArtifact && server) {
+  if (!serverBackedArtifact && server) {
     dom.artifactSource.value = "local";
   }
 
@@ -484,6 +515,21 @@ async function refreshArtifactSource() {
   syncControlState();
 
   if (!isPromptArtifact()) {
+    if (isServerSource() && isPolicyBundleArtifact()) {
+      try {
+        await loadServerWorlds();
+        await loadServerPolicyBundleArtifact();
+      } catch (err) {
+        renderArtifactOptions([]);
+        renderMetaPanel(
+          "Server-backed policy bundle loading is unavailable until a mud-server session is active."
+        );
+        renderReferencePanel(null);
+        setStatus(`Artifact Editor — ${err.message}.`);
+      }
+      return;
+    }
+
     try {
       if (isAxisPayloadArtifact()) {
         await loadLocalAxisPayloadArtifacts();
@@ -550,6 +596,17 @@ async function loadSelectedArtifact() {
       "Canonical mud-server prompt"
     );
     setStatus(`Artifact Editor — loaded server prompt '${selectedName}'.`);
+    return;
+  }
+
+  if (isPolicyBundleArtifact() && isServerSource()) {
+    const doc = artifactState.currentDocument;
+    if (!doc || doc.name !== selectedName) {
+      await loadServerPolicyBundleArtifact();
+      return;
+    }
+    renderLoadedDocument(doc, "Canonical mud-server policy bundle");
+    setStatus(`Artifact Editor — loaded server policy bundle '${selectedName}'.`);
     return;
   }
 
@@ -645,14 +702,23 @@ export function wireArtifactEditorEvents() {
   dom.artifactType.addEventListener("change", refreshArtifactSource);
   dom.artifactSource.addEventListener("change", refreshArtifactSource);
   dom.artifactPurpose.addEventListener("change", refreshArtifactSource);
-  dom.artifactWorld.addEventListener("change", loadServerArtifacts);
+  dom.artifactWorld.addEventListener("change", () => {
+    if (!isServerSource()) return;
+    if (isPromptArtifact()) {
+      loadServerArtifacts();
+      return;
+    }
+    if (isPolicyBundleArtifact()) {
+      loadServerPolicyBundleArtifact();
+    }
+  });
   dom.artifactRefreshWorlds.addEventListener("click", refreshArtifactSource);
   dom.artifactBtnLoad.addEventListener("click", loadSelectedArtifact);
   dom.artifactSelect.addEventListener("change", loadSelectedArtifact);
   dom.artifactEditor.addEventListener("input", validateEditor);
   dom.artifactSaveDraft.addEventListener("click", saveDraft);
   document.addEventListener("artifact-editor-activated", () => {
-    if (isPromptArtifact() && isServerSource()) {
+    if (supportsServerSource() && isServerSource()) {
       refreshArtifactSource();
     }
   });
