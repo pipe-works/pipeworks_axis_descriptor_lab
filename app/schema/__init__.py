@@ -48,6 +48,9 @@ from app.schema.artifact import (
     LocalPromptDraftCreateResponse,
     PromptArtifactDocument,
     PromptArtifactSummary,
+    ServerPolicyBundleDraftCreateRequest,
+    ServerPolicyBundleDraftCreateResponse,
+    ServerPolicyBundleArtifactListResponse,
     ServerPromptManifestResponse,
 )
 from app.schema.analysis import (
@@ -137,6 +140,9 @@ __all__ = [
     "PromptArtifactSummary",
     "SaveRequest",
     "SaveResponse",
+    "ServerPolicyBundleDraftCreateRequest",
+    "ServerPolicyBundleDraftCreateResponse",
+    "ServerPolicyBundleArtifactListResponse",
     "ServerPromptManifestResponse",
     "TransformationMapRequest",
     "TransformationMapResponse",

@@ -521,3 +521,51 @@ class LocalPolicyBundleDraftCreateResponse(BaseModel):
         default=None,
         description="Source policy bundle name copied into the request, if any.",
     )
+
+
+class ServerPolicyBundleDraftCreateRequest(BaseModel):
+    """Create-only request for saving a new mud-server policy bundle draft."""
+
+    draft_name: str = Field(
+        ...,
+        min_length=1,
+        description="Filename stem for the new server draft, without the .json extension.",
+    )
+    content: str = Field(
+        ...,
+        description="Raw normalized policy bundle JSON text to validate and forward.",
+    )
+    based_on_name: str | None = Field(
+        default=None,
+        description="Optional source bundle name this draft was derived from.",
+    )
+
+
+class ServerPolicyBundleDraftCreateResponse(BaseModel):
+    """Response returned after creating a new mud-server policy bundle draft."""
+
+    name: str = Field(..., description="Created draft stem without extension.")
+    origin_path: str = Field(
+        ...,
+        description="Canonical server-relative path of the newly created draft file.",
+    )
+    world_id: str = Field(..., description="World ID that owns the saved server draft.")
+    version: str = Field(..., description="Version declared by the saved policy bundle.")
+    based_on_name: str | None = Field(
+        default=None,
+        description="Source bundle name copied into the request, if any.",
+    )
+
+
+class ServerPolicyBundleArtifactListResponse(BaseModel):
+    """Listing of mud-server policy bundle drafts for one selected world."""
+
+    world_id: str = Field(..., description="Mud server world identifier.")
+    bundles: list[PolicyBundleArtifactSummary] = Field(
+        default_factory=list,
+        description="Server-backed draft bundle files available for the selected world.",
+    )
+    reference: PolicyBundleReference = Field(
+        ...,
+        description="Reference contract to apply when editing server-backed policy bundles.",
+    )

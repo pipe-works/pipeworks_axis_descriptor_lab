@@ -9,6 +9,7 @@ is intentionally narrow:
 - local deterministic JSON artifact browsing and draft creation
 - server-backed prompt manifests derived from the mud server's canonical lab
   endpoints
+- server-backed policy bundle inspection and create-only draft creation
 
 The route layer stays thin and delegates all file policy and manifest shaping
 to ``app.artifact_editor``.
@@ -16,21 +17,25 @@ to ``app.artifact_editor``.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, NoReturn
 
+import httpx
 from fastapi import APIRouter, HTTPException
 
 from app.artifact_editor import (
+    create_server_policy_bundle_draft,
     create_local_axis_payload_draft,
     create_local_lexicon_json_draft,
     create_local_policy_bundle_draft,
     create_local_prompt_draft,
     get_server_policy_bundle_artifact,
     get_server_prompt_manifest,
+    list_server_policy_bundle_artifacts,
     list_local_axis_payload_artifacts,
     list_local_lexicon_json_artifacts,
     list_local_policy_bundle_artifacts,
     list_local_prompt_artifacts,
+    load_server_policy_bundle_draft_artifact,
     load_local_axis_payload_artifact,
     load_local_lexicon_json_artifact,
     load_local_policy_bundle_artifact,
@@ -58,10 +63,29 @@ from app.schema import (
     LocalPromptDraftCreateResponse,
     PolicyBundleArtifactDocument,
     PromptArtifactDocument,
+    ServerPolicyBundleArtifactListResponse,
+    ServerPolicyBundleDraftCreateRequest,
+    ServerPolicyBundleDraftCreateResponse,
     ServerPromptManifestResponse,
 )
 
 router = APIRouter(tags=["artifact-editor"])
+
+
+def _raise_for_mud_http_error(exc: httpx.HTTPStatusError) -> NoReturn:
+    """Translate mud-server HTTP failures into stable lab-facing HTTP errors."""
+
+    detail: str
+    try:
+        payload = exc.response.json()
+        detail = str(payload.get("detail") or exc.response.text)
+    except ValueError:
+        detail = exc.response.text
+
+    raise HTTPException(
+        status_code=exc.response.status_code,
+        detail=detail or "Mud server request failed.",
+    ) from exc
 
 
 @router.get(
@@ -236,6 +260,8 @@ def get_server_chat_prompts(world_id: str) -> ServerPromptManifestResponse:
         ) from exc
     except MudServerConnectionError as exc:
         raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_mud_http_error(exc)
 
 
 @router.get(
@@ -261,3 +287,97 @@ def get_server_policy_bundle(world_id: str) -> PolicyBundleArtifactDocument:
         ) from exc
     except MudServerConnectionError as exc:
         raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_mud_http_error(exc)
+
+
+@router.get(
+    "/api/artifacts/server/policy-bundles/{world_id}/drafts",
+    response_model=ServerPolicyBundleArtifactListResponse,
+    summary="List mud-server policy bundle drafts",
+)
+def list_server_policy_bundle_drafts(world_id: str) -> ServerPolicyBundleArtifactListResponse:
+    """Return draft policy bundle files for one mud-server world."""
+
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    if not client.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+
+    try:
+        return list_server_policy_bundle_artifacts(world_id, client)
+    except MudServerSessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        ) from exc
+    except MudServerConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_mud_http_error(exc)
+
+
+@router.get(
+    "/api/artifacts/server/policy-bundles/{world_id}/drafts/{name}",
+    response_model=PolicyBundleArtifactDocument,
+    summary="Load one mud-server policy bundle draft",
+)
+def get_server_policy_bundle_draft(world_id: str, name: str) -> PolicyBundleArtifactDocument:
+    """Load one draft policy bundle file for the selected mud-server world."""
+
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    if not client.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+
+    try:
+        return load_server_policy_bundle_draft_artifact(
+            world_id=world_id,
+            draft_name=name,
+            mud_client=client,
+        )
+    except MudServerSessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        ) from exc
+    except MudServerConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_mud_http_error(exc)
+
+
+@router.post(
+    "/api/artifacts/server/policy-bundles/{world_id}/drafts",
+    response_model=ServerPolicyBundleDraftCreateResponse,
+    summary="Create a new mud-server policy bundle draft",
+)
+def create_server_policy_bundle_draft_route(
+    world_id: str,
+    req: ServerPolicyBundleDraftCreateRequest,
+) -> ServerPolicyBundleDraftCreateResponse:
+    """Create a new draft under the mud server's policy draft directory.
+
+    The mud server remains authoritative: this route can only create new
+    draft files and cannot overwrite active canonical policy files.
+    """
+
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    if not client.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+
+    try:
+        return create_server_policy_bundle_draft(world_id=world_id, req=req, mud_client=client)
+    except MudServerSessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        ) from exc
+    except MudServerConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_mud_http_error(exc)

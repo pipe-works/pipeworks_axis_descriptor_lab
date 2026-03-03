@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 from fastapi.testclient import TestClient
 
 from app.mud_server_client import MudServerConnectionError, MudServerSessionExpiredError
@@ -502,3 +503,141 @@ class TestServerPolicyBundleArtifact:
             resp = client.get("/api/artifacts/server/policy-bundles/pipeworks_web")
 
         assert resp.status_code == 401
+
+    def test_creates_server_policy_bundle_draft(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+        mock.create_world_policy_bundle_draft.return_value = {
+            "name": "pipeworks_web_bundle_alt",
+            "origin_path": "policies/drafts/pipeworks_web_bundle_alt.json",
+            "world_id": "pipeworks_web",
+            "version": "0.2.0",
+            "based_on_name": "pipeworks_web_policy_bundle",
+        }
+
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=mock):
+            resp = client.post(
+                "/api/artifacts/server/policy-bundles/pipeworks_web/drafts",
+                json={
+                    "draft_name": "pipeworks_web_bundle_alt",
+                    "content": '{"world_id":"pipeworks_web","version":"0.2.0","source":"test","policy_hash":null,"axes_order":["health"],"axes":{"health":{"group":"character","ordering":["weary"],"thresholds":[{"label":"weary","min":0.4,"max":0.59}]}},"chat_rules":{"channel_multipliers":{"say":1.0,"yell":1.5,"whisper":0.5},"min_gap_threshold":0.05,"axes":{"health":{"resolver":"shared_drain","base_magnitude":0.02}}}}',
+                    "based_on_name": "pipeworks_web_policy_bundle",
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "pipeworks_web_bundle_alt"
+        assert data["origin_path"] == "policies/drafts/pipeworks_web_bundle_alt.json"
+
+    def test_lists_server_policy_bundle_drafts(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+        mock.world_policy_bundle_drafts.return_value = {
+            "world_id": "pipeworks_web",
+            "drafts": [
+                {
+                    "name": "pipeworks_web_bundle_alt",
+                    "origin_path": "policies/drafts/pipeworks_web_bundle_alt.json",
+                    "world_id": "pipeworks_web",
+                    "version": "0.2.0",
+                }
+            ],
+        }
+
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=mock):
+            resp = client.get("/api/artifacts/server/policy-bundles/pipeworks_web/drafts")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["world_id"] == "pipeworks_web"
+        assert data["bundles"][0]["name"] == "pipeworks_web_bundle_alt"
+        assert data["bundles"][0]["is_draft"] is True
+
+    def test_loads_server_policy_bundle_draft_document(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+        mock.world_policy_bundle_draft.return_value = {
+            "name": "pipeworks_web_bundle_alt",
+            "origin_path": "policies/drafts/pipeworks_web_bundle_alt.json",
+            "world_id": "pipeworks_web",
+            "version": "0.2.0",
+            "content": {
+                "world_id": "pipeworks_web",
+                "version": "0.2.0",
+                "source": "test",
+                "policy_hash": None,
+                "axes_order": ["health"],
+                "axes": {
+                    "health": {
+                        "group": "character",
+                        "ordering": ["weary"],
+                        "thresholds": [{"label": "weary", "min": 0.4, "max": 0.59}],
+                    }
+                },
+                "chat_rules": {
+                    "channel_multipliers": {"say": 1.0, "yell": 1.5, "whisper": 0.5},
+                    "min_gap_threshold": 0.05,
+                    "axes": {"health": {"resolver": "shared_drain", "base_magnitude": 0.02}},
+                },
+            },
+        }
+
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=mock):
+            resp = client.get(
+                "/api/artifacts/server/policy-bundles/pipeworks_web/drafts/pipeworks_web_bundle_alt"
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "pipeworks_web_bundle_alt"
+        assert data["is_draft"] is True
+        assert data["origin_path"] == "policies/drafts/pipeworks_web_bundle_alt.json"
+
+    def test_server_policy_bundle_draft_requires_world_match(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=mock):
+            resp = client.post(
+                "/api/artifacts/server/policy-bundles/pipeworks_web/drafts",
+                json={
+                    "draft_name": "pipeworks_web_bundle_alt",
+                    "content": '{"world_id":"daily_undertaking","version":"0.2.0","source":"test","policy_hash":null,"axes_order":["health"],"axes":{"health":{"group":"character","ordering":["weary"],"thresholds":[{"label":"weary","min":0.4,"max":0.59}]}},"chat_rules":{"channel_multipliers":{"say":1.0,"yell":1.5,"whisper":0.5},"min_gap_threshold":0.05,"axes":{"health":{"resolver":"shared_drain","base_magnitude":0.02}}}}',
+                },
+            )
+
+        assert resp.status_code == 400
+        assert "must match the selected mud-server world" in resp.json()["detail"]
+
+    def test_server_policy_bundle_draft_propagates_mud_http_errors(
+        self, client: TestClient
+    ) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+        request = httpx.Request(
+            "POST",
+            "http://example.test/api/lab/world-policy-bundle/pipeworks_web/drafts",
+        )
+        response = httpx.Response(
+            status_code=409,
+            request=request,
+            json={"detail": "Draft file already exists."},
+        )
+        mock.create_world_policy_bundle_draft.side_effect = httpx.HTTPStatusError(
+            "conflict",
+            request=request,
+            response=response,
+        )
+
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=mock):
+            resp = client.post(
+                "/api/artifacts/server/policy-bundles/pipeworks_web/drafts",
+                json={
+                    "draft_name": "pipeworks_web_bundle_alt",
+                    "content": '{"world_id":"pipeworks_web","version":"0.2.0","source":"test","policy_hash":null,"axes_order":["health"],"axes":{"health":{"group":"character","ordering":["weary"],"thresholds":[{"label":"weary","min":0.4,"max":0.59}]}},"chat_rules":{"channel_multipliers":{"say":1.0,"yell":1.5,"whisper":0.5},"min_gap_threshold":0.05,"axes":{"health":{"resolver":"shared_drain","base_magnitude":0.02}}}}',
+                },
+            )
+
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == "Draft file already exists."
