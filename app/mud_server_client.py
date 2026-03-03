@@ -290,6 +290,21 @@ class MudServerClient:
             raise TypeError(f"Expected dict from world-prompt draft, got {type(result).__name__}")
         return result
 
+    def promote_world_prompt_draft(
+        self,
+        *,
+        world_id: str,
+        draft_name: str,
+        target_name: str,
+    ) -> dict:
+        """POST /api/lab/world-prompts/{world_id}/drafts/{name}/promote → promote one draft."""
+
+        body = {
+            "session_id": self._session_id,
+            "target_name": target_name,
+        }
+        return self._post(f"/api/lab/world-prompts/{world_id}/drafts/{draft_name}/promote", body)
+
     def world_policy_bundle(self, world_id: str) -> dict:
         """GET /api/lab/world-policy-bundle/{world_id} → return normalized policy bundle."""
 

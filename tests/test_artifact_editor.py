@@ -535,6 +535,31 @@ class TestServerPromptDraftArtifacts:
             based_on_name="ic_prompt",
         )
 
+    def test_promotes_server_prompt_draft(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+        mock.promote_world_prompt_draft.return_value = {
+            "name": "ic_prompt_variant",
+            "world_id": "pipeworks_web",
+            "canonical_name": "ic_prompt_v2",
+            "canonical_path": "policies/ic_prompt_v2.txt",
+            "active_prompt_path": "policies/ic_prompt_v2.txt",
+        }
+
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=mock):
+            resp = client.post(
+                "/api/artifacts/server/chat-prompts/pipeworks_web/drafts/ic_prompt_variant/promote",
+                json={"target_name": "ic_prompt_v2"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["canonical_name"] == "ic_prompt_v2"
+        mock.promote_world_prompt_draft.assert_called_once_with(
+            world_id="pipeworks_web",
+            draft_name="ic_prompt_variant",
+            target_name="ic_prompt_v2",
+        )
+
     def test_server_prompt_drafts_require_configured_mud_client(self, client: TestClient) -> None:
         with patch("app.routes_artifact_editor.get_mud_client", return_value=None):
             list_resp = client.get("/api/artifacts/server/chat-prompts/pipeworks_web/drafts")
@@ -545,10 +570,15 @@ class TestServerPromptDraftArtifacts:
                 "/api/artifacts/server/chat-prompts/pipeworks_web/drafts",
                 json={"draft_name": "ic_prompt_variant", "content": "Prompt"},
             )
+            promote_resp = client.post(
+                "/api/artifacts/server/chat-prompts/pipeworks_web/drafts/ic_prompt_variant/promote",
+                json={"target_name": "ic_prompt_v2"},
+            )
 
         assert list_resp.status_code == 503
         assert load_resp.status_code == 503
         assert create_resp.status_code == 503
+        assert promote_resp.status_code == 503
 
     def test_server_prompt_drafts_require_authentication(self, client: TestClient) -> None:
         mock = MagicMock()
@@ -563,10 +593,15 @@ class TestServerPromptDraftArtifacts:
                 "/api/artifacts/server/chat-prompts/pipeworks_web/drafts",
                 json={"draft_name": "ic_prompt_variant", "content": "Prompt"},
             )
+            promote_resp = client.post(
+                "/api/artifacts/server/chat-prompts/pipeworks_web/drafts/ic_prompt_variant/promote",
+                json={"target_name": "ic_prompt_v2"},
+            )
 
         assert list_resp.status_code == 401
         assert load_resp.status_code == 401
         assert create_resp.status_code == 401
+        assert promote_resp.status_code == 401
 
     def test_server_prompt_drafts_handle_expired_session(self, client: TestClient) -> None:
         mock = MagicMock()
@@ -626,6 +661,55 @@ class TestServerPromptDraftArtifacts:
             resp = client.post(
                 "/api/artifacts/server/chat-prompts/pipeworks_web/drafts",
                 json={"draft_name": "ic_prompt_variant", "content": "Prompt"},
+            )
+
+        assert resp.status_code == 409
+        assert "already exists" in resp.json()["detail"]
+
+    def test_server_prompt_draft_promote_handles_expired_session(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+
+        with (
+            patch("app.routes_artifact_editor.get_mud_client", return_value=mock),
+            patch(
+                "app.routes_artifact_editor.promote_server_prompt_draft",
+                side_effect=MudServerSessionExpiredError("expired"),
+            ),
+        ):
+            resp = client.post(
+                "/api/artifacts/server/chat-prompts/pipeworks_web/drafts/ic_prompt_variant/promote",
+                json={"target_name": "ic_prompt_v2"},
+            )
+
+        assert resp.status_code == 401
+        assert "session expired" in resp.json()["detail"].lower()
+
+    def test_server_prompt_draft_promote_propagates_mud_http_errors(
+        self, client: TestClient
+    ) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+        request = httpx.Request(
+            "POST",
+            "http://example.test/api/lab/world-prompts/pipeworks_web/drafts/ic_prompt_variant/promote",
+        )
+        response = httpx.Response(
+            status_code=409,
+            request=request,
+            json={"detail": "A canonical prompt named 'ic_prompt_v2' already exists."},
+        )
+
+        with (
+            patch("app.routes_artifact_editor.get_mud_client", return_value=mock),
+            patch(
+                "app.routes_artifact_editor.promote_server_prompt_draft",
+                side_effect=httpx.HTTPStatusError("exists", request=request, response=response),
+            ),
+        ):
+            resp = client.post(
+                "/api/artifacts/server/chat-prompts/pipeworks_web/drafts/ic_prompt_variant/promote",
+                json={"target_name": "ic_prompt_v2"},
             )
 
         assert resp.status_code == 409

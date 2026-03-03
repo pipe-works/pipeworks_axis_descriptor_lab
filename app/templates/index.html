@@ -848,7 +848,7 @@
     <label for="artifact-current-name" class="control-label" style="margin-top:0.75rem;">Loaded artifact</label>
     <input id="artifact-current-name" class="input" type="text" readonly placeholder="(none loaded)" />
 
-    <label for="artifact-draft-name" class="control-label" style="margin-top:0.75rem;">New draft name</label>
+    <label id="artifact-draft-name-label" for="artifact-draft-name" class="control-label" style="margin-top:0.75rem;">New draft name</label>
     <input
       id="artifact-draft-name"
       class="input"
@@ -859,6 +859,9 @@
 
     <button id="artifact-save-draft" class="btn btn--primary btn--full" type="button" style="margin-top:0.75rem;">
       Save draft
+    </button>
+    <button id="artifact-promote-draft" class="btn btn--secondary btn--full hidden" type="button" style="margin-top:0.5rem;">
+      Promote draft
     </button>
   </section>
 

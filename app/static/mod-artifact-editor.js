@@ -56,6 +56,15 @@ function isServerSource() {
   return dom.artifactSource.value === "server";
 }
 
+function isPromotableServerPromptDraft() {
+  return (
+    isPromptArtifact() &&
+    isServerSource() &&
+    artifactState.currentDocument?.is_draft === true &&
+    artifactState.currentDocument?.purpose === "chat_translation"
+  );
+}
+
 function currentPurpose() {
   return dom.artifactPurpose.value;
 }
@@ -331,6 +340,7 @@ function renderLoadedDocument(doc, metaPrefix) {
   renderMetaPanel(metaLines.join("\n"));
   renderReferencePanel(doc.reference);
   validateEditor();
+  syncControlState();
 }
 
 async function loadServerWorlds() {
@@ -528,10 +538,12 @@ function syncControlState() {
   const serverBackedArtifact = supportsServerSource();
   const promptArtifact = isPromptArtifact();
   const serverPolicyBundle = server && isPolicyBundleArtifact();
+  const promotablePromptDraft = isPromotableServerPromptDraft();
 
   dom.artifactPurpose.disabled = !promptArtifact || server;
   dom.artifactWorld.disabled = !server || !serverBackedArtifact;
   dom.artifactRefreshWorlds.disabled = !server || !serverBackedArtifact;
+  dom.artifactPromoteDraft.classList.toggle("hidden", !promotablePromptDraft);
 
   if (!serverBackedArtifact && server) {
     dom.artifactSource.value = "local";
@@ -539,20 +551,34 @@ function syncControlState() {
 
   if (promptArtifact) {
     dom.artifactSaveDraft.textContent = server ? "Save server draft" : "Save local draft";
+    dom.artifactDraftNameLabel.textContent = promotablePromptDraft
+      ? "Promotion target"
+      : "New draft name";
+    dom.artifactDraftName.placeholder = promotablePromptDraft
+      ? "example_canonical_prompt"
+      : "example_new_artifact";
     dom.artifactSaveHint.textContent = server
-      ? "Mud-server prompt files are canonical read-only bases here. Save server draft creates a new prompt under the world's policies/drafts directory and never overwrites canonical or existing draft files."
+      ? promotablePromptDraft
+        ? "Mud-server prompt drafts can be promoted explicitly. Promote draft creates a new canonical policies/<name>.txt file, updates the world's active prompt_template_path to it, and never overwrites an existing canonical file."
+        : "Mud-server prompt files are canonical read-only bases here. Save server draft creates a new prompt under the world's policies/drafts directory and never overwrites canonical or existing draft files."
       : "Local mode can create new draft files under app/prompts/*/drafts but never overwrites shipped prompt files.";
   } else if (isAxisPayloadArtifact()) {
     dom.artifactSaveDraft.textContent = "Save local draft";
+    dom.artifactDraftNameLabel.textContent = "New draft name";
+    dom.artifactDraftName.placeholder = "example_new_artifact";
     dom.artifactSaveHint.textContent =
       "Axis Payload JSON is local-only for now. Drafts are validated and saved under app/examples/drafts without overwriting shipped examples.";
   } else if (isPolicyBundleArtifact()) {
     dom.artifactSaveDraft.textContent = serverPolicyBundle ? "Save server draft" : "Save local draft";
+    dom.artifactDraftNameLabel.textContent = "New draft name";
+    dom.artifactDraftName.placeholder = "example_new_artifact";
     dom.artifactSaveHint.textContent = serverPolicyBundle
       ? "Mud-server policy bundles are canonical read-only bases here. Save server draft creates a new JSON bundle under the world's policies/drafts directory and never overwrites existing files."
       : "Local mode validates Policy Bundle JSON drafts and saves them under app/artifacts/policy_bundles/drafts without overwriting shipped starter bundles.";
   } else {
     dom.artifactSaveDraft.textContent = "Save local draft";
+    dom.artifactDraftNameLabel.textContent = "New draft name";
+    dom.artifactDraftName.placeholder = "example_new_artifact";
     dom.artifactSaveHint.textContent =
       "Lexicon JSON is local-only for now. Drafts are validated and saved under app/data/drafts without overwriting shipped canonical files.";
   }
@@ -804,6 +830,45 @@ async function saveDraft() {
   setStatus(`Artifact Editor — created local draft '${created.name}'.`);
 }
 
+async function promoteDraft() {
+  if (!isPromotableServerPromptDraft()) {
+    setStatus("Artifact Editor — load a mud-server prompt draft before promoting.");
+    return;
+  }
+
+  const targetName = dom.artifactDraftName.value.trim();
+  if (!targetName) {
+    setStatus("Artifact Editor — enter a promotion target name first.");
+    return;
+  }
+
+  const currentName = dom.artifactCurrentName.value.trim();
+  const worldId = dom.artifactWorld.value;
+  const res = await fetch(
+    `/api/artifacts/server/chat-prompts/${encodeURIComponent(
+      worldId
+    )}/drafts/${encodeURIComponent(currentName)}/promote`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_name: targetName }),
+    }
+  );
+
+  if (!res.ok) {
+    const detail = await res.text();
+    setStatus(`Artifact Editor — draft promotion failed (${res.status}): ${detail}`);
+    return;
+  }
+
+  const promoted = await res.json();
+  dom.artifactDraftName.value = "";
+  await loadServerArtifacts(promoted.canonical_name);
+  setStatus(
+    `Artifact Editor — promoted '${promoted.name}' to canonical prompt '${promoted.canonical_name}'.`
+  );
+}
+
 export async function initArtifactEditor() {
   await refreshArtifactSource();
 }
@@ -827,6 +892,7 @@ export function wireArtifactEditorEvents() {
   dom.artifactSelect.addEventListener("change", loadSelectedArtifact);
   dom.artifactEditor.addEventListener("input", validateEditor);
   dom.artifactSaveDraft.addEventListener("click", saveDraft);
+  dom.artifactPromoteDraft.addEventListener("click", promoteDraft);
   document.addEventListener("artifact-editor-activated", () => {
     if (supportsServerSource() && isServerSource()) {
       refreshArtifactSource();

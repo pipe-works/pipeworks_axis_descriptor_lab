@@ -10,6 +10,7 @@ is intentionally narrow:
 - server-backed prompt manifests derived from the mud server's canonical lab
   endpoints
 - server-backed prompt draft listing, loading, and create-only draft creation
+- server-backed prompt draft promotion through explicit mud-server APIs
 - server-backed policy bundle inspection and create-only draft creation
 
 The route layer stays thin and delegates all file policy and manifest shaping
@@ -44,6 +45,7 @@ from app.artifact_editor import (
     load_local_lexicon_json_artifact,
     load_local_policy_bundle_artifact,
     load_local_prompt_artifact,
+    promote_server_prompt_draft,
 )
 from app.mud_server_client import (
     MudServerConnectionError,
@@ -70,6 +72,8 @@ from app.schema import (
     ServerPromptArtifactListResponse,
     ServerPromptDraftCreateRequest,
     ServerPromptDraftCreateResponse,
+    ServerPromptDraftPromoteRequest,
+    ServerPromptDraftPromoteResponse,
     ServerPolicyBundleArtifactListResponse,
     ServerPolicyBundleDraftCreateRequest,
     ServerPolicyBundleDraftCreateResponse,
@@ -346,6 +350,42 @@ def create_server_chat_prompt_draft_route(
 
     try:
         return create_server_prompt_draft(world_id=world_id, req=req, mud_client=client)
+    except MudServerSessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        ) from exc
+    except MudServerConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_mud_http_error(exc)
+
+
+@router.post(
+    "/api/artifacts/server/chat-prompts/{world_id}/drafts/{name}/promote",
+    response_model=ServerPromptDraftPromoteResponse,
+    summary="Promote one mud-server prompt draft to canonical status",
+)
+def promote_server_chat_prompt_draft_route(
+    world_id: str,
+    name: str,
+    req: ServerPromptDraftPromoteRequest,
+) -> ServerPromptDraftPromoteResponse:
+    """Promote one mud-server prompt draft into a new canonical active prompt file."""
+
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    if not client.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+
+    try:
+        return promote_server_prompt_draft(
+            world_id=world_id,
+            draft_name=name,
+            req=req,
+            mud_client=client,
+        )
     except MudServerSessionExpiredError as exc:
         raise HTTPException(
             status_code=401,

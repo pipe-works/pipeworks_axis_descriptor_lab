@@ -253,6 +253,32 @@ class ServerPromptDraftCreateResponse(BaseModel):
     )
 
 
+class ServerPromptDraftPromoteRequest(BaseModel):
+    """Explicit request to promote a mud-server prompt draft to canonical status."""
+
+    target_name: str = Field(
+        ...,
+        min_length=1,
+        description="Filename stem for the new canonical prompt file, without the .txt extension.",
+    )
+
+
+class ServerPromptDraftPromoteResponse(BaseModel):
+    """Response returned after promoting a mud-server prompt draft."""
+
+    name: str = Field(..., description="Draft stem without extension.")
+    world_id: str = Field(..., description="World ID that owns the promoted prompt.")
+    canonical_name: str = Field(..., description="Canonical prompt stem created by promotion.")
+    canonical_path: str = Field(
+        ...,
+        description="Canonical server-relative path of the created prompt file.",
+    )
+    active_prompt_path: str = Field(
+        ...,
+        description="Updated translation_layer.prompt_template_path after promotion.",
+    )
+
+
 class AxisPayloadFieldInfo(BaseModel):
     """One documented field in the AxisPayload JSON contract."""
 
