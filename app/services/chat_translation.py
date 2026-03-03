@@ -43,6 +43,61 @@ from app.schema import (
 logger = logging.getLogger(__name__)
 
 
+def _build_profile_summary(
+    active_axes: dict[str, dict[str, str | float]], character_name: str
+) -> str:
+    """Build the mud-server-style ``{{profile_summary}}`` block.
+
+    The standalone lab flow should render prompt context using the same
+    summary shape as the mud server's canonical translation service:
+    a leading character-name line followed by title-cased axis rows with
+    two-decimal scores.  Matching this format keeps identical prompt files
+    semantically aligned across both repositories.
+
+    Args:
+        active_axes: Axis snapshot keyed by axis name.  Each value must carry
+            ``label`` and ``score`` keys.
+        character_name: Display name to place on the first summary line.
+
+    Returns:
+        Multi-line prompt block suitable for ``{{profile_summary}}``.
+    """
+
+    lines = [f"  Character: {character_name}"]
+    for axis_name, axis_value in active_axes.items():
+        label = str(axis_value["label"])
+        score = float(axis_value["score"])
+        display_name = axis_name.replace("_", " ").title()
+        lines.append(f"  {display_name}: {label} ({score:.2f})")
+    return "\n".join(lines)
+
+
+def _render_system_prompt(template: str, profile: dict[str, str | float], ooc_message: str) -> str:
+    """Render a standalone chat prompt using the mud-server placeholder contract.
+
+    Placeholder replacement deliberately mirrors the mud server:
+    profile-derived keys are substituted first and ``{{ooc_message}}`` is
+    substituted last.  This allows world prompt files copied from the server
+    to behave the same way in the lab, including templates that embed the OOC
+    message inside the system prompt text.
+
+    Args:
+        template: Raw prompt template text.
+        profile: Flat placeholder map containing axis, channel, and
+            ``profile_summary`` keys.
+        ooc_message: Raw OOC user message.
+
+    Returns:
+        Fully-rendered system prompt text.
+    """
+
+    rendered = template
+    for key, value in profile.items():
+        rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
+    rendered = rendered.replace("{{ooc_message}}", ooc_message)
+    return rendered
+
+
 def translate_chat(req: ChatTranslationRequest, prompt_root: Path) -> ChatTranslationResponse:
     """
     Translate one or two OOC chat messages using either the mud server's
@@ -86,6 +141,7 @@ def _translate_via_server(
                 axes=axes_for_server,
                 channel=char.channel,
                 ooc_message=char.ooc_message,
+                character_name=char.character_name or "Lab Subject",
                 seed=req.seed,
                 temperature=req.temperature,
                 prompt_template_override=req.system_prompt or None,
@@ -196,31 +252,29 @@ def _translate_standalone(
         max_output_chars=req.max_output_chars,
     )
 
-    def _translate_one(char) -> ChatTranslationResult:
+    def _translate_one(char, fallback_name: str) -> ChatTranslationResult:
         active: set[str] = (
             set(char.active_axes) if char.active_axes is not None else set(char.axes.keys())
         )
 
         profile: dict[str, str | float] = {}
-        summary_lines: list[str] = []
+        active_axes: dict[str, dict[str, str | float]] = {}
+        character_name = char.character_name or fallback_name
 
         for axis_name, axis_val in char.axes.items():
             if axis_name not in active:
                 continue
             profile[f"{axis_name}_label"] = axis_val.label
             profile[f"{axis_name}_score"] = round(axis_val.score, 3)
-            summary_lines.append(
-                f"  {axis_name}: {axis_val.label} (score: {round(axis_val.score, 3)})"
-            )
+            active_axes[axis_name] = {
+                "label": axis_val.label,
+                "score": round(axis_val.score, 3),
+            }
 
         profile["channel"] = char.channel
-        profile["profile_summary"] = (
-            "\n".join(summary_lines) if summary_lines else "  (no axes active)"
-        )
-
-        rendered = template
-        for key, value in profile.items():
-            rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
+        profile["character_name"] = character_name
+        profile["profile_summary"] = _build_profile_summary(active_axes, character_name)
+        rendered = _render_system_prompt(template, profile, char.ooc_message)
 
         input_dict = {
             "axes": {k: v.model_dump() for k, v in char.axes.items() if k in active},
@@ -279,8 +333,12 @@ def _translate_standalone(
             model=req.model,
         )
 
-    result_a = _translate_one(req.character_a) if req.character_a is not None else None
-    result_b = _translate_one(req.character_b) if req.character_b is not None else None
+    result_a = (
+        _translate_one(req.character_a, "Character A") if req.character_a is not None else None
+    )
+    result_b = (
+        _translate_one(req.character_b, "Character B") if req.character_b is not None else None
+    )
 
     return ChatTranslationResponse(character_a=result_a, character_b=result_b)
 

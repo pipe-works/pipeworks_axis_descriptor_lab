@@ -44,6 +44,14 @@ class ChatCharacterInput(BaseModel):
             "None means all axes are active.  An empty list disables all axes."
         ),
     )
+    character_name: str | None = Field(
+        default=None,
+        description=(
+            "Optional display name for prompt rendering.  When omitted, the "
+            "standalone pipeline falls back to a stable label such as "
+            "'Character A' or 'Character B'."
+        ),
+    )
 
 
 class ChatTranslationRequest(BaseModel):

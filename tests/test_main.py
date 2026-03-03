@@ -97,22 +97,23 @@ class TestListPrompts:
     def test_includes_variant_prompts(self, client: TestClient) -> None:
         """All prompt .txt files in app/prompts/ must appear in the list."""
         data = client.get("/api/prompts").json()
-        assert len(data) >= 7
+        assert len(data) >= 6
         assert "system_prompt_v02_terse" in data
         assert "system_prompt_v03_environmental" in data
         assert "system_prompt_v04_contrast" in data
-        assert "ic_v01_undertaking" in data
+        assert "pipeworks_web_ic_prompt" in data
+        assert "daily_undertaking_ic_prompt" in data
 
     def test_character_description_purpose_filters_chat_prompts(self, client: TestClient) -> None:
         """Character Description prompt listing must exclude chat templates."""
         data = client.get("/api/prompts?purpose=character_description").json()
         assert "system_prompt_v01" in data
-        assert "ic_v01_undertaking" not in data
+        assert "pipeworks_web_ic_prompt" not in data
 
     def test_chat_translation_purpose_filters_system_prompts(self, client: TestClient) -> None:
         """Chat Translation prompt listing must exclude description prompts."""
         data = client.get("/api/prompts?purpose=chat_translation").json()
-        assert "ic_v01_undertaking" in data
+        assert "pipeworks_web_ic_prompt" in data
         assert "system_prompt_v01" not in data
 
 
@@ -138,7 +139,7 @@ class TestGetPrompt:
 
     def test_purpose_filtered_lookup_404s_on_wrong_group(self, client: TestClient) -> None:
         """A prompt must not resolve through the wrong purpose filter."""
-        resp = client.get("/api/prompts/ic_v01_undertaking?purpose=character_description")
+        resp = client.get("/api/prompts/pipeworks_web_ic_prompt?purpose=character_description")
         assert resp.status_code == 404
 
 

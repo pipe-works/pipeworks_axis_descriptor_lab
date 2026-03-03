@@ -136,7 +136,7 @@ class TestConditionalFiles:
 
     system_prompt.md is always written: either from the explicit
     ``system_prompt`` field in the request, or by loading the server's
-    default IC prompt file (``ic_v01_undertaking.txt``) when no prompt was
+    default IC prompt file (``pipeworks_web_ic_prompt.txt``) when no prompt was
     provided.  This ensures the save package always documents the prompt
     that was actually used during translation.
     """
@@ -178,7 +178,8 @@ class TestConditionalFiles:
         self, client: TestClient, base_request: dict
     ) -> None:
         """When no system_prompt is sent, system_prompt.md is still written
-        by loading the server default IC prompt file (ic_v01_undertaking.txt).
+        by loading the server default IC prompt file
+        (pipeworks_web_ic_prompt.txt).
         """
         # base_request has no system_prompt key.
         data = client.post("/api/save_chat", json=base_request).json()
