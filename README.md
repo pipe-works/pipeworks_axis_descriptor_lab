@@ -6,10 +6,11 @@ Single-user web tool for testing how small LLMs (via Ollama) produce _non-author
 
 **Key principle:** The system (axes, scores, seeds) is _authoritative_. The LLM is _ornamental_ -- it produces flavour text only, never makes decisions, and its output is never trusted as ground truth.
 
-The lab has two pages:
+The lab has three pages:
 
 - **Character Description** -- generate descriptive paragraphs from axis payloads with A/B diffing, signal isolation, and transformation-map analysis.
 - **Chat Translation** -- translate out-of-character (OOC) player messages into in-character (IC) speech using axis-defined character profiles. Works standalone (local Ollama) or connected to a [Pipe-Works mud server](https://github.com/pipe-works/pipeworks_mud_server) for canonical pipeline translation.
+- **Artifact Editor** -- inspect canonical prompt contracts, edit raw local drafts, and validate deterministic JSON artifacts such as Axis Payload examples and micro-indicator lexicon files without overwriting shipped files.
 
 <p align="center">
   <img src="docs/images/lab_ui_dark_v2.png" alt="Axis Descriptor Lab – dark theme with micro-indicators" width="90%">
@@ -65,6 +66,14 @@ Then open **<http://127.0.0.1:8242>** in your browser.
 - Ollama host, model, strict mode, max tokens, max chars, and IC prompt controls are hidden (the server controls these).
 - Temperature and seed remain adjustable (forwarded to the server).
 - Session expiry (401) is handled automatically by returning to the login panel.
+
+### Artifact Editor page
+
+1. Choose an artifact type such as **Prompt Template**, **Axis Payload JSON**, or **Lexicon JSON**.
+2. Use **Local drafts** to browse shipped artifacts plus local drafts, or switch prompt templates to **Mud server canonical** for read-only world-backed inspection.
+3. Load an artifact to inspect its origin, contract notes, and raw text/JSON.
+4. Edit the artifact in the textarea; the right-hand panel shows placeholder or schema guidance, while the preview panel shows sample prompt rendering or normalised JSON.
+5. Save a new draft name to write a validated create-only copy under `app/prompts/*/drafts`, `app/examples/drafts`, or `app/data/drafts` depending on artifact type.
 
 ## Interpretive Provenance Chain (IPC)
 

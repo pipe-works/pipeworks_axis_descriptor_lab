@@ -173,6 +173,106 @@ class TestLocalAxisPayloadArtifacts:
         assert resp.status_code == 409
 
 
+class TestLocalLexiconArtifacts:
+    """Local deterministic lexicon JSON artifact listing, loading, and draft creation."""
+
+    def test_lists_local_lexicon_artifacts(self, client: TestClient) -> None:
+        resp = client.get("/api/artifacts/local/lexicons")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert any(artifact["name"] == "abstraction_v0_1" for artifact in data["lexicons"])
+        assert data["reference"]["artifact_kind"] == "catalog"
+
+    def test_loads_local_lexicon_document(self, client: TestClient) -> None:
+        resp = client.get("/api/artifacts/local/lexicons/intensity_v0_1")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "intensity_v0_1"
+        assert data["artifact_kind"] == "intensity"
+        assert data["version"] == "0.1"
+        assert '"scales"' in data["content"]
+        assert data["origin_path"] == "intensity_v0_1.json"
+
+    def test_creates_local_lexicon_draft_in_drafts_directory(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        data_root = tmp_path / "data"
+        data_root.mkdir(parents=True)
+        (data_root / "embodiment_v0_1.json").write_text(
+            '{"version":"0.1","abstract":["tension"],"physical":["hand"]}',
+            encoding="utf-8",
+        )
+
+        with patch("app.artifact_editor.DATA_DIR", data_root):
+            resp = client.post(
+                "/api/artifacts/local/lexicons/drafts",
+                json={
+                    "draft_name": "embodiment_alt_v0_1",
+                    "content": '{"version":"0.2","abstract":["fear"],"physical":["posture"]}',
+                    "based_on_name": "embodiment_v0_1",
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "embodiment_alt_v0_1"
+        assert data["artifact_kind"] == "embodiment"
+        assert data["origin_path"] == "drafts/embodiment_alt_v0_1.json"
+        assert data["version"] == "0.2"
+        assert (data_root / "drafts" / "embodiment_alt_v0_1.json").exists()
+
+    def test_rejects_invalid_lexicon_json(self, client: TestClient, tmp_path: Path) -> None:
+        data_root = tmp_path / "data"
+        data_root.mkdir(parents=True)
+
+        with patch("app.artifact_editor.DATA_DIR", data_root):
+            resp = client.post(
+                "/api/artifacts/local/lexicons/drafts",
+                json={
+                    "draft_name": "bad_lexicon",
+                    "content": '{"version": }',
+                },
+            )
+
+        assert resp.status_code == 400
+        assert "invalid json" in resp.json()["detail"].lower()
+
+    def test_rejects_unknown_lexicon_contract(self, client: TestClient, tmp_path: Path) -> None:
+        data_root = tmp_path / "data"
+        data_root.mkdir(parents=True)
+
+        with patch("app.artifact_editor.DATA_DIR", data_root):
+            resp = client.post(
+                "/api/artifacts/local/lexicons/drafts",
+                json={
+                    "draft_name": "bad_shape",
+                    "content": '{"version":"0.1","words":["a","b"]}',
+                },
+            )
+
+        assert resp.status_code == 400
+        assert "supported lexicon contract" in resp.json()["detail"].lower()
+
+    def test_rejects_lexicon_name_collision(self, client: TestClient, tmp_path: Path) -> None:
+        data_root = tmp_path / "data"
+        data_root.mkdir(parents=True)
+        (data_root / "abstraction_v0_1.json").write_text(
+            '{"version":"0.1","abstract_terms":["authority"],"concrete_terms":["coat"]}',
+            encoding="utf-8",
+        )
+
+        with patch("app.artifact_editor.DATA_DIR", data_root):
+            resp = client.post(
+                "/api/artifacts/local/lexicons/drafts",
+                json={
+                    "draft_name": "abstraction_v0_1",
+                    "content": '{"version":"0.2","abstract_terms":["risk"],"concrete_terms":["boots"]}',
+                },
+            )
+
+        assert resp.status_code == 409
+
+
 class TestServerPromptManifest:
     """Server-backed prompt-manifest normalization."""
 

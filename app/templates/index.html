@@ -800,6 +800,7 @@
       <select id="artifact-type" class="select">
         <option value="prompt_template">Prompt Template</option>
         <option value="axis_payload">Axis Payload JSON</option>
+        <option value="lexicon_json">Lexicon JSON</option>
       </select>
     </div>
 
@@ -832,7 +833,7 @@
     <h2 class="panel__heading">Artifact</h2>
 
     <div class="control-row">
-      <label for="artifact-select" class="control-label">Prompt</label>
+      <label for="artifact-select" class="control-label">Artifact</label>
       <select id="artifact-select" class="select">
         <option value="">— choose —</option>
       </select>
@@ -851,7 +852,7 @@
       id="artifact-draft-name"
       class="input"
       type="text"
-      placeholder="example_new_prompt"
+      placeholder="example_new_artifact"
       spellcheck="false"
     />
 
@@ -869,7 +870,7 @@
       id="artifact-editor"
       class="code-editor artifact-editor__textarea"
       spellcheck="false"
-      placeholder="Load a prompt artifact to edit its raw text here."
+      placeholder="Load an artifact to edit its raw text here."
     ></textarea>
     <div id="artifact-preview" class="artifact-preview">
       <span class="placeholder-text">Preview and validation details appear as you edit.</span>

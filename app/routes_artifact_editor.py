@@ -6,6 +6,7 @@ is intentionally narrow:
 
 - local prompt artifact browsing and loading
 - local draft prompt creation with create-only safety rules
+- local deterministic JSON artifact browsing and draft creation
 - server-backed prompt manifests derived from the mud server's canonical lab
   endpoints
 
@@ -21,11 +22,14 @@ from fastapi import APIRouter, HTTPException
 
 from app.artifact_editor import (
     create_local_axis_payload_draft,
+    create_local_lexicon_json_draft,
     create_local_prompt_draft,
     get_server_prompt_manifest,
     list_local_axis_payload_artifacts,
+    list_local_lexicon_json_artifacts,
     list_local_prompt_artifacts,
     load_local_axis_payload_artifact,
+    load_local_lexicon_json_artifact,
     load_local_prompt_artifact,
 )
 from app.mud_server_client import (
@@ -38,6 +42,10 @@ from app.schema import (
     LocalAxisPayloadArtifactListResponse,
     LocalAxisPayloadDraftCreateRequest,
     LocalAxisPayloadDraftCreateResponse,
+    LexiconJsonArtifactDocument,
+    LocalLexiconJsonArtifactListResponse,
+    LocalLexiconJsonDraftCreateRequest,
+    LocalLexiconJsonDraftCreateResponse,
     LocalPromptArtifactListResponse,
     LocalPromptDraftCreateRequest,
     LocalPromptDraftCreateResponse,
@@ -121,6 +129,41 @@ def create_local_axis_payload_draft_route(
     """Create a new validated AxisPayload JSON draft file."""
 
     return create_local_axis_payload_draft(req)
+
+
+@router.get(
+    "/api/artifacts/local/lexicons",
+    response_model=LocalLexiconJsonArtifactListResponse,
+    summary="List local deterministic lexicon JSON artifacts for the Artifact Editor",
+)
+def list_local_lexicons() -> LocalLexiconJsonArtifactListResponse:
+    """Return local lexicon JSON files, including drafts."""
+
+    return list_local_lexicon_json_artifacts()
+
+
+@router.get(
+    "/api/artifacts/local/lexicons/{name}",
+    response_model=LexiconJsonArtifactDocument,
+    summary="Load one local deterministic lexicon JSON artifact",
+)
+def get_local_lexicon(name: str) -> LexiconJsonArtifactDocument:
+    """Load one deterministic lexicon JSON file together with its reference contract."""
+
+    return load_local_lexicon_json_artifact(name)
+
+
+@router.post(
+    "/api/artifacts/local/lexicons/drafts",
+    response_model=LocalLexiconJsonDraftCreateResponse,
+    summary="Create a new local deterministic lexicon JSON draft",
+)
+def create_local_lexicon_draft_route(
+    req: LocalLexiconJsonDraftCreateRequest,
+) -> LocalLexiconJsonDraftCreateResponse:
+    """Create a new validated deterministic lexicon JSON draft file."""
+
+    return create_local_lexicon_json_draft(req)
 
 
 @router.get(

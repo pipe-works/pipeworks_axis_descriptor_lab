@@ -1,20 +1,21 @@
 /**
  * mod-artifact-editor.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Artifact Editor workflow for prompt templates and local Axis Payload JSON.
+ * Artifact Editor workflow for prompt templates and local deterministic JSON artifacts.
  *
  * Current scope
  * ─────────────
  * - browse local prompt files (including drafts)
  * - browse server-backed canonical world prompts via the lab backend
  * - browse local Axis Payload JSON files from app/examples plus drafts
+ * - browse local micro-indicator lexicon JSON files from app/data plus drafts
  * - edit raw text in a single textarea
  * - inspect placeholder/schema reference metadata
  * - create new local draft files without overwriting shipped artifacts
  *
- * Server-backed mode remains prompt-only in this slice.  Axis Payload JSON
- * editing is local-only until the mud server exposes canonical JSON artifact
- * manifests for additional artifact types.
+ * Server-backed mode remains prompt-only in this slice.  JSON artifact editing
+ * is local-only until the mud server exposes canonical JSON artifact manifests
+ * for additional artifact types.
  */
 
 import { dom } from "./mod-state.js";
@@ -34,6 +35,10 @@ function currentArtifactType() {
 
 function isPromptArtifact() {
   return currentArtifactType() === "prompt_template";
+}
+
+function isAxisPayloadArtifact() {
+  return currentArtifactType() === "axis_payload";
 }
 
 function isServerSource() {
@@ -66,6 +71,8 @@ function renderArtifactOptions(items, preferredName = "") {
       suffix = " (active)";
     } else if (item.is_draft) {
       suffix = " (draft)";
+    } else if (item.artifact_kind) {
+      suffix = ` (${item.artifact_kind})`;
     } else if (item.world_id) {
       suffix = ` (${item.world_id})`;
     }
@@ -113,6 +120,22 @@ function renderAxisPayloadReference(reference) {
     `Sample JSON\n${reference.sample_json}`;
 }
 
+function renderLexiconReference(reference) {
+  const fieldLines = reference.fields.map(
+    (row) => `${row.name} (${row.type})  ${row.description}`
+  );
+  const noteLines = reference.notes.length ? reference.notes.map((note) => `- ${note}`) : ["- none"];
+  const heading =
+    reference.artifact_kind === "catalog"
+      ? "Contracts"
+      : `Contract: ${reference.artifact_kind}`;
+
+  dom.artifactReference.textContent =
+    `${heading}\n${fieldLines.join("\n")}\n\n` +
+    `Notes\n${noteLines.join("\n")}\n\n` +
+    `Sample JSON\n${reference.sample_json}`;
+}
+
 function renderReferencePanel(reference) {
   if (!reference) {
     dom.artifactReference.textContent = "Reference metadata unavailable.";
@@ -124,7 +147,12 @@ function renderReferencePanel(reference) {
     return;
   }
 
-  renderAxisPayloadReference(reference);
+  if (isAxisPayloadArtifact()) {
+    renderAxisPayloadReference(reference);
+    return;
+  }
+
+  renderLexiconReference(reference);
 }
 
 function renderPromptPreview(reference, content, unknownPlaceholders) {
@@ -155,6 +183,26 @@ function renderAxisPayloadPreview(reference, content, parseError) {
     const normalised = JSON.stringify(parsed, null, 2);
     dom.artifactPreview.textContent =
       `JSON validation\nparse ok\n\nNormalised preview\n${normalised}\n\nSample JSON\n${reference.sample_json}`;
+  } catch (err) {
+    dom.artifactPreview.textContent = `JSON parse error\n${err.message}`;
+  }
+}
+
+function renderLexiconPreview(reference, content, parseError) {
+  if (parseError) {
+    dom.artifactPreview.textContent = `JSON parse error\n${parseError}`;
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(content);
+    const normalised = JSON.stringify(parsed, null, 2);
+    const kindLine =
+      reference?.artifact_kind && reference.artifact_kind !== "catalog"
+        ? `Detected contract\n${reference.artifact_kind}\n\n`
+        : "";
+    dom.artifactPreview.textContent =
+      `${kindLine}JSON validation\nparse ok\n\nNormalised preview\n${normalised}\n\nSample JSON\n${reference.sample_json}`;
   } catch (err) {
     dom.artifactPreview.textContent = `JSON parse error\n${err.message}`;
   }
@@ -211,7 +259,29 @@ function validateEditor() {
     validatePromptEditor();
     return;
   }
-  validateAxisPayloadEditor();
+
+  if (isAxisPayloadArtifact()) {
+    validateAxisPayloadEditor();
+    return;
+  }
+
+  const reference = currentReference();
+  const content = dom.artifactEditor.value;
+
+  if (!content.trim()) {
+    setEditorBadge("empty");
+    renderLexiconPreview(reference, content, null);
+    return;
+  }
+
+  try {
+    JSON.parse(content);
+    setEditorBadge("json ok", true);
+    renderLexiconPreview(reference, content, null);
+  } catch (err) {
+    setEditorBadge("json err");
+    renderLexiconPreview(reference, content, err.message);
+  }
 }
 
 function renderLoadedDocument(doc, metaPrefix) {
@@ -227,6 +297,12 @@ function renderLoadedDocument(doc, metaPrefix) {
   ];
   if (Object.hasOwn(doc, "purpose")) {
     metaLines.splice(2, 0, `purpose: ${doc.purpose}`);
+  }
+  if (Object.hasOwn(doc, "artifact_kind")) {
+    metaLines.splice(2, 0, `contract: ${doc.artifact_kind}`);
+  }
+  if (Object.hasOwn(doc, "version")) {
+    metaLines.splice(2, 0, `version: ${doc.version}`);
   }
   if (Object.hasOwn(doc, "world_id")) {
     metaLines.splice(2, 0, `world: ${doc.world_id}`);
@@ -294,6 +370,23 @@ async function loadLocalAxisPayloadArtifacts() {
   validateEditor();
 }
 
+async function loadLocalLexiconArtifacts() {
+  const res = await fetch("/api/artifacts/local/lexicons");
+  if (!res.ok) {
+    throw new Error(`local lexicon listing failed (${res.status})`);
+  }
+
+  artifactState.localListing = await res.json();
+  artifactState.serverManifest = null;
+  artifactState.currentDocument = null;
+  renderArtifactOptions(artifactState.localListing.lexicons);
+  renderReferencePanel(artifactState.localListing.reference);
+  renderMetaPanel("Local deterministic lexicon JSON artifacts\nmode: create-only drafts");
+  dom.artifactCurrentName.value = "";
+  dom.artifactEditor.value = "";
+  validateEditor();
+}
+
 async function loadServerArtifacts() {
   const worldId = dom.artifactWorld.value;
   if (!worldId) {
@@ -348,9 +441,12 @@ function syncControlState() {
     dom.artifactSaveHint.textContent = server
       ? "Canonical mud-server files are read-only here. Use Save local draft to clone the loaded prompt into the lab draft library."
       : "Local mode can create new draft files under app/prompts/*/drafts but never overwrites shipped prompt files.";
-  } else {
+  } else if (isAxisPayloadArtifact()) {
     dom.artifactSaveHint.textContent =
       "Axis Payload JSON is local-only for now. Drafts are validated and saved under app/examples/drafts without overwriting shipped examples.";
+  } else {
+    dom.artifactSaveHint.textContent =
+      "Lexicon JSON is local-only for now. Drafts are validated and saved under app/data/drafts without overwriting shipped canonical files.";
   }
 }
 
@@ -359,8 +455,13 @@ async function refreshArtifactSource() {
 
   if (!isPromptArtifact()) {
     try {
-      await loadLocalAxisPayloadArtifacts();
-      setStatus("Artifact Editor — loaded local Axis Payload JSON artifacts.");
+      if (isAxisPayloadArtifact()) {
+        await loadLocalAxisPayloadArtifacts();
+        setStatus("Artifact Editor — loaded local Axis Payload JSON artifacts.");
+      } else {
+        await loadLocalLexiconArtifacts();
+        setStatus("Artifact Editor — loaded local lexicon JSON artifacts.");
+      }
     } catch (err) {
       setStatus(`Artifact Editor — ${err.message}.`);
     }
@@ -423,7 +524,9 @@ async function loadSelectedArtifact() {
     ? `/api/artifacts/local/chat-prompts/${encodeURIComponent(selectedName)}?purpose=${encodeURIComponent(
         currentPurpose()
       )}`
-    : `/api/artifacts/local/axis-payloads/${encodeURIComponent(selectedName)}`;
+    : isAxisPayloadArtifact()
+      ? `/api/artifacts/local/axis-payloads/${encodeURIComponent(selectedName)}`
+      : `/api/artifacts/local/lexicons/${encodeURIComponent(selectedName)}`;
 
   const res = await fetch(endpoint);
   if (!res.ok) {
@@ -432,7 +535,12 @@ async function loadSelectedArtifact() {
   }
 
   const doc = await res.json();
-  renderLoadedDocument(doc, isPromptArtifact() ? "Local prompt artifact" : "Local AxisPayload JSON");
+  const metaPrefix = isPromptArtifact()
+    ? "Local prompt artifact"
+    : isAxisPayloadArtifact()
+      ? "Local AxisPayload JSON"
+      : "Local lexicon JSON";
+  renderLoadedDocument(doc, metaPrefix);
   setStatus(`Artifact Editor — loaded local artifact '${selectedName}'.`);
 }
 
@@ -450,7 +558,9 @@ async function saveDraft() {
 
   const endpoint = isPromptArtifact()
     ? "/api/artifacts/local/chat-prompts/drafts"
-    : "/api/artifacts/local/axis-payloads/drafts";
+    : isAxisPayloadArtifact()
+      ? "/api/artifacts/local/axis-payloads/drafts"
+      : "/api/artifacts/local/lexicons/drafts";
   const body = isPromptArtifact()
     ? {
         purpose: isServerSource() ? "chat_translation" : currentPurpose(),
