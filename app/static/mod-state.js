@@ -251,6 +251,7 @@ export const dom = {
 
   // ── Artifact Editor ─────────────────────────────────────────────────── //
   artifactSource:            $("artifact-source"),
+  artifactType:              $("artifact-type"),
   artifactPurpose:           $("artifact-purpose"),
   artifactWorld:             $("artifact-world"),
   artifactRefreshWorlds:     $("artifact-refresh-worlds"),

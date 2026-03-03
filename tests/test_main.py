@@ -57,6 +57,7 @@ class TestIndexRoute:
             resp = client.get("/")
 
         assert 'id="page-artifact-editor"' in resp.text
+        assert 'id="artifact-type"' in resp.text
         assert 'id="artifact-source"' in resp.text
         assert 'id="artifact-purpose"' in resp.text
         assert 'id="artifact-editor"' in resp.text

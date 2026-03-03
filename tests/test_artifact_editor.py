@@ -92,6 +92,87 @@ class TestLocalPromptArtifacts:
         assert resp.status_code == 409
 
 
+class TestLocalAxisPayloadArtifacts:
+    """Local AxisPayload JSON artifact listing, loading, and draft creation."""
+
+    def test_lists_local_axis_payload_artifacts(self, client: TestClient) -> None:
+        resp = client.get("/api/artifacts/local/axis-payloads")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert any(payload["name"] == "proud_operator" for payload in data["payloads"])
+        assert any(field["name"] == "axes" for field in data["reference"]["fields"])
+
+    def test_loads_local_axis_payload_document(self, client: TestClient) -> None:
+        resp = client.get("/api/artifacts/local/axis-payloads/proud_operator")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "proud_operator"
+        assert data["world_id"] == "pipeworks_web"
+        assert '"axes"' in data["content"]
+        assert data["origin_path"] == "proud_operator.json"
+
+    def test_creates_local_axis_payload_draft_in_drafts_directory(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        examples_root = tmp_path / "examples"
+        examples_root.mkdir(parents=True)
+        (examples_root / "proud_operator.json").write_text(
+            '{"axes":{"demeanor":{"label":"proud","score":0.8}},"policy_hash":"abc","seed":1,"world_id":"pipeworks_web"}',
+            encoding="utf-8",
+        )
+
+        with patch("app.artifact_editor.EXAMPLES_DIR", examples_root):
+            resp = client.post(
+                "/api/artifacts/local/axis-payloads/drafts",
+                json={
+                    "draft_name": "new_axis_payload",
+                    "content": '{"axes":{"health":{"label":"weary","score":0.3}},"policy_hash":"xyz","seed":7,"world_id":"pipeworks_web"}',
+                    "based_on_name": "proud_operator",
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "new_axis_payload"
+        assert data["origin_path"] == "drafts/new_axis_payload.json"
+        assert data["world_id"] == "pipeworks_web"
+        assert (examples_root / "drafts" / "new_axis_payload.json").exists()
+
+    def test_rejects_invalid_axis_payload_json(self, client: TestClient, tmp_path: Path) -> None:
+        examples_root = tmp_path / "examples"
+        examples_root.mkdir(parents=True)
+
+        with patch("app.artifact_editor.EXAMPLES_DIR", examples_root):
+            resp = client.post(
+                "/api/artifacts/local/axis-payloads/drafts",
+                json={
+                    "draft_name": "bad_axis_payload",
+                    "content": '{"axes":}',
+                },
+            )
+
+        assert resp.status_code == 400
+
+    def test_rejects_axis_payload_name_collision(self, client: TestClient, tmp_path: Path) -> None:
+        examples_root = tmp_path / "examples"
+        examples_root.mkdir(parents=True)
+        (examples_root / "proud_operator.json").write_text(
+            '{"axes":{"demeanor":{"label":"proud","score":0.8}},"policy_hash":"abc","seed":1,"world_id":"pipeworks_web"}',
+            encoding="utf-8",
+        )
+
+        with patch("app.artifact_editor.EXAMPLES_DIR", examples_root):
+            resp = client.post(
+                "/api/artifacts/local/axis-payloads/drafts",
+                json={
+                    "draft_name": "proud_operator",
+                    "content": '{"axes":{"health":{"label":"weary","score":0.3}},"policy_hash":"xyz","seed":7,"world_id":"pipeworks_web"}',
+                },
+            )
+
+        assert resp.status_code == 409
+
+
 class TestServerPromptManifest:
     """Server-backed prompt-manifest normalization."""
 

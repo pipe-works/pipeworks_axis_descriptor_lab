@@ -796,6 +796,14 @@
     <h2 class="panel__heading">Source</h2>
 
     <div class="control-row">
+      <label for="artifact-type" class="control-label">Type</label>
+      <select id="artifact-type" class="select">
+        <option value="prompt_template">Prompt Template</option>
+        <option value="axis_payload">Axis Payload JSON</option>
+      </select>
+    </div>
+
+    <div class="control-row" style="margin-top:0.5rem;">
       <label for="artifact-source" class="control-label">Mode</label>
       <select id="artifact-source" class="select">
         <option value="local">Local drafts</option>

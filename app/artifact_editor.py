@@ -20,17 +20,26 @@ source of truth while the lab provides the editing UX.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Literal
 
 from fastapi import HTTPException
 
-from app.file_loaders import PROMPTS_DIR, load_prompt
+from app.file_loaders import EXAMPLES_DIR, PROMPTS_DIR, load_prompt
 from app.mud_server_client import MudServerClient
+from app.schema.axis import AxisPayload
 from app.schema.artifact import (
+    AxisPayloadArtifactDocument,
+    AxisPayloadArtifactSummary,
+    AxisPayloadFieldInfo,
+    AxisPayloadReference,
     ArtifactPlaceholder,
     ArtifactPromptReference,
+    LocalAxisPayloadArtifactListResponse,
+    LocalAxisPayloadDraftCreateRequest,
+    LocalAxisPayloadDraftCreateResponse,
     LocalPromptArtifactListResponse,
     LocalPromptDraftCreateRequest,
     LocalPromptDraftCreateResponse,
@@ -50,6 +59,12 @@ def _prompt_root(purpose: PromptPurpose) -> Path:
     return PROMPTS_DIR / purpose
 
 
+def _examples_root() -> Path:
+    """Return the filesystem root for AxisPayload example files."""
+
+    return EXAMPLES_DIR
+
+
 def _iter_prompt_files(purpose: PromptPurpose) -> list[Path]:
     """Return all prompt files, including drafts, for one prompt family."""
 
@@ -66,6 +81,24 @@ def _relative_origin_path(path: Path, purpose: PromptPurpose) -> str:
     """Return a prompt file path relative to its family root."""
 
     return path.relative_to(_prompt_root(purpose)).as_posix()
+
+
+def _iter_axis_payload_files() -> list[Path]:
+    """Return all AxisPayload JSON files, including local drafts."""
+
+    return sorted(_examples_root().rglob("*.json"))
+
+
+def _axis_payload_is_draft(path: Path) -> bool:
+    """Return True when the payload file lives under examples/drafts/."""
+
+    return "drafts" in path.relative_to(_examples_root()).parts
+
+
+def _axis_payload_origin_path(path: Path) -> str:
+    """Return a payload path relative to the examples root."""
+
+    return path.relative_to(_examples_root()).as_posix()
 
 
 def _build_profile_summary_example(active_axes: list[str]) -> str:
@@ -173,6 +206,51 @@ def _character_description_reference() -> ArtifactPromptReference:
     )
 
 
+def _axis_payload_reference() -> AxisPayloadReference:
+    """Return the schema/reference metadata for AxisPayload JSON artifacts."""
+
+    sample_payload = {
+        "axes": {
+            "demeanor": {"label": "proud", "score": 0.81},
+            "health": {"label": "weary", "score": 0.34},
+            "wealth": {"label": "destitute", "score": 0.12},
+        },
+        "policy_hash": "example_policy_hash",
+        "seed": 42,
+        "world_id": "pipeworks_web",
+    }
+    return AxisPayloadReference(
+        fields=[
+            AxisPayloadFieldInfo(
+                name="axes",
+                type="object",
+                description="Map of axis name to {label, score} entries. At least one axis is required.",
+            ),
+            AxisPayloadFieldInfo(
+                name="policy_hash",
+                type="string",
+                description="Digest of the policy rules in force when the payload was produced.",
+            ),
+            AxisPayloadFieldInfo(
+                name="seed",
+                type="integer",
+                description="Deterministic seed used to produce the payload.",
+            ),
+            AxisPayloadFieldInfo(
+                name="world_id",
+                type="string",
+                description="Pipe-Works world identifier that scopes the payload.",
+            ),
+        ],
+        sample_json=json.dumps(sample_payload, ensure_ascii=False, indent=2),
+        notes=[
+            "AxisPayload JSON is authoritative input data, not derived prompt text.",
+            "Draft saves are validated against the AxisPayload schema before they are written.",
+            "Local drafts are stored under app/examples/drafts and never overwrite shipped examples.",
+        ],
+    )
+
+
 def build_prompt_reference(
     purpose: PromptPurpose,
     *,
@@ -211,6 +289,27 @@ def list_local_prompt_artifacts(purpose: PromptPurpose) -> LocalPromptArtifactLi
     )
 
 
+def list_local_axis_payload_artifacts() -> LocalAxisPayloadArtifactListResponse:
+    """List shipped and draft AxisPayload JSON files under app/examples."""
+
+    payloads: list[AxisPayloadArtifactSummary] = []
+    for path in _iter_axis_payload_files():
+        payload = AxisPayload.model_validate_json(path.read_text(encoding="utf-8"))
+        payloads.append(
+            AxisPayloadArtifactSummary(
+                name=path.stem,
+                is_draft=_axis_payload_is_draft(path),
+                origin_path=_axis_payload_origin_path(path),
+                world_id=payload.world_id,
+            )
+        )
+
+    return LocalAxisPayloadArtifactListResponse(
+        payloads=payloads,
+        reference=_axis_payload_reference(),
+    )
+
+
 def load_local_prompt_artifact(name: str, purpose: PromptPurpose) -> PromptArtifactDocument:
     """Load one local prompt file together with its editor contract."""
 
@@ -230,6 +329,30 @@ def load_local_prompt_artifact(name: str, purpose: PromptPurpose) -> PromptArtif
         is_draft=_is_draft(target, purpose),
         origin_path=_relative_origin_path(target, purpose),
         reference=build_prompt_reference(purpose),
+    )
+
+
+def load_local_axis_payload_artifact(name: str) -> AxisPayloadArtifactDocument:
+    """Load one local AxisPayload JSON artifact together with its reference contract."""
+
+    target: Path | None = None
+    for path in _iter_axis_payload_files():
+        if path.stem == name:
+            target = path
+            break
+
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Axis payload artifact '{name}' not found.")
+
+    payload = AxisPayload.model_validate_json(target.read_text(encoding="utf-8"))
+    normalized = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
+    return AxisPayloadArtifactDocument(
+        name=name,
+        content=normalized,
+        is_draft=_axis_payload_is_draft(target),
+        origin_path=_axis_payload_origin_path(target),
+        world_id=payload.world_id,
+        reference=_axis_payload_reference(),
     )
 
 
@@ -268,6 +391,50 @@ def create_local_prompt_draft(req: LocalPromptDraftCreateRequest) -> LocalPrompt
         name=draft_name,
         purpose=req.purpose,
         origin_path=_relative_origin_path(target, req.purpose),
+        based_on_name=req.based_on_name,
+    )
+
+
+def create_local_axis_payload_draft(
+    req: LocalAxisPayloadDraftCreateRequest,
+) -> LocalAxisPayloadDraftCreateResponse:
+    """Create a new validated AxisPayload JSON draft under app/examples/drafts."""
+
+    draft_name = req.draft_name.strip()
+    if not _DRAFT_NAME_RE.fullmatch(draft_name):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Draft names must use lowercase letters, numbers, underscores, or hyphens "
+                "and must not include a file extension."
+            ),
+        )
+
+    existing_names = {path.stem for path in _iter_axis_payload_files()}
+    if draft_name in existing_names:
+        raise HTTPException(
+            status_code=409,
+            detail=f"An AxisPayload artifact named '{draft_name}' already exists.",
+        )
+
+    try:
+        parsed = json.loads(req.content)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc.msg}") from exc
+
+    payload = AxisPayload.model_validate(parsed)
+    drafts_dir = _examples_root() / "drafts"
+    drafts_dir.mkdir(parents=True, exist_ok=True)
+    target = drafts_dir / f"{draft_name}.json"
+    target.write_text(
+        json.dumps(payload.model_dump(), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    return LocalAxisPayloadDraftCreateResponse(
+        name=draft_name,
+        origin_path=_axis_payload_origin_path(target),
+        world_id=payload.world_id,
         based_on_name=req.based_on_name,
     )
 

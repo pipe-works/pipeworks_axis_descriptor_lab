@@ -20,8 +20,15 @@ Submodules
 """
 
 from app.schema.artifact import (
+    AxisPayloadArtifactDocument,
+    AxisPayloadArtifactSummary,
+    AxisPayloadFieldInfo,
+    AxisPayloadReference,
     ArtifactPlaceholder,
     ArtifactPromptReference,
+    LocalAxisPayloadArtifactListResponse,
+    LocalAxisPayloadDraftCreateRequest,
+    LocalAxisPayloadDraftCreateResponse,
     LocalPromptArtifactListResponse,
     LocalPromptDraftCreateRequest,
     LocalPromptDraftCreateResponse,
@@ -63,6 +70,10 @@ from app.schema.save import ImportResponse, ManifestFileEntry, SaveRequest, Save
 __all__ = [
     "ArtifactPlaceholder",
     "ArtifactPromptReference",
+    "AxisPayloadArtifactDocument",
+    "AxisPayloadArtifactSummary",
+    "AxisPayloadFieldInfo",
+    "AxisPayloadReference",
     "AxisPayload",
     "AxisValue",
     "ChatCharacterInput",
@@ -83,6 +94,9 @@ __all__ = [
     "LocalPromptArtifactListResponse",
     "LocalPromptDraftCreateRequest",
     "LocalPromptDraftCreateResponse",
+    "LocalAxisPayloadArtifactListResponse",
+    "LocalAxisPayloadDraftCreateRequest",
+    "LocalAxisPayloadDraftCreateResponse",
     "ManifestFileEntry",
     "MudLoginRequest",
     "MudLoginResponse",

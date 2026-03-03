@@ -52,6 +52,9 @@ GET  /api/mud/world-config/{id}→ proxy world config from mud server
 GET  /api/artifacts/local/chat-prompts          → list local prompt artifacts
 GET  /api/artifacts/local/chat-prompts/{name}   → load one local prompt artifact
 POST /api/artifacts/local/chat-prompts/drafts   → create a new local prompt draft
+GET  /api/artifacts/local/axis-payloads         → list local AxisPayload JSON artifacts
+GET  /api/artifacts/local/axis-payloads/{name}  → load one local AxisPayload JSON artifact
+POST /api/artifacts/local/axis-payloads/drafts  → create a new local AxisPayload JSON draft
 GET  /api/artifacts/server/chat-prompts/{id}    → server-backed canonical prompt manifest
 POST /api/mud/select-world     → store selected world_id
 
