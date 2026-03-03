@@ -61,6 +61,7 @@ class TestIndexRoute:
         assert 'id="artifact-source"' in resp.text
         assert 'id="artifact-purpose"' in resp.text
         assert 'id="artifact-editor"' in resp.text
+        assert '<option value="policy_bundle">Policy Bundle JSON</option>' in resp.text
         assert '<option value="lexicon_json">Lexicon JSON</option>' in resp.text
 
 

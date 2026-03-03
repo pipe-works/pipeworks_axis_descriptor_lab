@@ -23,13 +23,16 @@ from fastapi import APIRouter, HTTPException
 from app.artifact_editor import (
     create_local_axis_payload_draft,
     create_local_lexicon_json_draft,
+    create_local_policy_bundle_draft,
     create_local_prompt_draft,
     get_server_prompt_manifest,
     list_local_axis_payload_artifacts,
     list_local_lexicon_json_artifacts,
+    list_local_policy_bundle_artifacts,
     list_local_prompt_artifacts,
     load_local_axis_payload_artifact,
     load_local_lexicon_json_artifact,
+    load_local_policy_bundle_artifact,
     load_local_prompt_artifact,
 )
 from app.mud_server_client import (
@@ -46,9 +49,13 @@ from app.schema import (
     LocalLexiconJsonArtifactListResponse,
     LocalLexiconJsonDraftCreateRequest,
     LocalLexiconJsonDraftCreateResponse,
+    LocalPolicyBundleArtifactListResponse,
+    LocalPolicyBundleDraftCreateRequest,
+    LocalPolicyBundleDraftCreateResponse,
     LocalPromptArtifactListResponse,
     LocalPromptDraftCreateRequest,
     LocalPromptDraftCreateResponse,
+    PolicyBundleArtifactDocument,
     PromptArtifactDocument,
     ServerPromptManifestResponse,
 )
@@ -164,6 +171,41 @@ def create_local_lexicon_draft_route(
     """Create a new validated deterministic lexicon JSON draft file."""
 
     return create_local_lexicon_json_draft(req)
+
+
+@router.get(
+    "/api/artifacts/local/policy-bundles",
+    response_model=LocalPolicyBundleArtifactListResponse,
+    summary="List local normalized policy bundle JSON artifacts for the Artifact Editor",
+)
+def list_local_policy_bundles() -> LocalPolicyBundleArtifactListResponse:
+    """Return local normalized policy bundle JSON files, including drafts."""
+
+    return list_local_policy_bundle_artifacts()
+
+
+@router.get(
+    "/api/artifacts/local/policy-bundles/{name}",
+    response_model=PolicyBundleArtifactDocument,
+    summary="Load one local normalized policy bundle JSON artifact",
+)
+def get_local_policy_bundle(name: str) -> PolicyBundleArtifactDocument:
+    """Load one normalized policy bundle JSON file together with its reference contract."""
+
+    return load_local_policy_bundle_artifact(name)
+
+
+@router.post(
+    "/api/artifacts/local/policy-bundles/drafts",
+    response_model=LocalPolicyBundleDraftCreateResponse,
+    summary="Create a new local normalized policy bundle JSON draft",
+)
+def create_local_policy_bundle_draft_route(
+    req: LocalPolicyBundleDraftCreateRequest,
+) -> LocalPolicyBundleDraftCreateResponse:
+    """Create a new validated normalized policy bundle JSON draft file."""
+
+    return create_local_policy_bundle_draft(req)
 
 
 @router.get(
