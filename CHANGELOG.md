@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.5](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.4...axis-descriptor-lab-v0.8.5) (2026-03-03)
+
+
+### Bug Fixes
+
+* **chat:** block unauthorised mud logins ([f0b7ebb](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/f0b7ebb4554e71bec33a3492f1c26c40a8311a72))
+* **chat:** block unauthorised mud logins ([57b3043](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/57b30437a4be56281a047d7c12d03c71a10f6dcf))
+* **save:** align export flow and persist payload names ([e9c9b64](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/e9c9b640a81c041721c235f80762a9d075f4fdd8))
+* **save:** align export flow and persist payload names ([e605103](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/e605103e30012f1b522b0168343b285665a71b1d))
+
 ## [0.8.4](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.3...axis-descriptor-lab-v0.8.4) (2026-03-02)
 
 
