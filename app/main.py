@@ -59,6 +59,9 @@ GET  /api/artifacts/local/policy-bundles        → list local normalized policy
 GET  /api/artifacts/local/policy-bundles/{name} → load one local normalized policy bundle artifact
 POST /api/artifacts/local/policy-bundles/drafts → create a new local normalized policy bundle draft
 GET  /api/artifacts/server/chat-prompts/{id}    → server-backed canonical prompt manifest
+GET  /api/artifacts/server/chat-prompts/{id}/drafts → list mud-server prompt drafts
+GET  /api/artifacts/server/chat-prompts/{id}/drafts/{name} → load one mud-server prompt draft
+POST /api/artifacts/server/chat-prompts/{id}/drafts → create a new mud-server prompt draft
 GET  /api/artifacts/server/policy-bundles/{id}  → server-backed canonical policy bundle artifact
 GET  /api/artifacts/server/policy-bundles/{id}/drafts → list mud-server policy bundle drafts
 GET  /api/artifacts/server/policy-bundles/{id}/drafts/{name} → load one mud-server policy bundle draft

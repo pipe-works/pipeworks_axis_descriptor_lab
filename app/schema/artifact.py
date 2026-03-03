@@ -13,6 +13,8 @@ deterministic JSON artifacts:
   ``app/artifacts/policy_bundles``
 - local deterministic lexicon JSON artifacts from ``app/data``
 - create-only local draft saves that avoid overwriting shipped files
+- create-only mud-server prompt and policy-bundle draft saves that avoid
+  overwriting canonical server files
 
 The models are intentionally explicit so the frontend receives structured
 metadata rather than reverse-engineering file paths and placeholder contracts
@@ -164,6 +166,20 @@ class ServerPromptManifestResponse(BaseModel):
     )
 
 
+class ServerPromptArtifactListResponse(BaseModel):
+    """Listing of mud-server prompt drafts for one selected world."""
+
+    world_id: str = Field(..., description="Mud server world identifier.")
+    prompts: list[PromptArtifactSummary] = Field(
+        default_factory=list,
+        description="Server-backed draft prompt files available for the selected world.",
+    )
+    reference: ArtifactPromptReference = Field(
+        ...,
+        description="Reference contract to apply when editing server-backed prompt drafts.",
+    )
+
+
 class LocalPromptDraftCreateRequest(BaseModel):
     """Create-only request for saving a new local draft prompt."""
 
@@ -198,6 +214,39 @@ class LocalPromptDraftCreateResponse(BaseModel):
         ...,
         description="Relative path of the newly created draft file.",
     )
+    based_on_name: str | None = Field(
+        default=None,
+        description="Source prompt name copied into the request, if any.",
+    )
+
+
+class ServerPromptDraftCreateRequest(BaseModel):
+    """Create-only request for saving a new mud-server prompt draft."""
+
+    draft_name: str = Field(
+        ...,
+        min_length=1,
+        description="Filename stem for the new server draft, without the .txt extension.",
+    )
+    content: str = Field(
+        ...,
+        description="Raw prompt text to forward to the mud server.",
+    )
+    based_on_name: str | None = Field(
+        default=None,
+        description="Optional source prompt name this draft was derived from.",
+    )
+
+
+class ServerPromptDraftCreateResponse(BaseModel):
+    """Response returned after creating a new mud-server prompt draft."""
+
+    name: str = Field(..., description="Created draft stem without extension.")
+    origin_path: str = Field(
+        ...,
+        description="Canonical server-relative path of the newly created draft file.",
+    )
+    world_id: str = Field(..., description="World ID that owns the saved server draft.")
     based_on_name: str | None = Field(
         default=None,
         description="Source prompt name copied into the request, if any.",

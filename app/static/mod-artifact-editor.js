@@ -6,18 +6,17 @@
  * Current scope
  * ─────────────
  * - browse local prompt files (including drafts)
- * - browse server-backed canonical world prompts via the lab backend
+ * - browse server-backed canonical world prompts and prompt drafts via the lab backend
  * - browse local Axis Payload JSON files from app/examples plus drafts
  * - browse local micro-indicator lexicon JSON files from app/data plus drafts
  * - browse local normalized world policy bundle JSON files plus drafts
  * - edit raw text in a single textarea
  * - inspect placeholder/schema reference metadata
  * - create new local draft files without overwriting shipped artifacts
- * - create new mud-server policy bundle drafts without overwriting canonical files
+ * - create new mud-server prompt and policy bundle drafts without overwriting canonical files
  *
- * Server-backed prompts remain read-only in this slice. Policy Bundle JSON now
- * supports canonical server inspection plus create-only draft writes to the mud
- * server's draft area.
+ * Server-backed artifacts use the mud server as the canonical base. The editor
+ * can create new draft files there, but it never overwrites canonical files.
  */
 
 import { dom } from "./mod-state.js";
@@ -26,6 +25,7 @@ import { setStatus } from "./mod-status.js";
 const artifactState = {
   localListing: null,
   serverManifest: null,
+  serverPromptDraftListing: null,
   serverPolicyBundleListing: null,
   currentDocument: null,
 };
@@ -63,7 +63,11 @@ function currentPurpose() {
 function currentReference() {
   if (isPromptArtifact()) {
     if (isServerSource()) {
-      return artifactState.serverManifest?.reference ?? null;
+      return (
+        artifactState.serverManifest?.reference ??
+        artifactState.serverPromptDraftListing?.reference ??
+        null
+      );
     }
     return artifactState.localListing?.reference ?? artifactState.currentDocument?.reference ?? null;
   }
@@ -358,6 +362,7 @@ async function loadLocalPromptArtifacts() {
 
   artifactState.localListing = await res.json();
   artifactState.serverManifest = null;
+  artifactState.serverPromptDraftListing = null;
   artifactState.serverPolicyBundleListing = null;
   artifactState.currentDocument = null;
   renderArtifactOptions(artifactState.localListing.prompts);
@@ -378,6 +383,7 @@ async function loadLocalAxisPayloadArtifacts() {
 
   artifactState.localListing = await res.json();
   artifactState.serverManifest = null;
+  artifactState.serverPromptDraftListing = null;
   artifactState.serverPolicyBundleListing = null;
   artifactState.currentDocument = null;
   renderArtifactOptions(artifactState.localListing.payloads);
@@ -396,6 +402,7 @@ async function loadLocalLexiconArtifacts() {
 
   artifactState.localListing = await res.json();
   artifactState.serverManifest = null;
+  artifactState.serverPromptDraftListing = null;
   artifactState.serverPolicyBundleListing = null;
   artifactState.currentDocument = null;
   renderArtifactOptions(artifactState.localListing.lexicons);
@@ -414,6 +421,7 @@ async function loadLocalPolicyBundleArtifacts() {
 
   artifactState.localListing = await res.json();
   artifactState.serverManifest = null;
+  artifactState.serverPromptDraftListing = null;
   artifactState.serverPolicyBundleListing = null;
   artifactState.currentDocument = null;
   renderArtifactOptions(artifactState.localListing.bundles);
@@ -424,37 +432,47 @@ async function loadLocalPolicyBundleArtifacts() {
   validateEditor();
 }
 
-async function loadServerArtifacts() {
+async function loadServerArtifacts(preferredName = "") {
   const worldId = dom.artifactWorld.value;
   if (!worldId) {
     renderArtifactOptions([]);
-    renderMetaPanel("Select a mud-server world to inspect canonical prompt files.");
+    renderMetaPanel("Select a mud-server world to inspect its canonical prompt files and drafts.");
     renderReferencePanel(null);
     return;
   }
 
-  const res = await fetch(`/api/artifacts/server/chat-prompts/${encodeURIComponent(worldId)}`);
-  if (!res.ok) {
-    throw new Error(`server prompt manifest failed (${res.status})`);
+  const [canonicalRes, draftsRes] = await Promise.all([
+    fetch(`/api/artifacts/server/chat-prompts/${encodeURIComponent(worldId)}`),
+    fetch(`/api/artifacts/server/chat-prompts/${encodeURIComponent(worldId)}/drafts`),
+  ]);
+  if (!canonicalRes.ok) {
+    throw new Error(`server prompt manifest failed (${canonicalRes.status})`);
+  }
+  if (!draftsRes.ok) {
+    throw new Error(`server prompt draft listing failed (${draftsRes.status})`);
   }
 
-  artifactState.serverManifest = await res.json();
+  artifactState.serverManifest = await canonicalRes.json();
+  artifactState.serverPromptDraftListing = await draftsRes.json();
   artifactState.localListing = null;
   artifactState.serverPolicyBundleListing = null;
   artifactState.currentDocument = null;
   renderArtifactOptions(
-    artifactState.serverManifest.prompts,
-    artifactState.serverManifest.active_prompt_name || ""
+    [...artifactState.serverManifest.prompts, ...(artifactState.serverPromptDraftListing.prompts || [])],
+    preferredName || artifactState.serverManifest.active_prompt_name || ""
   );
   renderReferencePanel(artifactState.serverManifest.reference);
   renderMetaPanel(
     `Canonical mud-server prompt manifest\n` +
       `world: ${artifactState.serverManifest.world_name} (${artifactState.serverManifest.world_id})\n` +
       `active prompt: ${artifactState.serverManifest.active_prompt_name || "(none)"}\n` +
-      `writes: disabled`
+      `writes: create-only drafts`
   );
 
-  if (artifactState.serverManifest.active_prompt_name) {
+  if (
+    preferredName ||
+    artifactState.serverManifest.active_prompt_name
+  ) {
     await loadSelectedArtifact();
   } else {
     dom.artifactCurrentName.value = "";
@@ -520,9 +538,9 @@ function syncControlState() {
   }
 
   if (promptArtifact) {
-    dom.artifactSaveDraft.textContent = "Save local draft";
+    dom.artifactSaveDraft.textContent = server ? "Save server draft" : "Save local draft";
     dom.artifactSaveHint.textContent = server
-      ? "Canonical mud-server files are read-only here. Use Save local draft to clone the loaded prompt into the lab draft library."
+      ? "Mud-server prompt files are canonical read-only bases here. Save server draft creates a new prompt under the world's policies/drafts directory and never overwrites canonical or existing draft files."
       : "Local mode can create new draft files under app/prompts/*/drafts but never overwrites shipped prompt files.";
   } else if (isAxisPayloadArtifact()) {
     dom.artifactSaveDraft.textContent = "Save local draft";
@@ -609,22 +627,44 @@ async function loadSelectedArtifact() {
 
   if (isPromptArtifact() && isServerSource()) {
     const prompt = artifactState.serverManifest?.prompts?.find((entry) => entry.name === selectedName);
-    if (!prompt) {
+    if (prompt) {
+      renderLoadedDocument(
+        {
+          name: prompt.name,
+          purpose: "chat_translation",
+          content: prompt.content || "",
+          is_draft: false,
+          origin_path: prompt.origin_path,
+          reference: artifactState.serverManifest.reference,
+        },
+        "Canonical mud-server prompt"
+      );
+      setStatus(`Artifact Editor — loaded server prompt '${selectedName}'.`);
+      return;
+    }
+
+    const draft = artifactState.serverPromptDraftListing?.prompts?.find(
+      (entry) => entry.name === selectedName
+    );
+    if (!draft) {
       setStatus("Artifact Editor — selected server prompt is no longer available.");
       return;
     }
-    renderLoadedDocument(
-      {
-        name: prompt.name,
-        purpose: "chat_translation",
-        content: prompt.content || "",
-        is_draft: false,
-        origin_path: prompt.origin_path,
-        reference: artifactState.serverManifest.reference,
-      },
-      "Canonical mud-server prompt"
+
+    const res = await fetch(
+      `/api/artifacts/server/chat-prompts/${encodeURIComponent(
+        dom.artifactWorld.value
+      )}/drafts/${encodeURIComponent(selectedName)}`
     );
-    setStatus(`Artifact Editor — loaded server prompt '${selectedName}'.`);
+    if (!res.ok) {
+      setStatus(`Artifact Editor — failed to load server draft '${selectedName}' (${res.status}).`);
+      return;
+    }
+
+    const doc = await res.json();
+    artifactState.currentDocument = doc;
+    renderLoadedDocument(doc, "Mud-server prompt draft");
+    setStatus(`Artifact Editor — loaded server draft '${selectedName}'.`);
     return;
   }
 
@@ -702,7 +742,9 @@ async function saveDraft() {
   }
 
   const endpoint = isPromptArtifact()
-    ? "/api/artifacts/local/chat-prompts/drafts"
+    ? isServerSource()
+      ? `/api/artifacts/server/chat-prompts/${encodeURIComponent(dom.artifactWorld.value)}/drafts`
+      : "/api/artifacts/local/chat-prompts/drafts"
     : isAxisPayloadArtifact()
       ? "/api/artifacts/local/axis-payloads/drafts"
       : isPolicyBundleArtifact()
@@ -714,10 +756,10 @@ async function saveDraft() {
         : "/api/artifacts/local/lexicons/drafts";
   const body = isPromptArtifact()
     ? {
-        purpose: isServerSource() ? "chat_translation" : currentPurpose(),
         draft_name: draftName,
         content,
         based_on_name: dom.artifactCurrentName.value.trim() || null,
+        ...(isServerSource() ? {} : { purpose: currentPurpose() }),
       }
     : {
         draft_name: draftName,
@@ -738,7 +780,7 @@ async function saveDraft() {
   }
 
   const created = await res.json();
-  const savedToServer = isPolicyBundleArtifact() && isServerSource();
+  const savedToServer = isServerSource() && (isPromptArtifact() || isPolicyBundleArtifact());
   if (!savedToServer) {
     dom.artifactSource.value = "local";
     if (isPromptArtifact()) {
@@ -750,6 +792,11 @@ async function saveDraft() {
   }
   dom.artifactDraftName.value = "";
   if (savedToServer) {
+    if (isPromptArtifact()) {
+      await loadServerArtifacts(created.name);
+      setStatus(`Artifact Editor — created mud-server draft '${created.name}'.`);
+      return;
+    }
     await loadServerPolicyBundleArtifact(created.name);
     setStatus(`Artifact Editor — created mud-server draft '${created.name}'.`);
     return;
