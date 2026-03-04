@@ -10,7 +10,7 @@ The lab has three pages:
 
 - **Character Description** -- generate descriptive paragraphs from axis payloads with A/B diffing, signal isolation, and transformation-map analysis.
 - **Chat Translation** -- translate out-of-character (OOC) player messages into in-character (IC) speech using axis-defined character profiles. Works standalone (local Ollama) or connected to a [Pipe-Works mud server](https://github.com/pipe-works/pipeworks_mud_server) for canonical pipeline translation.
-- **Artifact Editor** -- inspect canonical prompt contracts, edit raw local drafts, validate deterministic JSON artifacts such as Axis Payload examples, normalized policy bundles, and micro-indicator lexicon files, and create server-backed policy bundle drafts without overwriting canonical files.
+- **Artifact Editor** -- inspect canonical prompt and policy artifacts, edit raw local drafts, validate deterministic JSON artifacts such as Axis Payload examples, normalized policy bundles, and micro-indicator lexicon files, create server-backed drafts, and explicitly promote mud-server prompt or policy-bundle drafts into canonical world files.
 
 <p align="center">
   <img src="docs/images/lab_ui_dark_v2.png" alt="Axis Descriptor Lab – dark theme with micro-indicators" width="90%">
@@ -63,18 +63,33 @@ Then open **<http://127.0.0.1:8242>** in your browser.
 - A login panel appears for mud server authentication.
 - After login, a world selector loads available worlds from the server.
 - The server's model and active axes are displayed read-only; axes not active in the selected world are visually dimmed.
-- Ollama host, model, strict mode, max tokens, max chars, and IC prompt controls are hidden (the server controls these).
+- A separate **Server World Prompt** editor appears. It lists the canonical prompt files exposed by the mud server, marks the currently configured file as **active**, and lets you send an override for the next translation without changing the server's stored prompt.
+- Ollama host, model, strict mode, max tokens, max chars, and standalone IC prompt controls are hidden (the server controls these).
 - Temperature and seed remain adjustable (forwarded to the server).
 - Session expiry (401) is handled automatically by returning to the login panel.
 
 ### Artifact Editor page
 
 1. Choose an artifact type such as **Prompt Template**, **Axis Payload JSON**, **Policy Bundle JSON**, or **Lexicon JSON**.
-2. Use **Local drafts** to browse shipped artifacts plus local drafts, or switch supported artifact types to **Mud server canonical** for world-backed inspection.
+2. Use **Local drafts** to browse shipped lab artifacts plus local drafts, or switch supported artifact types to **Mud server canonical** for world-backed inspection.
 3. Load an artifact to inspect its origin, contract notes, and raw text/JSON.
-4. Edit the artifact in the textarea; the right-hand panel shows placeholder or schema guidance, while the preview panel shows sample prompt rendering or normalised JSON.
+4. Edit the artifact in the textarea; the right-hand panel shows placeholder or schema guidance, while the preview panel shows sample prompt rendering or normalized JSON.
 5. Save a new draft name to write a validated create-only copy under `app/prompts/*/drafts`, `app/examples/drafts`, `app/artifacts/policy_bundles/drafts`, or `app/data/drafts` depending on artifact type.
-6. In **Mud server canonical** mode for **Policy Bundle JSON**, use **Save server draft** to create a new bundle under the mud server world's `policies/drafts/` directory without overwriting any canonical files.
+6. In **Mud server canonical** mode:
+   - **Prompt Template** supports **Save server draft** and **Promote draft**.
+   - **Policy Bundle JSON** supports **Save server draft** and **Promote draft**.
+7. Mud-server promotion is explicit:
+   - prompt promotion creates a new canonical `policies/<name>.txt` file, updates the world's `translation_layer.prompt_template_path`, and makes that file the new **active** prompt immediately
+   - policy-bundle promotion rewrites canonical `policies/axes.yaml`, `policies/thresholds.yaml`, and `policies/resolution.yaml`, then reloads the world's axis engine
+8. Server drafts remain in `policies/drafts/` after promotion. Canonical files are never overwritten in place by draft-save actions.
+
+### Artifact Editor semantics
+
+- **Draft** means a file stored under a dedicated draft directory. It is editable and safe for experimentation.
+- **Canonical** means the file or normalized package the mud server currently treats as authoritative for a world.
+- **Active** on a server prompt means that prompt file matches the world's current `translation_layer.prompt_template_path` in `world.json`.
+- Creating a server prompt draft does **not** make it available to the Chat Translation page's server prompt selector.
+- Promoting a server prompt draft does make it canonical and active on the mud server immediately. The Chat Translation page will reflect that after a world reselect or page refresh.
 
 ## Interpretive Provenance Chain (IPC)
 
@@ -154,7 +169,35 @@ These endpoints proxy requests to the mud server when `MUD_SERVER_URL` is config
 | GET | `/api/mud/session` | Check authentication status |
 | GET | `/api/mud/worlds` | List available worlds |
 | GET | `/api/mud/world-config/{world_id}` | Get world configuration |
+| GET | `/api/mud/world-prompts/{world_id}` | List canonical prompt files for the selected world |
 | POST | `/api/mud/select-world` | Select world for translation |
+
+### Artifact Editor
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/artifacts/local/chat-prompts` | List local prompt artifacts for one prompt family |
+| GET | `/api/artifacts/local/chat-prompts/{name}` | Load one local prompt artifact |
+| POST | `/api/artifacts/local/chat-prompts/drafts` | Create a local prompt draft |
+| GET | `/api/artifacts/local/axis-payloads` | List local Axis Payload JSON artifacts |
+| GET | `/api/artifacts/local/axis-payloads/{name}` | Load one local Axis Payload JSON artifact |
+| POST | `/api/artifacts/local/axis-payloads/drafts` | Create a local Axis Payload JSON draft |
+| GET | `/api/artifacts/local/policy-bundles` | List local normalized policy bundle JSON artifacts |
+| GET | `/api/artifacts/local/policy-bundles/{name}` | Load one local normalized policy bundle JSON artifact |
+| POST | `/api/artifacts/local/policy-bundles/drafts` | Create a local policy bundle draft |
+| GET | `/api/artifacts/local/lexicons` | List local deterministic lexicon JSON artifacts |
+| GET | `/api/artifacts/local/lexicons/{name}` | Load one local lexicon JSON artifact |
+| POST | `/api/artifacts/local/lexicons/drafts` | Create a local lexicon JSON draft |
+| GET | `/api/artifacts/server/chat-prompts/{world_id}` | Load canonical mud-server prompt manifest for one world |
+| GET | `/api/artifacts/server/chat-prompts/{world_id}/drafts` | List mud-server prompt drafts |
+| GET | `/api/artifacts/server/chat-prompts/{world_id}/drafts/{name}` | Load one mud-server prompt draft |
+| POST | `/api/artifacts/server/chat-prompts/{world_id}/drafts` | Create one mud-server prompt draft |
+| POST | `/api/artifacts/server/chat-prompts/{world_id}/drafts/{name}/promote` | Promote one mud-server prompt draft to canonical active status |
+| GET | `/api/artifacts/server/policy-bundles/{world_id}` | Load canonical mud-server policy bundle for one world |
+| GET | `/api/artifacts/server/policy-bundles/{world_id}/drafts` | List mud-server policy bundle drafts |
+| GET | `/api/artifacts/server/policy-bundles/{world_id}/drafts/{name}` | Load one mud-server policy bundle draft |
+| POST | `/api/artifacts/server/policy-bundles/{world_id}/drafts` | Create one mud-server policy bundle draft |
+| POST | `/api/artifacts/server/policy-bundles/{world_id}/drafts/{name}/promote` | Promote one mud-server policy bundle draft into canonical world policy files |
 
 Interactive API docs: **<http://127.0.0.1:8242/docs>**
 
@@ -167,8 +210,10 @@ axis_descriptor_lab/
 ├─ .env.example
 ├─ app/
 │  ├─ main.py                # FastAPI app bootstrap + router mounting
+│  ├─ artifact_editor.py     # Artifact Editor service layer
 │  ├─ config.py              # Shared app paths, defaults, and version metadata
 │  ├─ routes_chat.py         # Chat translation + save endpoints
+│  ├─ routes_artifact_editor.py # Artifact Editor routes
 │  ├─ routes_mud.py          # /api/mud/* proxy endpoints
 │  ├─ routes_save.py         # Save/export/system-prompt endpoints
 │  ├─ schema/                # Pydantic v2 models split by domain
@@ -177,6 +222,7 @@ axis_descriptor_lab/
 │  │  ├─ generate.py
 │  │  ├─ save.py
 │  │  ├─ analysis.py
+│  │  ├─ artifact.py
 │  │  ├─ chat.py
 │  │  └─ mud.py
 │  ├─ services/
@@ -197,17 +243,22 @@ axis_descriptor_lab/
 │  │  ├─ embodiment_v0_1.json    # Lexicon: abstract ↔ physical terms
 │  │  ├─ abstraction_v0_1.json   # Lexicon: concrete ↔ abstract terms
 │  │  └─ intensity_v0_1.json     # Lexicon: ordered intensity scales
+│  ├─ artifacts/
+│  │  └─ policy_bundles/
+│  │     └─ pipeworks_web_policy_bundle_v0_1.json
 │  ├─ prompts/
-│  │  ├─ system_prompt_v01.txt          # Default character description prompt
-│  │  ├─ system_prompt_v02_terse.txt
-│  │  ├─ system_prompt_v03_environmental.txt
-│  │  ├─ system_prompt_v04_contrast.txt
-│  │  ├─ ic_v01_undertaking.txt         # IC prompt for The Undertaking world
-│  │  ├─ ic_v02_generic.txt             # Generic IC prompt
-│  │  └─ ic_v03_development.txt         # Development/testing IC prompt
+│  │  ├─ character_description/
+│  │  │  ├─ system_prompt_v01.txt
+│  │  │  ├─ system_prompt_v02_terse.txt
+│  │  │  ├─ system_prompt_v03_environmental.txt
+│  │  │  └─ system_prompt_v04_contrast.txt
+│  │  └─ chat_translation/
+│  │     ├─ pipeworks_web_ic_prompt.txt
+│  │     └─ daily_undertaking_ic_prompt.txt
 │  ├─ examples/
-│  │  ├─ example_a.json
-│  │  └─ example_b.json
+│  │  ├─ proud_operator.json
+│  │  ├─ timid_clerk.json
+│  │  └─ ... other payload examples ...
 │  ├─ static/
 │  │  ├─ pipe-works-fonts.css   # @font-face declarations (6 font families)
 │  │  ├─ pipe-works-base.css    # Shared Pipe-Works design system
@@ -224,7 +275,8 @@ axis_descriptor_lab/
 │  │  ├─ mod-diff.js            # Word diff + signal isolation
 │  │  ├─ mod-axis-actions.js    # Relabel + randomise
 │  │  ├─ mod-persistence.js     # Save / export / import
-│  │  ├─ mod-navigation.js      # Page switching (Char Description ↔ Chat Translation)
+│  │  ├─ mod-navigation.js      # Page switching (Character Description / Chat Translation / Artifact Editor)
+│  │  ├─ mod-artifact-editor.js # Artifact Editor page controller/orchestration
 │  │  ├─ mod-chat-state.js      # Chat Translation page state + DOM bundle
 │  │  ├─ mod-chat-server-mode.js # Mud-server auth/world/prompt behaviour
 │  │  ├─ mod-chat-sliders.js    # Chat Translation slider + JSON sync helpers
@@ -241,9 +293,10 @@ axis_descriptor_lab/
 │  ├─ index.rst
 │  ├─ api/                      # Autodoc API reference
 │  └─ guides/                   # Narrative guides (IPC, hashing)
-├─ tests/                       # pytest test suite (773 tests)
+├─ tests/                       # pytest test suite
 │  ├─ conftest.py
 │  ├─ test_main.py              # Endpoint integration tests
+│  ├─ test_artifact_editor.py   # Artifact Editor route/service tests
 │  ├─ test_schema.py
 │  ├─ test_chat_renderer.py     # Ollama HTTP client tests
 │  ├─ test_signal_isolation.py

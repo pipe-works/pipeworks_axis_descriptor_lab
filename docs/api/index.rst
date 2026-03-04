@@ -5,6 +5,7 @@ API Reference
    :maxdepth: 2
 
    schema
+   artifact_editor
    hashing
    signal_isolation
    transformation_map
@@ -18,6 +19,7 @@ API Reference
    routes_mud
    routes_save
    routes_chat
+   routes_artifact_editor
    save_service
    chat_translation_service
    main
