@@ -191,6 +191,7 @@ cython_debug/
 # Runtime save output (session snapshots)
 data/
 !app/data/
+app/prompts/character_description/drafts/
 
 # Ruff stuff:
 .ruff_cache/
