@@ -350,6 +350,42 @@ class TestWorldPolicyBundle:
 
         assert result["name"] == "pipeworks_web_bundle_alt"
 
+    def test_promote_world_policy_bundle_draft_posts_expected_body(
+        self, client: MudServerClient
+    ) -> None:
+        """promote_world_policy_bundle_draft sends the expected promotion payload."""
+
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "name": "pipeworks_web_bundle_alt",
+            "world_id": "pipeworks_web",
+            "canonical_name": "pipeworks_web_policy_bundle",
+            "source_files": [
+                "policies/axes.yaml",
+                "policies/thresholds.yaml",
+                "policies/resolution.yaml",
+            ],
+            "version": "0.2.0",
+            "policy_hash": "abc123",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
+
+        result = client.promote_world_policy_bundle_draft(
+            world_id="pipeworks_web",
+            draft_name="pipeworks_web_bundle_alt",
+        )
+
+        assert result["canonical_name"] == "pipeworks_web_policy_bundle"
+        call_args = client._client.post.call_args
+        assert call_args[0][0].endswith(
+            "/api/lab/world-policy-bundle/pipeworks_web/drafts/pipeworks_web_bundle_alt/promote"
+        )
+        assert call_args[1]["json"] == {"session_id": "abc-123"}
+
 
 # ---------------------------------------------------------------------------
 # Translate

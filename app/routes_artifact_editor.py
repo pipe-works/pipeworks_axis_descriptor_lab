@@ -11,7 +11,8 @@ is intentionally narrow:
   endpoints
 - server-backed prompt draft listing, loading, and create-only draft creation
 - server-backed prompt draft promotion through explicit mud-server APIs
-- server-backed policy bundle inspection and create-only draft creation
+- server-backed policy bundle inspection, create-only draft creation, and
+  explicit canonical promotion
 
 The route layer stays thin and delegates all file policy and manifest shaping
 to ``app.artifact_editor``.
@@ -45,6 +46,7 @@ from app.artifact_editor import (
     load_local_lexicon_json_artifact,
     load_local_policy_bundle_artifact,
     load_local_prompt_artifact,
+    promote_server_policy_bundle_draft,
     promote_server_prompt_draft,
 )
 from app.mud_server_client import (
@@ -77,6 +79,8 @@ from app.schema import (
     ServerPolicyBundleArtifactListResponse,
     ServerPolicyBundleDraftCreateRequest,
     ServerPolicyBundleDraftCreateResponse,
+    ServerPolicyBundleDraftPromoteRequest,
+    ServerPolicyBundleDraftPromoteResponse,
     ServerPromptManifestResponse,
 )
 
@@ -505,6 +509,42 @@ def create_server_policy_bundle_draft_route(
 
     try:
         return create_server_policy_bundle_draft(world_id=world_id, req=req, mud_client=client)
+    except MudServerSessionExpiredError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        ) from exc
+    except MudServerConnectionError as exc:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.") from exc
+    except httpx.HTTPStatusError as exc:
+        _raise_for_mud_http_error(exc)
+
+
+@router.post(
+    "/api/artifacts/server/policy-bundles/{world_id}/drafts/{name}/promote",
+    response_model=ServerPolicyBundleDraftPromoteResponse,
+    summary="Promote one mud-server policy bundle draft to canonical status",
+)
+def promote_server_policy_bundle_draft_route(
+    world_id: str,
+    name: str,
+    req: ServerPolicyBundleDraftPromoteRequest,
+) -> ServerPolicyBundleDraftPromoteResponse:
+    """Promote one mud-server policy bundle draft into canonical policy files."""
+
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    if not client.is_authenticated:
+        raise HTTPException(status_code=401, detail="Not authenticated — please log in.")
+
+    try:
+        return promote_server_policy_bundle_draft(
+            world_id=world_id,
+            draft_name=name,
+            req=req,
+            mud_client=client,
+        )
     except MudServerSessionExpiredError as exc:
         raise HTTPException(
             status_code=401,
