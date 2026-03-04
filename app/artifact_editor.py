@@ -77,6 +77,8 @@ from app.schema.artifact import (
     ServerPolicyBundleDraftCreateRequest,
     ServerPolicyBundleArtifactListResponse,
     ServerPolicyBundleDraftCreateResponse,
+    ServerPolicyBundleDraftPromoteRequest,
+    ServerPolicyBundleDraftPromoteResponse,
     ServerPromptManifestResponse,
 )
 
@@ -1145,6 +1147,23 @@ def load_server_policy_bundle_draft_artifact(
         version=payload.version,
         reference=_policy_bundle_reference(),
     )
+
+
+def promote_server_policy_bundle_draft(
+    *,
+    world_id: str,
+    draft_name: str,
+    req: ServerPolicyBundleDraftPromoteRequest,
+    mud_client: MudServerClient,
+) -> ServerPolicyBundleDraftPromoteResponse:
+    """Forward an explicit mud-server policy-bundle promotion request."""
+
+    del req
+    data = mud_client.promote_world_policy_bundle_draft(
+        world_id=world_id,
+        draft_name=draft_name,
+    )
+    return ServerPolicyBundleDraftPromoteResponse.model_validate(data)
 
 
 def get_server_policy_bundle_artifact(

@@ -632,6 +632,30 @@ class ServerPolicyBundleDraftCreateResponse(BaseModel):
     )
 
 
+class ServerPolicyBundleDraftPromoteRequest(BaseModel):
+    """Explicit request to promote a mud-server policy bundle draft."""
+
+
+class ServerPolicyBundleDraftPromoteResponse(BaseModel):
+    """Response returned after promoting a mud-server policy bundle draft."""
+
+    name: str = Field(..., description="Draft stem without extension.")
+    world_id: str = Field(..., description="World ID that owns the promoted policy bundle.")
+    canonical_name: str = Field(
+        ...,
+        description="Stable canonical policy bundle artifact name after promotion.",
+    )
+    source_files: list[str] = Field(
+        default_factory=list,
+        description="Canonical mud-server policy files rewritten by promotion.",
+    )
+    version: str = Field(..., description="Version written to the canonical policy files.")
+    policy_hash: str | None = Field(
+        default=None,
+        description="Deterministic hash of the promoted canonical axes/threshold payload.",
+    )
+
+
 class ServerPolicyBundleArtifactListResponse(BaseModel):
     """Listing of mud-server policy bundle drafts for one selected world."""
 

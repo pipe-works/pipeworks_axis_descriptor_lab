@@ -879,6 +879,36 @@ class TestServerPolicyBundleArtifact:
         assert data["name"] == "pipeworks_web_bundle_alt"
         assert data["origin_path"] == "policies/drafts/pipeworks_web_bundle_alt.json"
 
+    def test_promotes_server_policy_bundle_draft(self, client: TestClient) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+        mock.promote_world_policy_bundle_draft.return_value = {
+            "name": "pipeworks_web_bundle_alt",
+            "world_id": "pipeworks_web",
+            "canonical_name": "pipeworks_web_policy_bundle",
+            "source_files": [
+                "policies/axes.yaml",
+                "policies/thresholds.yaml",
+                "policies/resolution.yaml",
+            ],
+            "version": "0.2.0",
+            "policy_hash": "abc123",
+        }
+
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=mock):
+            resp = client.post(
+                "/api/artifacts/server/policy-bundles/pipeworks_web/drafts/pipeworks_web_bundle_alt/promote",
+                json={},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["canonical_name"] == "pipeworks_web_policy_bundle"
+        mock.promote_world_policy_bundle_draft.assert_called_once_with(
+            world_id="pipeworks_web",
+            draft_name="pipeworks_web_bundle_alt",
+        )
+
     def test_lists_server_policy_bundle_drafts(self, client: TestClient) -> None:
         mock = MagicMock()
         mock.is_authenticated = True
@@ -1169,6 +1199,17 @@ class TestServerPolicyBundleArtifact:
 
         assert resp.status_code == 503
 
+    def test_server_policy_bundle_draft_promote_requires_configured_mud_client(
+        self, client: TestClient
+    ) -> None:
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=None):
+            resp = client.post(
+                "/api/artifacts/server/policy-bundles/pipeworks_web/drafts/pipeworks_web_bundle_alt/promote",
+                json={},
+            )
+
+        assert resp.status_code == 503
+
     def test_server_policy_bundle_draft_create_requires_authentication(
         self, client: TestClient
     ) -> None:
@@ -1179,6 +1220,20 @@ class TestServerPolicyBundleArtifact:
             resp = client.post(
                 "/api/artifacts/server/policy-bundles/pipeworks_web/drafts",
                 json={"draft_name": "pipeworks_web_bundle_alt", "content": "{}"},
+            )
+
+        assert resp.status_code == 401
+
+    def test_server_policy_bundle_draft_promote_requires_authentication(
+        self, client: TestClient
+    ) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = False
+
+        with patch("app.routes_artifact_editor.get_mud_client", return_value=mock):
+            resp = client.post(
+                "/api/artifacts/server/policy-bundles/pipeworks_web/drafts/pipeworks_web_bundle_alt/promote",
+                json={},
             )
 
         assert resp.status_code == 401
@@ -1228,3 +1283,73 @@ class TestServerPolicyBundleArtifact:
             )
 
         assert resp.status_code == 502
+
+    def test_server_policy_bundle_draft_promote_handles_expired_session(
+        self, client: TestClient
+    ) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+
+        with (
+            patch("app.routes_artifact_editor.get_mud_client", return_value=mock),
+            patch(
+                "app.routes_artifact_editor.promote_server_policy_bundle_draft",
+                side_effect=MudServerSessionExpiredError("expired"),
+            ),
+        ):
+            resp = client.post(
+                "/api/artifacts/server/policy-bundles/pipeworks_web/drafts/pipeworks_web_bundle_alt/promote",
+                json={},
+            )
+
+        assert resp.status_code == 401
+
+    def test_server_policy_bundle_draft_promote_handles_connection_error(
+        self, client: TestClient
+    ) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+
+        with (
+            patch("app.routes_artifact_editor.get_mud_client", return_value=mock),
+            patch(
+                "app.routes_artifact_editor.promote_server_policy_bundle_draft",
+                side_effect=MudServerConnectionError("down"),
+            ),
+        ):
+            resp = client.post(
+                "/api/artifacts/server/policy-bundles/pipeworks_web/drafts/pipeworks_web_bundle_alt/promote",
+                json={},
+            )
+
+        assert resp.status_code == 502
+
+    def test_server_policy_bundle_draft_promote_propagates_mud_http_errors(
+        self, client: TestClient
+    ) -> None:
+        mock = MagicMock()
+        mock.is_authenticated = True
+        request = httpx.Request(
+            "POST",
+            "http://example.test/api/lab/world-policy-bundle/pipeworks_web/drafts/pipeworks_web_bundle_alt/promote",
+        )
+        response = httpx.Response(
+            status_code=409,
+            request=request,
+            json={"detail": "Cannot promote policy bundle because active_axes would drift."},
+        )
+
+        with (
+            patch("app.routes_artifact_editor.get_mud_client", return_value=mock),
+            patch(
+                "app.routes_artifact_editor.promote_server_policy_bundle_draft",
+                side_effect=httpx.HTTPStatusError("conflict", request=request, response=response),
+            ),
+        ):
+            resp = client.post(
+                "/api/artifacts/server/policy-bundles/pipeworks_web/drafts/pipeworks_web_bundle_alt/promote",
+                json={},
+            )
+
+        assert resp.status_code == 409
+        assert "active_axes" in resp.json()["detail"]

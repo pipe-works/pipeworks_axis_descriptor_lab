@@ -14,6 +14,7 @@
  * - inspect placeholder/schema reference metadata
  * - create new local draft files without overwriting shipped artifacts
  * - create new mud-server prompt and policy bundle drafts without overwriting canonical files
+ * - promote mud-server prompt and policy bundle drafts explicitly
  *
  * Server-backed artifacts use the mud server as the canonical base. The editor
  * can create new draft files there, but it never overwrites canonical files.
@@ -62,6 +63,14 @@ function isPromotableServerPromptDraft() {
     isServerSource() &&
     artifactState.currentDocument?.is_draft === true &&
     artifactState.currentDocument?.purpose === "chat_translation"
+  );
+}
+
+function isPromotableServerPolicyBundleDraft() {
+  return (
+    isPolicyBundleArtifact() &&
+    isServerSource() &&
+    artifactState.currentDocument?.is_draft === true
   );
 }
 
@@ -539,11 +548,15 @@ function syncControlState() {
   const promptArtifact = isPromptArtifact();
   const serverPolicyBundle = server && isPolicyBundleArtifact();
   const promotablePromptDraft = isPromotableServerPromptDraft();
+  const promotablePolicyBundleDraft = isPromotableServerPolicyBundleDraft();
 
   dom.artifactPurpose.disabled = !promptArtifact || server;
   dom.artifactWorld.disabled = !server || !serverBackedArtifact;
   dom.artifactRefreshWorlds.disabled = !server || !serverBackedArtifact;
-  dom.artifactPromoteDraft.classList.toggle("hidden", !promotablePromptDraft);
+  dom.artifactPromoteDraft.classList.toggle(
+    "hidden",
+    !(promotablePromptDraft || promotablePolicyBundleDraft)
+  );
 
   if (!serverBackedArtifact && server) {
     dom.artifactSource.value = "local";
@@ -573,7 +586,9 @@ function syncControlState() {
     dom.artifactDraftNameLabel.textContent = "New draft name";
     dom.artifactDraftName.placeholder = "example_new_artifact";
     dom.artifactSaveHint.textContent = serverPolicyBundle
-      ? "Mud-server policy bundles are canonical read-only bases here. Save server draft creates a new JSON bundle under the world's policies/drafts directory and never overwrites existing files."
+      ? promotablePolicyBundleDraft
+        ? "Mud-server policy bundle drafts can be promoted explicitly. Promote draft rewrites canonical policies/axes.yaml, policies/thresholds.yaml, and policies/resolution.yaml from the normalized draft, then reloads the world's axis engine. The draft file remains in place."
+        : "Mud-server policy bundles are canonical read-only bases here. Save server draft creates a new JSON bundle under the world's policies/drafts directory and never overwrites existing files."
       : "Local mode validates Policy Bundle JSON drafts and saves them under app/artifacts/policy_bundles/drafts without overwriting shipped starter bundles.";
   } else {
     dom.artifactSaveDraft.textContent = "Save local draft";
@@ -831,27 +846,55 @@ async function saveDraft() {
 }
 
 async function promoteDraft() {
-  if (!isPromotableServerPromptDraft()) {
-    setStatus("Artifact Editor — load a mud-server prompt draft before promoting.");
-    return;
-  }
-
-  const targetName = dom.artifactDraftName.value.trim();
-  if (!targetName) {
-    setStatus("Artifact Editor — enter a promotion target name first.");
-    return;
-  }
-
   const currentName = dom.artifactCurrentName.value.trim();
   const worldId = dom.artifactWorld.value;
+
+  if (isPromotableServerPromptDraft()) {
+    const targetName = dom.artifactDraftName.value.trim();
+    if (!targetName) {
+      setStatus("Artifact Editor — enter a promotion target name first.");
+      return;
+    }
+
+    const res = await fetch(
+      `/api/artifacts/server/chat-prompts/${encodeURIComponent(
+        worldId
+      )}/drafts/${encodeURIComponent(currentName)}/promote`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target_name: targetName }),
+      }
+    );
+
+    if (!res.ok) {
+      const detail = await res.text();
+      setStatus(`Artifact Editor — draft promotion failed (${res.status}): ${detail}`);
+      return;
+    }
+
+    const promoted = await res.json();
+    dom.artifactDraftName.value = "";
+    await loadServerArtifacts(promoted.canonical_name);
+    setStatus(
+      `Artifact Editor — promoted '${promoted.name}' to canonical prompt '${promoted.canonical_name}'.`
+    );
+    return;
+  }
+
+  if (!isPromotableServerPolicyBundleDraft()) {
+    setStatus("Artifact Editor — load a mud-server draft before promoting.");
+    return;
+  }
+
   const res = await fetch(
-    `/api/artifacts/server/chat-prompts/${encodeURIComponent(
+    `/api/artifacts/server/policy-bundles/${encodeURIComponent(
       worldId
     )}/drafts/${encodeURIComponent(currentName)}/promote`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target_name: targetName }),
+      body: JSON.stringify({}),
     }
   );
 
@@ -863,10 +906,8 @@ async function promoteDraft() {
 
   const promoted = await res.json();
   dom.artifactDraftName.value = "";
-  await loadServerArtifacts(promoted.canonical_name);
-  setStatus(
-    `Artifact Editor — promoted '${promoted.name}' to canonical prompt '${promoted.canonical_name}'.`
-  );
+  await loadServerPolicyBundleArtifact();
+  setStatus(`Artifact Editor — promoted '${promoted.name}' to canonical policy bundle.`);
 }
 
 export async function initArtifactEditor() {

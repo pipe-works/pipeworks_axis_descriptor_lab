@@ -351,6 +351,21 @@ class MudServerClient:
             )
         return result
 
+    def promote_world_policy_bundle_draft(
+        self,
+        *,
+        world_id: str,
+        draft_name: str,
+    ) -> dict:
+        """POST /api/lab/world-policy-bundle/{world_id}/drafts/{name}/promote → promote one draft."""
+
+        body = {
+            "session_id": self._session_id,
+        }
+        return self._post(
+            f"/api/lab/world-policy-bundle/{world_id}/drafts/{draft_name}/promote", body
+        )
+
     def translate(
         self,
         *,
