@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.9.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.5...axis-descriptor-lab-v0.9.0) (2026-03-04)
+
+
+### Features
+
+* add artifact editor foundation ([0888898](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/0888898493f66c43d7273d409e64d8ebbcc149f9))
+* add artifact editor foundation ([2e5b77a](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/2e5b77ade5bad6c03be7f13ebac7a20980f9733c))
+* add axis payload artifacts to editor ([c6564bb](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/c6564bb6eec7dfb2408d1c98c18c42a3aa81f401))
+* add axis payload artifacts to editor ([76493ab](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/76493ab902af473164b2546601115b530c88fadc))
+* add lexicon json artifacts to editor ([2504359](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/25043599d1dd01392785fa4a62a2a975edd280e3))
+* add lexicon json artifacts to editor ([f2ffaa3](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/f2ffaa37b8126f036aa28305df8cebf80b43bca8))
+* add policy bundle artifacts to editor ([b33aa8b](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/b33aa8b655a4ccbdee4e1c55dae60d77651458aa))
+* add policy bundle artifacts to editor ([aa00717](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/aa007177101c7689d7b7135cf2e4767fcd3959e7))
+* add policy bundle promotion workflow ([52afd7c](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/52afd7cc2607089473185756b7e7c48404fe13b7))
+* add policy bundle promotion workflow ([2a41e2f](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/2a41e2f23c173b6c4bfcafb3e00c03d533d69bbf))
+* add prompt draft promotion workflow ([b839c03](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/b839c03e0559a34418b7d158b4120ba568ed0786))
+* add prompt draft promotion workflow ([889fd55](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/889fd551d9e075b3a1a78d68817414c81816cceb))
+* add server policy bundle draft workflow ([d1fa73c](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/d1fa73ce81969f1e74861df8c2c89bdd8df6cfc4))
+* add server policy bundle draft workflow ([bc83a36](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/bc83a361ce1e463300fb8b986cd7dc29e12fd846))
+* add server prompt draft workflow ([2dc3579](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/2dc35791e5e1c09dc6e78676068b09c58399a128))
+* add server prompt draft workflow ([4abbb7b](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/4abbb7b37d2c9967a7bc54ce911d793d651b847c))
+* load server policy bundle artifacts ([9106512](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/91065128d575897150dfda5e4931962d9e1d126e))
+* load server policy bundle artifacts ([c1dcd8d](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/c1dcd8df66cbe42de18b6f23b121f942be97e727))
+
 ## [0.8.5](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.4...axis-descriptor-lab-v0.8.5) (2026-03-03)
 
 
