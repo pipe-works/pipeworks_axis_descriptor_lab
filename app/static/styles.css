@@ -1001,10 +1001,17 @@
   justify-content: space-between;
   align-items: center;
   gap: var(--sp-2);
+  cursor: pointer;
+  outline: none;
 }
 
 .pipeline-build-grid #pipeline-stage-list li + li {
   margin-top: var(--sp-1);
+}
+
+.pipeline-build-grid #pipeline-stage-list li:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--col-accent);
+  border-radius: var(--radius-sm);
 }
 
 .artifact-editor__textarea {
@@ -1037,6 +1044,26 @@
   margin-top: var(--sp-3);
   border-top: 1px solid var(--col-border);
   padding-top: var(--sp-2);
+}
+
+/* Mobile fallback: stack Pipeline Build panels vertically. */
+@media (max-width: 1100px) {
+  .pipeline-build-grid {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: calc(var(--header-h) + var(--nav-h, 2.5rem) + var(--mud-shell-h, 3.05rem));
+    bottom: var(--statusbar-h);
+    left: 0;
+    right: 0;
+    overflow-y: auto;
+    gap: 1px;
+    background: var(--col-border);
+  }
+
+  .pipeline-panel {
+    min-height: 20rem;
+  }
 }
 
 /* ── Chat character panels ─────────────────────────────────────────────── */

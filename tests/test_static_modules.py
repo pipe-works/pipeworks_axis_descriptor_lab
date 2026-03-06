@@ -308,6 +308,12 @@ def _read_module(name: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _read_styles() -> str:
+    """Read the app stylesheet."""
+    path = Path(__file__).resolve().parent.parent / "app" / "static" / "styles.css"
+    return path.read_text(encoding="utf-8")
+
+
 # ── 1. Static file serving ──────────────────────────────────────────────────
 
 
@@ -457,6 +463,14 @@ class TestPipelineBuildContracts:
         assert "dom.pipelineAxisPresetSourceHint" in content
         assert '"axis_payload"' in content
 
+    def test_axis_json_schema_validation_path_exists(self) -> None:
+        """Raw axis JSON mode should validate schema beyond JSON parse."""
+        content = _read_module("mod-pipeline-build.js")
+        assert "function validateAxisPayloadSchema(payload)" in content
+        assert "Axis JSON schema error" in content
+        assert "payload.axes" in content
+        assert "label must be a non-empty string" in content
+
     def test_stage_progression_can_mark_downstream_stages_complete(self) -> None:
         """Compile result presence should promote downstream stage statuses."""
         content = _read_module("mod-pipeline-build.js")
@@ -478,6 +492,39 @@ class TestPipelineBuildContracts:
             in content
         )
         assert '`source: ${result ? "compile_response" : "policy_bundle/runtime"}`' in content
+
+    def test_hash_input_disclosure_excludes_compiled_prompt(self) -> None:
+        """Hash contract must explicitly exclude final compiled prompt text."""
+        content = _read_module("mod-pipeline-build.js")
+        assert "AXIS_HASH_INPUT_FIELDS" in content
+        assert "COMPILER_INPUT_HASH_FIELDS" in content
+        assert '"excluded_from_hashes: compiled_prompt"' in content
+
+    def test_stage_list_keyboard_navigation_is_wired(self) -> None:
+        """Stage list should support arrow navigation and Enter/Space activation."""
+        content = _read_module("mod-pipeline-build.js")
+        assert "function wireStageListInteractions()" in content
+        assert 'event.key === "ArrowDown"' in content
+        assert 'event.key === "ArrowUp"' in content
+        assert 'event.key === "Enter" || event.key === " "' in content
+        assert "focusStageControl(stageKey)" in content
+
+
+class TestPipelineBuildStyles:
+    """CSS contracts for Pipeline Build accessibility/responsive behavior."""
+
+    def test_pipeline_mobile_fallback_layout_present(self) -> None:
+        """Pipeline page should define a stacked mobile layout fallback."""
+        styles = _read_styles()
+        assert "@media (max-width: 1100px)" in styles
+        assert ".pipeline-build-grid" in styles
+        assert "flex-direction: column" in styles
+
+    def test_pipeline_stage_focus_style_present(self) -> None:
+        """Keyboard focus for stage rows should be visually apparent."""
+        styles = _read_styles()
+        assert ".pipeline-build-grid #pipeline-stage-list li:focus-visible" in styles
+        assert "box-shadow" in styles
 
 
 # ── 6. No circular dependencies ────────────────────────────────────────────

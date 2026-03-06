@@ -89,7 +89,9 @@ class TestIndexRoute:
         assert re.search(r'id="nav-pipeline-build"[^>]*is-active', resp.text)
         assert 'id="pipeline-stage-list"' in resp.text
         assert 'id="pipeline-world-select"' in resp.text
+        assert 'id="pipeline-world-source-hint"' in resp.text
         assert 'id="pipeline-policy-summary"' in resp.text
+        assert 'id="pipeline-policy-source-hint"' in resp.text
         assert 'id="pipeline-species-input"' in resp.text
         assert 'id="pipeline-axis-source-mode"' in resp.text
         assert 'id="pipeline-axis-json"' in resp.text
