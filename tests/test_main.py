@@ -65,6 +65,20 @@ class TestIndexRoute:
         assert '<option value="policy_bundle">Policy Bundle JSON</option>' in resp.text
         assert '<option value="lexicon_json">Lexicon JSON</option>' in resp.text
 
+    def test_chat_translation_page_shell_is_present(self, client: TestClient) -> None:
+        """The Chat Translation page shell must preserve its core controls."""
+        with patch("app.main.ChatRenderer.list_models", return_value=["gemma2:2b"]):
+            resp = client.get("/")
+
+        assert 'id="page-chat-translation"' in resp.text
+        assert 'id="chat-mode-select"' in resp.text
+        assert 'id="chat-login-panel"' in resp.text
+        assert 'id="chat-world-select"' in resp.text
+        assert 'id="chat-a-json"' in resp.text
+        assert 'id="chat-b-json"' in resp.text
+        assert 'id="chat-system-prompt"' in resp.text
+        assert 'id="chat-game-output"' in resp.text
+
     def test_pipeline_build_route_prefers_pipeline_page(self, client: TestClient) -> None:
         """`/pipeline-build` should render the same shell with Pipeline Build preselected."""
         with patch("app.main.ChatRenderer.list_models", return_value=["gemma2:2b"]):

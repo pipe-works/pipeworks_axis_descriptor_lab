@@ -450,6 +450,35 @@ class TestPipelineBuildContracts:
         assert "password|token|secret|authorization" in content
         assert "message: safeMessage" in content
 
+    def test_axis_source_hint_is_rendered_from_axis_payload_metadata(self) -> None:
+        """Axis preset selector must surface local source-path metadata hints."""
+        content = _read_module("mod-pipeline-build.js")
+        assert "renderSourceHint(" in content
+        assert "dom.pipelineAxisPresetSourceHint" in content
+        assert '"axis_payload"' in content
+
+    def test_stage_progression_can_mark_downstream_stages_complete(self) -> None:
+        """Compile result presence should promote downstream stage statuses."""
+        content = _read_module("mod-pipeline-build.js")
+        assert "const hasCompileResult = Boolean(pipelineBuildState.compile.result);" in content
+        assert "const downstreamStatus = hasCompileResult" in content
+        assert 'setStageStatus("block_selection", downstreamStatus);' in content
+        assert 'setStageStatus("descriptor_tone", downstreamStatus);' in content
+        assert 'setStageStatus("composition_hashes", downstreamStatus);' in content
+        assert 'setStageStatus("compile_output", downstreamStatus);' in content
+
+    def test_composition_preview_exposes_hash_contract(self) -> None:
+        """Composition preview must include policy/axis/compiler hash fields."""
+        content = _read_module("mod-pipeline-build.js")
+        assert "function renderCompositionPreview()" in content
+        assert '`policy_hash: ${pipelineBuildState.policyHash || "(not loaded)"}`' in content
+        assert '`axis_hash: ${pipelineBuildState.axisHash || "(not computed)"}`' in content
+        assert (
+            '`compiler_input_hash: ${pipelineBuildState.compilerInputHash || "(not computed)"}`'
+            in content
+        )
+        assert '`source: ${result ? "compile_response" : "policy_bundle/runtime"}`' in content
+
 
 # ── 6. No circular dependencies ────────────────────────────────────────────
 
