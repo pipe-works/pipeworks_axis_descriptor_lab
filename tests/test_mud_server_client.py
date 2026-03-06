@@ -387,6 +387,86 @@ class TestWorldPolicyBundle:
         assert call_args[1]["json"] == {"session_id": "abc-123"}
 
 
+class TestWorldImagePolicyBundle:
+    """world_image_policy_bundle returns the server's image policy bundle."""
+
+    def test_world_image_policy_bundle_returns_dict(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_schema": "pipeworks_policy_v1",
+            "policy_bundle_id": "pipeworks_web_default",
+            "policy_hash": "abc123",
+            "composition_order": ["species_canon_block", "descriptor_layer_output"],
+            "required_runtime_inputs": ["entity.identity.gender", "entity.species"],
+            "missing_components": [],
+        }
+        client._client.get.return_value = mock_resp
+
+        result = client.world_image_policy_bundle("pipeworks_web")
+
+        assert isinstance(result, dict)
+        assert result["world_id"] == "pipeworks_web"
+        assert result["policy_hash"] == "abc123"
+
+
+class TestCompileImagePrompt:
+    """compile_image_prompt forwards canonical compile requests."""
+
+    def test_compile_image_prompt_posts_expected_body(self, client: MudServerClient) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_hash": "abc",
+            "axis_hash": "def",
+            "compiled_prompt": "Compiled canonical prompt.",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
+
+        result = client.compile_image_prompt(
+            world_id="pipeworks_web",
+            species="goblin",
+            gender="male",
+            axes={"wealth": {"label": "modest", "score": 0.3}},
+            world_context=["coastal"],
+            occupation_signals=["manual_labour"],
+            model_id="flux-2-klein-4b",
+            aspect_ratio="1:1",
+            seed=123,
+        )
+
+        assert result["compiled_prompt"].startswith("Compiled")
+        call_args = client._client.post.call_args
+        assert call_args[0][0].endswith("/api/lab/compile-image-prompt")
+        body = call_args[1]["json"]
+        assert body["session_id"] == "abc-123"
+        assert body["world_id"] == "pipeworks_web"
+        assert body["species"] == "goblin"
+        assert body["gender"] == "male"
+        assert body["axes"]["wealth"]["label"] == "modest"
+        assert body["world_context"] == ["coastal"]
+        assert body["occupation_signals"] == ["manual_labour"]
+        assert body["model_id"] == "flux-2-klein-4b"
+        assert body["aspect_ratio"] == "1:1"
+        assert body["seed"] == 123
+
+    def test_compile_image_prompt_not_authenticated_raises(self, client: MudServerClient) -> None:
+        with pytest.raises(MudServerSessionExpiredError):
+            client.compile_image_prompt(
+                world_id="pipeworks_web",
+                species="goblin",
+                gender="male",
+                axes={"wealth": {"label": "modest", "score": 0.3}},
+            )
+
+
 # ---------------------------------------------------------------------------
 # Translate
 # ---------------------------------------------------------------------------

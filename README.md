@@ -170,6 +170,8 @@ These endpoints proxy requests to the mud server when `MUD_SERVER_URL` is config
 | GET | `/api/mud/worlds` | List available worlds |
 | GET | `/api/mud/world-config/{world_id}` | Get world configuration |
 | GET | `/api/mud/world-prompts/{world_id}` | List canonical prompt files for the selected world |
+| GET | `/api/mud/world-image-policy-bundle/{world_id}` | Get canonical image policy bundle metadata for the selected world |
+| POST | `/api/mud/compile-image-prompt` | Compile canonical image prompt via mud server policy selection |
 | POST | `/api/mud/select-world` | Select world for translation |
 
 ### Artifact Editor

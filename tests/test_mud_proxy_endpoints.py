@@ -469,6 +469,156 @@ class TestMudWorldPrompts:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/mud/world-image-policy-bundle/{world_id}
+# ---------------------------------------------------------------------------
+
+
+class TestMudWorldImagePolicyBundle:
+    """Image policy bundle proxy endpoint tests."""
+
+    def test_world_image_policy_bundle_success(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.world_image_policy_bundle.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_schema": "pipeworks_policy_v1",
+            "policy_bundle_id": "pipeworks_web_default",
+            "policy_bundle_version": 1,
+            "policy_hash": "abc123",
+            "composition_order": ["species_canon_block", "descriptor_layer_output"],
+            "required_runtime_inputs": ["entity.identity.gender", "entity.species"],
+            "missing_components": [],
+        }
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/world-image-policy-bundle/pipeworks_web")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["world_id"] == "pipeworks_web"
+        assert data["policy_hash"] == "abc123"
+
+    def test_world_image_policy_bundle_auth_expired(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.world_image_policy_bundle.side_effect = MudServerSessionExpiredError("expired")
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/world-image-policy-bundle/pipeworks_web")
+
+        assert resp.status_code == 401
+
+    def test_world_image_policy_bundle_connection_error(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.world_image_policy_bundle.side_effect = MudServerConnectionError("down")
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/world-image-policy-bundle/pipeworks_web")
+
+        assert resp.status_code == 502
+
+    def test_world_image_policy_bundle_standalone_503(self, test_client: TestClient) -> None:
+        with patch("app.routes_mud.get_mud_client", return_value=None):
+            resp = test_client.get("/api/mud/world-image-policy-bundle/pipeworks_web")
+
+        assert resp.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# POST /api/mud/compile-image-prompt
+# ---------------------------------------------------------------------------
+
+
+class TestMudCompileImagePrompt:
+    """Canonical image compile proxy endpoint tests."""
+
+    def test_compile_image_prompt_success(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.compile_image_prompt.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_hash": "abc",
+            "axis_hash": "def",
+            "compiled_prompt": "Compiled canonical prompt.",
+        }
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/compile-image-prompt",
+                json={
+                    "world_id": "pipeworks_web",
+                    "species": "goblin",
+                    "gender": "male",
+                    "axes": {"wealth": {"label": "modest", "score": 0.3}},
+                    "world_context": ["coastal"],
+                    "occupation_signals": ["manual_labour"],
+                    "model_id": "flux-2-klein-4b",
+                    "aspect_ratio": "1:1",
+                    "seed": 123,
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["compiled_prompt"].startswith("Compiled")
+        call_kwargs = mock.compile_image_prompt.call_args.kwargs
+        assert call_kwargs["world_id"] == "pipeworks_web"
+        assert call_kwargs["species"] == "goblin"
+        assert call_kwargs["gender"] == "male"
+        assert call_kwargs["axes"]["wealth"]["label"] == "modest"
+        assert call_kwargs["world_context"] == ["coastal"]
+        assert call_kwargs["occupation_signals"] == ["manual_labour"]
+        assert call_kwargs["model_id"] == "flux-2-klein-4b"
+        assert call_kwargs["aspect_ratio"] == "1:1"
+        assert call_kwargs["seed"] == 123
+
+    def test_compile_image_prompt_auth_expired(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.compile_image_prompt.side_effect = MudServerSessionExpiredError("expired")
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/compile-image-prompt",
+                json={
+                    "world_id": "pipeworks_web",
+                    "species": "goblin",
+                    "gender": "male",
+                    "axes": {"wealth": {"label": "modest", "score": 0.3}},
+                },
+            )
+
+        assert resp.status_code == 401
+
+    def test_compile_image_prompt_connection_error(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.compile_image_prompt.side_effect = MudServerConnectionError("down")
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/compile-image-prompt",
+                json={
+                    "world_id": "pipeworks_web",
+                    "species": "goblin",
+                    "gender": "male",
+                    "axes": {"wealth": {"label": "modest", "score": 0.3}},
+                },
+            )
+
+        assert resp.status_code == 502
+
+    def test_compile_image_prompt_standalone_503(self, test_client: TestClient) -> None:
+        with patch("app.routes_mud.get_mud_client", return_value=None):
+            resp = test_client.post(
+                "/api/mud/compile-image-prompt",
+                json={
+                    "world_id": "pipeworks_web",
+                    "species": "goblin",
+                    "gender": "male",
+                    "axes": {"wealth": {"label": "modest", "score": 0.3}},
+                },
+            )
+
+        assert resp.status_code == 503
+
+
+# ---------------------------------------------------------------------------
 # POST /api/mud/select-world
 # ---------------------------------------------------------------------------
 

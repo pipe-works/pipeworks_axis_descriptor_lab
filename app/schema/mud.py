@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.schema.axis import AxisValue
+
 
 class MudLoginRequest(BaseModel):
     """Request body for ``POST /api/mud/login``."""
@@ -119,3 +121,61 @@ class MudSelectWorldRequest(BaseModel):
     """Request body for ``POST /api/mud/select-world``."""
 
     world_id: str = Field(..., description="World ID to select for translation.")
+
+
+class MudCompileImagePromptRequest(BaseModel):
+    """Request body for ``POST /api/mud/compile-image-prompt``.
+
+    This mirrors the mud server's canonical image compile request while
+    intentionally keeping the surface minimal for the lab's phase-1
+    canonical mode.
+    """
+
+    world_id: str = Field(..., description="Target world ID on the mud server.")
+    species: str = Field(
+        default="goblin",
+        description="Species identifier used by the mud server's species block selector.",
+    )
+    gender: str = Field(
+        default="male",
+        description="Fixed identity gender value expected by canonical image policy.",
+    )
+    axes: dict[str, AxisValue] = Field(
+        ...,
+        description="Axis name to label/score mapping forwarded to canonical compile.",
+    )
+    world_context: list[str] = Field(
+        default_factory=list,
+        description="Optional world context tags used by clothing selection rules.",
+    )
+    occupation_signals: list[str] = Field(
+        default_factory=list,
+        description="Optional occupation/activity tags used by clothing selection rules.",
+    )
+    model_id: str | None = Field(
+        default=None,
+        description="Optional generation model hint forwarded to canonical compile.",
+    )
+    aspect_ratio: str | None = Field(
+        default=None,
+        description="Optional aspect-ratio hint forwarded to canonical compile.",
+    )
+    seed: int | None = Field(
+        default=None,
+        description="Optional generation seed hint forwarded to canonical compile.",
+    )
+
+
+class MudImagePolicyBundleResponse(BaseModel):
+    """Response body for ``GET /api/mud/world-image-policy-bundle/{world_id}``."""
+
+    world_id: str = Field(..., description="World identifier.")
+    policy_schema: str | None = Field(default=None, description="Manifest policy schema id.")
+    policy_bundle_id: str | None = Field(default=None, description="Active policy bundle id.")
+    policy_bundle_version: int | str | None = Field(
+        default=None, description="Active policy bundle version."
+    )
+    policy_hash: str = Field(..., description="Deterministic hash of compiler policy inputs.")
+    composition_order: list[str] = Field(default_factory=list)
+    required_runtime_inputs: list[str] = Field(default_factory=list)
+    missing_components: list[str] = Field(default_factory=list)

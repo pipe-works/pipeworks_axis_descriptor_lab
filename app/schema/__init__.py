@@ -81,6 +81,8 @@ from app.schema.chat import (
 )
 from app.schema.generate import GenerateRequest, GenerateResponse, LogEntry
 from app.schema.mud import (
+    MudCompileImagePromptRequest,
+    MudImagePolicyBundleResponse,
     MudLoginRequest,
     MudLoginResponse,
     MudModeOption,
@@ -132,6 +134,8 @@ __all__ = [
     "LocalPolicyBundleDraftCreateRequest",
     "LocalPolicyBundleDraftCreateResponse",
     "ManifestFileEntry",
+    "MudCompileImagePromptRequest",
+    "MudImagePolicyBundleResponse",
     "MudLoginRequest",
     "MudLoginResponse",
     "MudModeOption",

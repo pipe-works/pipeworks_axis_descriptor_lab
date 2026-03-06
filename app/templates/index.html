@@ -245,6 +245,35 @@
         <label for="seed-input" class="control-label">Seed</label>
         <input type="number" id="seed-input" value="-1" class="input input--sm"
                data-tooltip="Seed value written into the payload for reproducibility. Use -1 for a random seed (a new 32-bit integer is generated each time). Use a fixed positive number to get deterministic, reproducible results across runs." />
+
+        <label for="generate-mode-select" class="control-label">Generation mode</label>
+        <select
+          id="generate-mode-select"
+          class="select"
+          data-tooltip="Exploratory mode uses the local /api/generate endpoint. Canonical mode proxies to the mud server's deterministic image compile endpoint and returns policy provenance metadata."
+        >
+          <option value="exploratory" selected>Exploratory (local)</option>
+          <option value="canonical">Canonical (mud server)</option>
+        </select>
+
+        <label for="canonical-species-input" class="control-label canonical-only hidden">Species</label>
+        <input
+          id="canonical-species-input"
+          type="text"
+          class="input input--sm canonical-only hidden"
+          value="goblin"
+          data-tooltip="Species id forwarded to canonical compile in mud server mode."
+        />
+
+        <label for="canonical-gender-select" class="control-label canonical-only hidden">Gender</label>
+        <select
+          id="canonical-gender-select"
+          class="select canonical-only hidden"
+          data-tooltip="Fixed identity gender value forwarded to canonical compile."
+        >
+          <option value="male" selected>male</option>
+          <option value="female">female</option>
+        </select>
       </div>
     </details>
 

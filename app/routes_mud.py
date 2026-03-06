@@ -23,6 +23,8 @@ from app.mud_server_client import (
     set_mud_mode,
 )
 from app.schema import (
+    MudCompileImagePromptRequest,
+    MudImagePolicyBundleResponse,
     MudLoginRequest,
     MudLoginResponse,
     MudModeRequest,
@@ -177,6 +179,58 @@ def mud_world_prompts(world_id: str) -> dict:
         raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
     try:
         return client.world_prompts(world_id)
+    except MudServerSessionExpiredError:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        )
+    except MudServerConnectionError:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.")
+
+
+@router.get(
+    "/world-image-policy-bundle/{world_id}",
+    response_model=MudImagePolicyBundleResponse,
+    summary="Get world image policy bundle",
+)
+def mud_world_image_policy_bundle(world_id: str) -> MudImagePolicyBundleResponse:
+    """Proxy to ``GET /api/lab/world-image-policy-bundle/{world_id}`` on the mud server."""
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    try:
+        payload = client.world_image_policy_bundle(world_id)
+        return MudImagePolicyBundleResponse.model_validate(payload)
+    except MudServerSessionExpiredError:
+        raise HTTPException(
+            status_code=401,
+            detail="Mud server session expired. Please log in again.",
+        )
+    except MudServerConnectionError:
+        raise HTTPException(status_code=502, detail="Cannot connect to mud server.")
+
+
+@router.post("/compile-image-prompt", summary="Compile canonical image prompt via mud server")
+def mud_compile_image_prompt(req: MudCompileImagePromptRequest) -> dict:
+    """Proxy ``POST /api/lab/compile-image-prompt`` using the active mud session."""
+    client = get_mud_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Standalone mode — no mud server configured.")
+    try:
+        axes_payload = {
+            axis_name: axis_value.model_dump() for axis_name, axis_value in req.axes.items()
+        }
+        return client.compile_image_prompt(
+            world_id=req.world_id,
+            species=req.species,
+            gender=req.gender,
+            axes=axes_payload,
+            world_context=req.world_context,
+            occupation_signals=req.occupation_signals,
+            model_id=req.model_id,
+            aspect_ratio=req.aspect_ratio,
+            seed=req.seed,
+        )
     except MudServerSessionExpiredError:
         raise HTTPException(
             status_code=401,

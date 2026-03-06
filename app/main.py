@@ -49,6 +49,9 @@ POST /api/mud/mode             → switch runtime chat mode
 GET  /api/mud/session          → return auth status + translation mode
 GET  /api/mud/worlds           → proxy list worlds from mud server
 GET  /api/mud/world-config/{id}→ proxy world config from mud server
+GET  /api/mud/world-prompts/{id} → proxy world prompt templates from mud server
+GET  /api/mud/world-image-policy-bundle/{id} → proxy canonical image policy bundle metadata
+POST /api/mud/compile-image-prompt → proxy canonical image prompt compilation
 GET  /api/artifacts/local/chat-prompts          → list local prompt artifacts
 GET  /api/artifacts/local/chat-prompts/{name}   → load one local prompt artifact
 POST /api/artifacts/local/chat-prompts/drafts   → create a new local prompt draft
