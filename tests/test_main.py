@@ -79,9 +79,15 @@ class TestIndexRoute:
         assert 'id="pipeline-species-input"' in resp.text
         assert 'id="pipeline-axis-source-mode"' in resp.text
         assert 'id="pipeline-axis-json"' in resp.text
+        assert 'id="pipeline-block-selection-summary"' in resp.text
+        assert 'id="pipeline-descriptor-tone-summary"' in resp.text
+        assert 'id="pipeline-composition-preview"' in resp.text
         assert 'id="pipeline-compile-button"' in resp.text
         assert 'id="pipeline-compile-request"' in resp.text
+        assert 'id="pipeline-copy-response-json"' in resp.text
+        assert 'id="pipeline-export-response-json"' in resp.text
         assert 'id="pipeline-provenance-panel"' in resp.text
+        assert 'id="pipeline-action-log"' in resp.text
 
 
 class TestListExamples:

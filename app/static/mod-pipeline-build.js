@@ -44,6 +44,20 @@ const STAGE_LABEL = {
   compile_output: "Compile + Output",
 };
 
+const MAX_ACTION_LOG_ENTRIES = 24;
+
+function appendActionLog(message, level = "info") {
+  const timestamp = new Date().toISOString();
+  pipelineBuildState.actionLog.unshift({
+    timestamp,
+    level,
+    message: String(message || "").trim(),
+  });
+  if (pipelineBuildState.actionLog.length > MAX_ACTION_LOG_ENTRIES) {
+    pipelineBuildState.actionLog.length = MAX_ACTION_LOG_ENTRIES;
+  }
+}
+
 function setStageStatus(stageKey, status) {
   pipelineBuildState.stageStatus[stageKey] = status;
 }
@@ -121,6 +135,7 @@ function applyStageProgression() {
   const policyStatus = pipelineBuildState.stageStatus.policy_bundle;
   const identityValid = isIdentityValid();
   const axisValid = isAxisPayloadValid(pipelineBuildState.axis.payload);
+  const hasCompileResult = Boolean(pipelineBuildState.compile.result);
 
   if (!isAuthenticated) {
     setStageStatus("session_world", PIPELINE_STAGE_STATUS.READY);
@@ -172,11 +187,14 @@ function applyStageProgression() {
   );
 
   if (axisValid) {
-    setStageStatus("block_selection", PIPELINE_STAGE_STATUS.READY);
-    setStageStatus("descriptor_tone", PIPELINE_STAGE_STATUS.READY);
-    setStageStatus("composition_hashes", PIPELINE_STAGE_STATUS.READY);
-    setStageStatus("compile_output", PIPELINE_STAGE_STATUS.READY);
-    pipelineBuildState.activeStage = "axis_input";
+    const downstreamStatus = hasCompileResult
+      ? PIPELINE_STAGE_STATUS.COMPLETE
+      : PIPELINE_STAGE_STATUS.READY;
+    setStageStatus("block_selection", downstreamStatus);
+    setStageStatus("descriptor_tone", downstreamStatus);
+    setStageStatus("composition_hashes", downstreamStatus);
+    setStageStatus("compile_output", downstreamStatus);
+    pipelineBuildState.activeStage = hasCompileResult ? "compile_output" : "axis_input";
   } else {
     lockAfterAxis();
     pipelineBuildState.activeStage = "axis_input";
@@ -487,10 +505,114 @@ function renderRuntimeControls() {
   }
 }
 
+function renderBlockSelectionSummary() {
+  if (!dom.pipelineBlockSelectionSummary) return;
+
+  const bundle = pipelineBuildState.policyBundle;
+  const result = pipelineBuildState.compile.result;
+
+  if (!bundle) {
+    dom.pipelineBlockSelectionSummary.textContent =
+      "Load policy bundle metadata to inspect block-family resolution.";
+    return;
+  }
+
+  const speciesBlock =
+    result?.selected_species_block_id || result?.selected_blocks?.species_canon_block || null;
+  const clothingProfile = result?.selected_clothing_profile_id || null;
+  const clothingSlots = result?.selected_blocks?.clothing_block;
+
+  const lines = [
+    "Block Selection",
+    `species_canon_block: ${speciesBlock || "(pending compile resolution)"}`,
+    `clothing_profile: ${clothingProfile || "(pending compile resolution)"}`,
+  ];
+
+  if (clothingSlots && typeof clothingSlots === "object" && !Array.isArray(clothingSlots)) {
+    const slotPairs = Object.entries(clothingSlots).sort(([a], [b]) => a.localeCompare(b));
+    if (slotPairs.length > 0) {
+      lines.push("clothing_slots:");
+      for (const [slotName, slotValue] of slotPairs) {
+        lines.push(`  ${slotName}: ${slotValue}`);
+      }
+    }
+  } else if (typeof clothingSlots === "string" && clothingSlots.trim()) {
+    lines.push(`clothing_block: ${clothingSlots}`);
+  } else if (!result) {
+    lines.push("awaiting: canonical compile response");
+  }
+
+  dom.pipelineBlockSelectionSummary.textContent = lines.join("\n");
+}
+
+function renderDescriptorToneSummary() {
+  if (!dom.pipelineDescriptorToneSummary) return;
+
+  const bundle = pipelineBuildState.policyBundle;
+  const result = pipelineBuildState.compile.result;
+
+  if (!bundle) {
+    dom.pipelineDescriptorToneSummary.textContent =
+      "Load policy bundle metadata to inspect descriptor/tone resolution.";
+    return;
+  }
+
+  const descriptorLayer =
+    result?.selected_descriptor_layer_id || result?.descriptor_layer_id || null;
+  const toneProfile = result?.selected_tone_profile_id || result?.tone_profile_id || null;
+
+  const lines = [
+    "Descriptor + Tone",
+    `descriptor_layer: ${descriptorLayer || "(pending compile resolution)"}`,
+    `tone_profile: ${toneProfile || "(pending compile resolution)"}`,
+  ];
+  if (!result) {
+    lines.push("awaiting: canonical compile response");
+  }
+
+  dom.pipelineDescriptorToneSummary.textContent = lines.join("\n");
+}
+
+function renderCompositionPreview() {
+  if (!dom.pipelineCompositionPreview) return;
+
+  const bundle = pipelineBuildState.policyBundle;
+  const result = pipelineBuildState.compile.result;
+  const compositionOrder = Array.isArray(result?.composition_order) && result.composition_order.length
+    ? result.composition_order
+    : Array.isArray(bundle?.composition_order)
+      ? bundle.composition_order
+      : [];
+
+  dom.pipelineCompositionPreview.textContent = [
+    "Composition + Hashes",
+    `composition_order: ${compositionOrder.length ? compositionOrder.join(" -> ") : "(none)"}`,
+    `policy_hash: ${pipelineBuildState.policyHash || "(not loaded)"}`,
+    `axis_hash: ${pipelineBuildState.axisHash || "(not computed)"}`,
+    `compiler_input_hash: ${pipelineBuildState.compilerInputHash || "(not computed)"}`,
+    `source: ${result ? "compile_response" : "policy_bundle/runtime"}`,
+  ].join("\n");
+}
+
+function renderActionLog() {
+  if (!dom.pipelineActionLog) return;
+
+  const rows = Array.isArray(pipelineBuildState.actionLog) ? pipelineBuildState.actionLog : [];
+  if (rows.length === 0) {
+    dom.pipelineActionLog.textContent = "API and workflow actions will appear here.";
+    return;
+  }
+
+  dom.pipelineActionLog.textContent = rows
+    .map((row) => `[${row.timestamp}] (${row.level}) ${row.message}`)
+    .join("\n");
+}
+
 function renderCompilePanels() {
   const request = pipelineBuildState.compile.requestBody;
   const result = pipelineBuildState.compile.result;
-  const canCompile = Boolean(request) && pipelineBuildState.stageStatus.compile_output === PIPELINE_STAGE_STATUS.READY;
+  const canCompile =
+    Boolean(request) && pipelineBuildState.stageStatus.compile_output === PIPELINE_STAGE_STATUS.READY;
 
   if (dom.pipelineCompileRequest) {
     dom.pipelineCompileRequest.textContent = request
@@ -500,6 +622,12 @@ function renderCompilePanels() {
 
   if (dom.pipelineCompileButton) {
     dom.pipelineCompileButton.disabled = !canCompile || pipelineBuildState.busy;
+  }
+  if (dom.pipelineCopyResponseJson) {
+    dom.pipelineCopyResponseJson.disabled = !result || pipelineBuildState.busy;
+  }
+  if (dom.pipelineExportResponseJson) {
+    dom.pipelineExportResponseJson.disabled = !result || pipelineBuildState.busy;
   }
 
   if (dom.pipelineCompileResult) {
@@ -608,8 +736,12 @@ function renderPipelinePanels({ syncAxisJsonEditor = false } = {}) {
   if (syncAxisJsonEditor) {
     renderAxisJsonEditor();
   }
+  renderBlockSelectionSummary();
+  renderDescriptorToneSummary();
   renderRuntimeControls();
+  renderCompositionPreview();
   renderCompilePanels();
+  renderActionLog();
   renderBuildSummary();
   renderStageEditorHint();
 }
@@ -634,6 +766,7 @@ function applyUnauthenticatedState(errorMessage = null) {
   pipelineBuildState.activeStage = "session_world";
 
   pipelineBuildState.lastError = errorMessage;
+  appendActionLog(errorMessage || "Mud session unauthenticated.", "warn");
   renderPipelinePanels({ syncAxisJsonEditor: true });
 }
 
@@ -654,6 +787,8 @@ function derivePreferredWorld(session, worlds) {
 }
 
 async function loadPolicyBundleForWorld(worldId, { quiet = false } = {}) {
+  pipelineBuildState.compile.result = null;
+
   if (!worldId) {
     pipelineBuildState.policyBundle = null;
     pipelineBuildState.policyHash = null;
@@ -683,12 +818,17 @@ async function loadPolicyBundleForWorld(worldId, { quiet = false } = {}) {
         "Pipeline Build — policy bundle has missing components. Downstream stages remain locked."
       );
     }
+    appendActionLog(
+      `Policy bundle for '${worldId}' reported missing components: ${missingComponents.join(", ")}`,
+      "warn"
+    );
   } else {
     setStageStatus("policy_bundle", PIPELINE_STAGE_STATUS.COMPLETE);
     pipelineBuildState.lastError = null;
     if (!quiet) {
       setStatus("Pipeline Build — policy bundle loaded.");
     }
+    appendActionLog(`Policy bundle loaded for '${worldId}'.`);
   }
 
   applyStageProgression();
@@ -697,6 +837,8 @@ async function loadPolicyBundleForWorld(worldId, { quiet = false } = {}) {
 }
 
 async function applyWorldSelection(worldId, { quiet = false } = {}) {
+  pipelineBuildState.compile.result = null;
+
   if (!worldId) {
     pipelineBuildState.selectedWorldId = null;
     pipelineBuildState.worldConfig = null;
@@ -724,6 +866,7 @@ async function applyWorldSelection(worldId, { quiet = false } = {}) {
     if (!quiet) {
       setStatus(`Pipeline Build — selected world '${worldId}'.`);
     }
+    appendActionLog(`Selected world '${worldId}'.`);
   } catch (err) {
     const detail =
       err instanceof PipelineApiError
@@ -741,6 +884,7 @@ async function applyWorldSelection(worldId, { quiet = false } = {}) {
     pipelineBuildState.lastError = detail;
     renderPipelinePanels({ syncAxisJsonEditor: true });
     setStatus(`Pipeline Build — failed to load world context: ${detail}`);
+    appendActionLog(`World selection failed for '${worldId}': ${detail}`, "error");
   } finally {
     pipelineBuildState.busy = false;
     renderPipelinePanels({ syncAxisJsonEditor: false });
@@ -762,6 +906,7 @@ async function refreshSessionAndWorlds({ quiet = false } = {}) {
       if (!quiet) {
         setStatus("Pipeline Build — connect to mud server to unlock canonical workflow.");
       }
+      appendActionLog("Mud session is unauthenticated.", "warn");
       return;
     }
 
@@ -786,6 +931,10 @@ async function refreshSessionAndWorlds({ quiet = false } = {}) {
     if (!quiet) {
       setStatus("Pipeline Build — session, world, and policy bundle refreshed.");
     }
+    appendActionLog(
+      `Session refreshed (${pipelineBuildState.session.modeKey || "unknown"} mode).`,
+      "info"
+    );
   } catch (err) {
     const detail =
       err instanceof PipelineApiError
@@ -806,6 +955,7 @@ async function refreshSessionAndWorlds({ quiet = false } = {}) {
     lockAfterAxis();
     renderPipelinePanels({ syncAxisJsonEditor: true });
     setStatus(`Pipeline Build — session/world refresh failed: ${detail}`);
+    appendActionLog(`Session/world refresh failed: ${detail}`, "error");
   } finally {
     pipelineBuildState.busy = false;
     renderPipelinePanels({ syncAxisJsonEditor: false });
@@ -823,14 +973,17 @@ async function refreshAxisPresetList() {
       pipelineBuildState.axis.selectedPresetMeta = presets[0];
     }
     renderAxisPresetSelect();
+    appendActionLog(`Loaded ${presets.length} local axis presets.`);
   } catch (err) {
     pipelineBuildState.lastError = err.message || String(err);
     renderPipelinePanels({ syncAxisJsonEditor: false });
     setStatus(`Pipeline Build — failed to load axis presets: ${pipelineBuildState.lastError}`);
+    appendActionLog(`Axis preset list load failed: ${pipelineBuildState.lastError}`, "error");
   }
 }
 
 async function updateAxisStateFromPayload(payload, { syncAxisJsonEditor = false } = {}) {
+  pipelineBuildState.compile.result = null;
   pipelineBuildState.axis.payload = payload;
   applyStageProgression();
   await recomputeHashes();
@@ -853,14 +1006,17 @@ async function loadAxisPresetByName(name) {
 
     await updateAxisStateFromPayload(parsed, { syncAxisJsonEditor: true });
     setStatus(`Pipeline Build — axis preset '${name}' loaded.`);
+    appendActionLog(`Axis preset '${name}' loaded.`);
   } catch (err) {
     pipelineBuildState.lastError = err.message || String(err);
     renderPipelinePanels({ syncAxisJsonEditor: false });
     setStatus(`Pipeline Build — failed to load axis preset: ${pipelineBuildState.lastError}`);
+    appendActionLog(`Axis preset '${name}' failed to load: ${pipelineBuildState.lastError}`, "error");
   }
 }
 
 async function handleIdentityChange() {
+  pipelineBuildState.compile.result = null;
   pipelineBuildState.identity.species = String(dom.pipelineSpeciesInput?.value || "").trim();
   pipelineBuildState.identity.gender = String(dom.pipelineGenderSelect?.value || "male");
   applyStageProgression();
@@ -873,6 +1029,7 @@ async function handleAxisJsonInput() {
 
   const raw = dom.pipelineAxisJson.value;
   if (!raw.trim()) {
+    pipelineBuildState.compile.result = null;
     pipelineBuildState.axis.payload = null;
     applyStageProgression();
     await recomputeHashes();
@@ -888,6 +1045,7 @@ async function handleAxisJsonInput() {
     pipelineBuildState.lastError = null;
     await updateAxisStateFromPayload(parsed, { syncAxisJsonEditor: false });
   } catch {
+    pipelineBuildState.compile.result = null;
     pipelineBuildState.axis.payload = null;
     applyStageProgression();
     setStageStatus("axis_input", PIPELINE_STAGE_STATUS.ERROR);
@@ -912,6 +1070,7 @@ async function handleAxisRelabel() {
     const relabeled = await relabelAxisPayload(payload);
     await updateAxisStateFromPayload(relabeled, { syncAxisJsonEditor: true });
     setStatus("Pipeline Build — axis labels recomputed.");
+    appendActionLog("Axis labels recomputed via /api/relabel.");
   } catch (err) {
     const detail =
       err instanceof PipelineApiError
@@ -920,10 +1079,12 @@ async function handleAxisRelabel() {
     pipelineBuildState.lastError = detail;
     renderPipelinePanels({ syncAxisJsonEditor: false });
     setStatus(`Pipeline Build — axis relabel failed: ${detail}`);
+    appendActionLog(`Axis relabel failed: ${detail}`, "error");
   }
 }
 
 async function handleRuntimeInputChange() {
+  pipelineBuildState.compile.result = null;
   pipelineBuildState.runtime.worldContext = parseCsvList(dom.pipelineWorldContextInput?.value);
   pipelineBuildState.runtime.occupationSignals = parseCsvList(
     dom.pipelineOccupationSignalsInput?.value
@@ -938,9 +1099,52 @@ async function handleRuntimeInputChange() {
     pipelineBuildState.runtime.seed = null;
   }
 
+  applyStageProgression();
   await recomputeHashes();
-  renderCompilePanels();
-  renderBuildSummary();
+  renderPipelinePanels({ syncAxisJsonEditor: false });
+}
+
+async function copyCompileResponseJson() {
+  const result = pipelineBuildState.compile.result;
+  if (!result) {
+    setStatus("Pipeline Build — compile a prompt before copying response JSON.");
+    return;
+  }
+
+  const text = JSON.stringify(result, null, 2);
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("Pipeline Build — copied response JSON to clipboard.");
+    appendActionLog("Copied compile response JSON.");
+  } catch {
+    setStatus("Pipeline Build — clipboard copy failed.");
+    appendActionLog("Compile response JSON copy failed.", "error");
+  }
+}
+
+function exportCompileResponseJson() {
+  const result = pipelineBuildState.compile.result;
+  if (!result) {
+    setStatus("Pipeline Build — compile a prompt before exporting response JSON.");
+    return;
+  }
+
+  const worldId = pipelineBuildState.selectedWorldId || "world";
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const filename = `pipeline-build-response-${worldId}-${timestamp}.json`;
+  const blob = new Blob([JSON.stringify(result, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(link.href);
+
+  setStatus(`Pipeline Build — exported response JSON as ${filename}.`);
+  appendActionLog(`Exported compile response JSON (${filename}).`);
 }
 
 async function handleCompileRequest() {
@@ -955,6 +1159,7 @@ async function handleCompileRequest() {
   }
 
   pipelineBuildState.busy = true;
+  appendActionLog("Starting canonical compile request.");
   renderPipelinePanels({ syncAxisJsonEditor: false });
 
   try {
@@ -969,11 +1174,10 @@ async function handleCompileRequest() {
       pipelineBuildState.axisHash = String(result.axis_hash);
     }
 
-    setStageStatus("compile_output", PIPELINE_STAGE_STATUS.COMPLETE);
-    pipelineBuildState.activeStage = "compile_output";
-
+    applyStageProgression();
     renderPipelinePanels({ syncAxisJsonEditor: false });
     setStatus("Pipeline Build — canonical compile complete.");
+    appendActionLog("Canonical compile completed.");
   } catch (err) {
     const detail =
       err instanceof PipelineApiError
@@ -983,6 +1187,7 @@ async function handleCompileRequest() {
     if (err instanceof PipelineApiError && err.status === 401) {
       applyUnauthenticatedState(detail);
       setStatus("Pipeline Build — mud session expired. Please reconnect.");
+      appendActionLog("Canonical compile failed: mud session expired.", "warn");
       return;
     }
 
@@ -990,6 +1195,7 @@ async function handleCompileRequest() {
     setStageStatus("compile_output", PIPELINE_STAGE_STATUS.ERROR);
     renderPipelinePanels({ syncAxisJsonEditor: false });
     setStatus(`Pipeline Build — compile failed: ${detail}`);
+    appendActionLog(`Canonical compile failed: ${detail}`, "error");
   } finally {
     pipelineBuildState.busy = false;
     renderPipelinePanels({ syncAxisJsonEditor: false });
@@ -1003,6 +1209,7 @@ async function handleCompileRequest() {
  */
 export async function initPipelineBuild() {
   resetPipelineBuildState();
+  appendActionLog("Pipeline Build initialized.");
   renderPipelinePanels({ syncAxisJsonEditor: true });
   await refreshAxisPresetList();
   await refreshSessionAndWorlds({ quiet: true });
@@ -1082,9 +1289,16 @@ export function wirePipelineBuildEvents() {
   dom.pipelineCompileButton?.addEventListener("click", () => {
     handleCompileRequest();
   });
+  dom.pipelineCopyResponseJson?.addEventListener("click", () => {
+    copyCompileResponseJson();
+  });
+  dom.pipelineExportResponseJson?.addEventListener("click", () => {
+    exportCompileResponseJson();
+  });
 
   document.addEventListener("pipeline-build-activated", () => {
     setStatus("Pipeline Build — active.");
+    appendActionLog("Pipeline Build tab activated.");
     refreshSessionAndWorlds({ quiet: true });
   });
 }

@@ -1056,6 +1056,18 @@
     </button>
     <hr class="divider" />
 
+    <h2 class="panel__heading">Block Selection (read-only)</h2>
+    <div id="pipeline-block-selection-summary" class="artifact-reference">
+      Resolved species and clothing block selection will appear after canonical compile.
+    </div>
+    <hr class="divider" />
+
+    <h2 class="panel__heading">Descriptor + Tone (read-only)</h2>
+    <div id="pipeline-descriptor-tone-summary" class="artifact-reference">
+      Selected descriptor layer and tone profile IDs will appear after canonical compile.
+    </div>
+    <hr class="divider" />
+
     <h2 class="panel__heading">Stage Editor</h2>
     <div id="pipeline-stage-editor" class="artifact-reference">
       Session + World, Policy Bundle, Character Identity, and Axis Input controls are active. Downstream stages remain locked until later phases.
@@ -1084,6 +1096,10 @@
     <div id="pipeline-compile-request" class="artifact-reference">
       Compile request will appear here.
     </div>
+    <label class="control-label" for="pipeline-composition-preview" style="margin-top:0.5rem;">Composition + Hashes</label>
+    <div id="pipeline-composition-preview" class="artifact-reference">
+      Composition order and hash preview will appear here.
+    </div>
     <button id="pipeline-compile-button" class="btn btn--primary btn--full" type="button" style="margin-top:0.5rem;">
       Compile canonical prompt
     </button>
@@ -1093,9 +1109,17 @@
     <div id="pipeline-compile-result" class="artifact-reference">
       Compile output will appear here.
     </div>
+    <div class="control-row" style="margin-top:0.5rem;">
+      <button id="pipeline-copy-response-json" class="btn btn--secondary" type="button">Copy response JSON</button>
+      <button id="pipeline-export-response-json" class="btn btn--secondary" type="button">Export response JSON</button>
+    </div>
     <label class="control-label" for="pipeline-provenance-panel" style="margin-top:0.5rem;">Provenance</label>
     <div id="pipeline-provenance-panel" class="artifact-meta">
       Returned provenance fields will appear here.
+    </div>
+    <label class="control-label" for="pipeline-action-log" style="margin-top:0.5rem;">Action log</label>
+    <div id="pipeline-action-log" class="artifact-reference">
+      API and workflow actions will appear here.
     </div>
     <hr class="divider" />
 

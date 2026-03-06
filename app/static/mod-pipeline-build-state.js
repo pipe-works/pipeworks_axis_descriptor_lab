@@ -69,7 +69,8 @@ export const PIPELINE_STAGE_STATUS = {
  *   compile: { requestBody: object|null, result: object|null },
  *   policyHash: string|null,
  *   axisHash: string|null,
- *   compilerInputHash: string|null
+ *   compilerInputHash: string|null,
+ *   actionLog: Array<{ timestamp: string, level: string, message: string }>
  * }}
  */
 export const pipelineBuildState = {
@@ -113,6 +114,7 @@ export const pipelineBuildState = {
   policyHash: null,
   axisHash: null,
   compilerInputHash: null,
+  actionLog: [],
 };
 
 pipelineBuildState.stageStatus.session_world = PIPELINE_STAGE_STATUS.READY;
@@ -150,6 +152,7 @@ export function resetPipelineBuildState() {
   pipelineBuildState.policyHash = null;
   pipelineBuildState.axisHash = null;
   pipelineBuildState.compilerInputHash = null;
+  pipelineBuildState.actionLog = [];
 
   for (const stage of PIPELINE_STAGE_ORDER) {
     pipelineBuildState.stageStatus[stage] =
