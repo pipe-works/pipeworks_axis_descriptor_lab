@@ -40,6 +40,7 @@ import { wireEvents } from "./mod-events.js";
 import { loadExampleList, loadPromptList, loadExample } from "./mod-loaders.js";
 import { initChatTranslation } from "./mod-chat-translation.js";
 import { initArtifactEditor } from "./mod-artifact-editor.js";
+import { initPipelineBuild } from "./mod-pipeline-build.js";
 
 /**
  * Application entry point.  Runs once the DOM is ready.
@@ -65,6 +66,7 @@ async function init() {
   await loadPromptList();
   await initChatTranslation();
   await initArtifactEditor();
+  await initPipelineBuild();
 
   // Phase 4: Auto-load the first example if any exist
   // options[0] is the "— choose —" placeholder; options[1] is the first real example

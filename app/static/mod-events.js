@@ -21,6 +21,7 @@
  *   6. wirePersistenceEvents()      — save, export, import, clear output
  *   7. wireIndicatorModalEvents()   — indicator tag click → modal
  *   8. wireArtifactEditorEvents()   — prompt artifact editor controls
+ *   9. wirePipelineBuildEvents()    — pipeline build scaffold controls
  *
  * Called once during startup by `init()` in `mod-init.js`.
  *
@@ -38,6 +39,7 @@ import { wireIndicatorModalEvents } from "./mod-indicator-modal.js";
 import { wireNavigationEvents } from "./mod-navigation.js";
 import { wireChatTranslationEvents } from "./mod-chat-translation.js";
 import { wireArtifactEditorEvents } from "./mod-artifact-editor.js";
+import { wirePipelineBuildEvents } from "./mod-pipeline-build.js";
 
 /**
  * Wire all interactive event listeners across the application.
@@ -60,4 +62,5 @@ export function wireEvents() {
   wireIndicatorModalEvents();
   wireChatTranslationEvents();
   wireArtifactEditorEvents();
+  wirePipelineBuildEvents();
 }
