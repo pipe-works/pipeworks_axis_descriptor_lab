@@ -855,6 +855,77 @@
   color: var(--col-primary);
 }
 
+/* Global mud-server session controls shared by all pages. */
+.mud-session-shell {
+  position: fixed;
+  top: calc(var(--header-h) + var(--nav-h, 2.5rem));
+  left: 0;
+  right: 0;
+  z-index: 85;
+  height: var(--mud-shell-h, 3.05rem);
+  background: color-mix(in srgb, var(--col-surface) 90%, var(--col-bg) 10%);
+  border-bottom: 1px solid var(--col-border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-3);
+}
+
+.mud-session-shell__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.mud-session-shell__title {
+  font-family: var(--font-mono);
+  color: var(--col-text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: var(--sp-1);
+}
+
+.mud-session-shell__label {
+  margin-bottom: 0;
+}
+
+.mud-session-shell__world {
+  margin-left: var(--sp-2);
+  align-items: center;
+}
+
+.mud-session-shell .chat-mode-url {
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mud-session-shell .chat-login-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: calc(var(--header-h) + var(--nav-h, 2.5rem) + var(--mud-shell-h, 3.05rem));
+  bottom: var(--statusbar-h);
+  z-index: 95;
+  padding: var(--sp-4);
+  justify-content: center;
+  align-items: center;
+  background: color-mix(in srgb, var(--col-bg) 72%, transparent);
+}
+
+.mud-session-shell .chat-login-panel__card {
+  width: 24rem;
+  background: var(--col-surface-2);
+  border: 1px solid var(--col-border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-3);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+}
+
 /* Page wrappers — page containers are children of <body>; hidden class from base CSS. */
 #page-char-description,
 #page-chat-translation,
@@ -872,7 +943,7 @@
 .app-grid,
 .chat-grid,
 .artifact-grid {
-  top: calc(var(--header-h) + var(--nav-h, 2.5rem));
+  top: calc(var(--header-h) + var(--nav-h, 2.5rem) + var(--mud-shell-h, 3.05rem));
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1224,10 +1295,14 @@
 .chat-translation-header {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
 }
 .chat-translation-header .panel__heading {
   margin-bottom: 0;
+}
+.chat-translation-header__note {
+  font-size: var(--text-xs);
+  color: var(--col-text-muted);
 }
 .chat-mode-controls {
   align-items: center;
@@ -1243,9 +1318,9 @@
 .chat-login-panel {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: var(--sp-6);
-  flex: 1;
+  justify-content: flex-start;
+  padding: 0;
+  flex: 0 0 auto;
 }
 .chat-login-panel.hidden { display: none; }
 .chat-login-panel__card {

@@ -62,6 +62,54 @@
   <button id="nav-artifact-editor" class="btn btn--nav" type="button">Artifact Editor</button>
 </nav>
 
+<!-- Global mud-server session controls.
+     This bar is intentionally shared across all pages so authentication and
+     world selection are not tied to the Chat Translation view. -->
+<section class="mud-session-shell" aria-label="Mud server session">
+  <div class="mud-session-shell__controls">
+    <span class="mud-session-shell__title">Mud Server Session</span>
+    <span id="chat-mode-badge" class="badge badge--muted">Standalone</span>
+    <button id="chat-btn-disconnect" class="btn btn--secondary btn--sm hidden" type="button">Disconnect</button>
+    <label for="chat-mode-select" class="control-label mud-session-shell__label">Mode</label>
+    <select id="chat-mode-select" class="select select--sm" aria-label="Chat translation mode">
+      <option value="standalone">Offline</option>
+    </select>
+    <input
+      id="chat-mode-dev-url"
+      class="input input--url hidden"
+      type="url"
+      placeholder="http://localhost:8000"
+      aria-label="Development mud server URL"
+    />
+    <button id="chat-mode-dev-apply" class="btn btn--secondary btn--sm hidden" type="button">
+      Apply URL
+    </button>
+    <span id="chat-mode-url" class="chat-mode-url">Uses the local standalone translator.</span>
+    <div id="chat-world-selector" class="control-row hidden mud-session-shell__world">
+      <label for="chat-world-select" class="control-label">World</label>
+      <select id="chat-world-select" class="select select--sm">
+        <option value="">— select world —</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Login panel — shown in server mode when not authenticated -->
+  <div id="chat-login-panel" class="chat-login-panel hidden">
+    <div class="chat-login-panel__card">
+      <h3 class="chat-login-panel__title">Connect to Mud Server</h3>
+      <div class="settings-grid">
+        <label class="control-label">Username</label>
+        <input id="chat-login-username" class="input" type="text" autocomplete="username" />
+        <label class="control-label">Password</label>
+        <input id="chat-login-password" class="input" type="password" autocomplete="current-password" />
+      </div>
+      <button id="chat-btn-connect" class="btn btn--primary btn--full" type="button"
+              style="margin-top:var(--sp-3);">Connect</button>
+      <div id="chat-login-error" class="chat-login-panel__error hidden"></div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PAGE: CHARACTER DESCRIPTION (existing content)
 ════════════════════════════════════════════════════════════════════════════ -->
@@ -559,50 +607,9 @@
   <section class="panel panel--right" aria-label="Translation Controls and Output">
     <div class="chat-translation-header">
       <h2 class="panel__heading">Translation</h2>
-      <span id="chat-mode-badge" class="badge badge--muted">Standalone</span>
-      <button id="chat-btn-disconnect" class="btn btn--secondary btn--sm hidden" type="button">Disconnect</button>
-    </div>
-
-    <div class="control-row chat-mode-controls" style="margin-top:0.5rem;">
-      <label for="chat-mode-select" class="control-label">Mode</label>
-      <select id="chat-mode-select" class="select select--sm" aria-label="Chat translation mode">
-        <option value="standalone">Offline</option>
-      </select>
-      <input
-        id="chat-mode-dev-url"
-        class="input input--url hidden"
-        type="url"
-        placeholder="http://localhost:8000"
-        aria-label="Development mud server URL"
-      />
-      <button id="chat-mode-dev-apply" class="btn btn--secondary btn--sm hidden" type="button">
-        Apply URL
-      </button>
-      <span id="chat-mode-url" class="chat-mode-url">Uses the local standalone translator.</span>
-    </div>
-
-    <!-- Login panel — shown in server mode when not authenticated -->
-    <div id="chat-login-panel" class="chat-login-panel hidden">
-      <div class="chat-login-panel__card">
-        <h3 class="chat-login-panel__title">Connect to Mud Server</h3>
-        <div class="settings-grid">
-          <label class="control-label">Username</label>
-          <input id="chat-login-username" class="input" type="text" autocomplete="username" />
-          <label class="control-label">Password</label>
-          <input id="chat-login-password" class="input" type="password" autocomplete="current-password" />
-        </div>
-        <button id="chat-btn-connect" class="btn btn--primary btn--full" type="button"
-                style="margin-top:var(--sp-3);">Connect</button>
-        <div id="chat-login-error" class="chat-login-panel__error hidden"></div>
-      </div>
-    </div>
-
-    <!-- World selector — shown after login in server mode -->
-    <div id="chat-world-selector" class="control-row hidden" style="margin-top:0.5rem;">
-      <label for="chat-world-select" class="control-label">World</label>
-      <select id="chat-world-select" class="select">
-        <option value="">— select world —</option>
-      </select>
+      <span class="chat-translation-header__note">
+        Connection, mode, and world are controlled in the global Mud Server Session bar.
+      </span>
     </div>
 
     <!-- Generation settings -->
