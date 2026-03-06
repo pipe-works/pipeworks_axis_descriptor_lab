@@ -1,0 +1,40 @@
+{
+  "version": "0.1",
+  "scales": {
+	"unease_scale": [
+	  "uneasy",
+	  "tense",
+	  "troubled",
+	  "dangerous",
+	  "perilous"
+	],
+	"strength_scale": [
+	  "fragile",
+	  "weak",
+	  "strained",
+	  "failing",
+	  "collapsed"
+	],
+	"authority_scale": [
+	  "questioned",
+	  "uncertain",
+	  "contested",
+	  "dominant",
+	  "imposing"
+	],
+	"confidence_scale": [
+	  "hesitant",
+	  "uncertain",
+	  "steady",
+	  "assured",
+	  "unyielding"
+	],
+	"risk_scale": [
+	  "risky",
+	  "hazardous",
+	  "volatile",
+	  "precarious",
+	  "critical"
+	]
+  }
+}

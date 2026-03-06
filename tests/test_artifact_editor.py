@@ -9,6 +9,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.mud_server_client import MudServerConnectionError, MudServerSessionExpiredError
+from app.path_resolver import PathResolutionError
 
 
 class TestLocalPromptArtifacts:
@@ -33,7 +34,55 @@ class TestLocalPromptArtifacts:
         assert data["name"] == "pipeworks_web_ic_prompt"
         assert data["purpose"] == "chat_translation"
         assert "TRANSLATION RULES" in data["content"]
-        assert data["origin_path"] == "pipeworks_web_ic_prompt.txt"
+        assert data["origin_path"] == "policies/translation/prompts/ic/pipeworks_web_ic_prompt.txt"
+
+    def test_prefers_world_prompt_path_when_same_stem_exists(
+        self, client: TestClient, tmp_path: Path
+    ) -> None:
+        world_root = tmp_path / "worlds"
+        lab_only_root = tmp_path / "lab_only"
+        prompt_root = tmp_path / "prompts"
+        (prompt_root / "chat_translation").mkdir(parents=True)
+        (prompt_root / "character_description").mkdir(parents=True)
+        (
+            world_root
+            / "pipeworks_web"
+            / "policies"
+            / "translation"
+            / "prompts"
+            / "ic"
+            / "pipeworks_web_ic_prompt.txt"
+        ).parent.mkdir(parents=True, exist_ok=True)
+        (
+            world_root
+            / "pipeworks_web"
+            / "policies"
+            / "translation"
+            / "prompts"
+            / "ic"
+            / "pipeworks_web_ic_prompt.txt"
+        ).write_text("world prompt", encoding="utf-8")
+        (prompt_root / "chat_translation" / "pipeworks_web_ic_prompt.txt").write_text(
+            "legacy prompt",
+            encoding="utf-8",
+        )
+
+        with (
+            patch("app.artifact_editor.WORLD_ASSET_ROOT", world_root),
+            patch("app.artifact_editor.LAB_ONLY_ASSET_ROOT", lab_only_root),
+            patch("app.artifact_editor.PROMPTS_DIR", prompt_root),
+            patch("app.file_loaders.WORLD_ASSET_ROOT", world_root),
+            patch("app.file_loaders.LAB_ONLY_ASSET_ROOT", lab_only_root),
+            patch("app.file_loaders.PROMPTS_DIR", prompt_root),
+        ):
+            resp = client.get(
+                "/api/artifacts/local/chat-prompts/pipeworks_web_ic_prompt?purpose=chat_translation"
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["content"] == "world prompt"
+        assert data["origin_path"] == "policies/translation/prompts/ic/pipeworks_web_ic_prompt.txt"
 
     def test_creates_local_prompt_draft_in_drafts_directory(
         self, client: TestClient, tmp_path: Path
@@ -91,6 +140,16 @@ class TestLocalPromptArtifacts:
             )
 
         assert resp.status_code == 409
+
+    def test_returns_500_when_prompt_resolution_is_ambiguous(self, client: TestClient) -> None:
+        """Prompt-list route must surface resolver ambiguity as HTTP 500."""
+        with patch(
+            "app.artifact_editor.resolve_prompt_paths",
+            side_effect=PathResolutionError("ambiguous prompt resolution"),
+        ):
+            resp = client.get("/api/artifacts/local/chat-prompts?purpose=chat_translation")
+        assert resp.status_code == 500
+        assert "ambiguous prompt resolution" in resp.json()["detail"]
 
 
 class TestLocalAxisPayloadArtifacts:
@@ -172,6 +231,18 @@ class TestLocalAxisPayloadArtifacts:
             )
 
         assert resp.status_code == 409
+
+    def test_returns_500_when_axis_payload_resolution_is_ambiguous(
+        self, client: TestClient
+    ) -> None:
+        """Axis-payload list route must surface resolver ambiguity as HTTP 500."""
+        with patch(
+            "app.artifact_editor.resolve_axis_payload_paths",
+            side_effect=PathResolutionError("ambiguous axis payload resolution"),
+        ):
+            resp = client.get("/api/artifacts/local/axis-payloads")
+        assert resp.status_code == 500
+        assert "ambiguous axis payload resolution" in resp.json()["detail"]
 
 
 class TestLocalLexiconArtifacts:
@@ -273,6 +344,16 @@ class TestLocalLexiconArtifacts:
 
         assert resp.status_code == 409
 
+    def test_returns_500_when_lexicon_resolution_is_ambiguous(self, client: TestClient) -> None:
+        """Lexicon-list route must surface resolver ambiguity as HTTP 500."""
+        with patch(
+            "app.artifact_editor.resolve_lexicon_paths",
+            side_effect=PathResolutionError("ambiguous lexicon resolution"),
+        ):
+            resp = client.get("/api/artifacts/local/lexicons")
+        assert resp.status_code == 500
+        assert "ambiguous lexicon resolution" in resp.json()["detail"]
+
 
 class TestLocalPolicyBundleArtifacts:
     """Local normalized policy bundle JSON artifact listing, loading, and draft creation."""
@@ -360,6 +441,18 @@ class TestLocalPolicyBundleArtifacts:
             )
 
         assert resp.status_code == 409
+
+    def test_returns_500_when_policy_bundle_resolution_is_ambiguous(
+        self, client: TestClient
+    ) -> None:
+        """Policy-bundle list route must surface resolver ambiguity as HTTP 500."""
+        with patch(
+            "app.artifact_editor.resolve_policy_bundle_paths",
+            side_effect=PathResolutionError("ambiguous policy bundle resolution"),
+        ):
+            resp = client.get("/api/artifacts/local/policy-bundles")
+        assert resp.status_code == 500
+        assert "ambiguous policy bundle resolution" in resp.json()["detail"]
 
 
 class TestServerPromptManifest:

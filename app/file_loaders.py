@@ -3,10 +3,9 @@ app/file_loaders.py
 -----------------------------------------------------------------------------
 File-loading utilities for the Axis Descriptor Lab.
 
-This module reads example JSON files from ``app/examples/`` and prompt text
-files from a purpose-grouped ``app/prompts/`` tree. Prompt files are split by
-the page or flow that owns them so the frontend can populate cleaner,
-purpose-specific dropdowns instead of relying on filename prefixes.
+This module reads example JSON files and prompt text files via the shared
+path resolver, which supports world-scoped and lab-only roots while preserving
+legacy fallback during migration.
 
 Current prompt groups
 ---------------------
@@ -15,9 +14,11 @@ Current prompt groups
 - ``app/prompts/chat_translation/`` — standalone IC translation prompt
   templates used by the Chat Translation page.
 
-All path resolution is relative to this file's parent directory (``app/``),
-so the loaders work regardless of the working directory from which uvicorn
-is launched.
+Path precedence is deterministic:
+
+1. world-scoped roots
+2. lab-only roots
+3. legacy roots
 
 Exports
 -------
@@ -54,12 +55,29 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import HTTPException
+from app.config import (
+    DEFAULT_WORLD_ID,
+    LAB_ONLY_ROOT,
+    LEGACY_EXAMPLES_DIR,
+    LEGACY_PROMPTS_DIR,
+    WORLD_ROOT,
+)
+from app.path_resolver import (
+    PathResolutionError,
+    resolve_axis_payload_paths,
+    resolve_prompt_paths,
+)
 
 # Resolve directories relative to this file so paths work regardless of
 # the current working directory at import time.
 _HERE = Path(__file__).parent
-PROMPTS_DIR = _HERE / "prompts"
-EXAMPLES_DIR = _HERE / "examples"
+# TODO(refactor-cleanup): remove after world-layout migration complete
+PROMPTS_DIR = LEGACY_PROMPTS_DIR
+# TODO(refactor-cleanup): remove after world-layout migration complete
+EXAMPLES_DIR = LEGACY_EXAMPLES_DIR
+WORLD_ASSET_ROOT = WORLD_ROOT
+LAB_ONLY_ASSET_ROOT = LAB_ONLY_ROOT
+DEFAULT_ASSET_WORLD_ID = DEFAULT_WORLD_ID
 
 type PromptPurpose = Literal["character_description", "chat_translation"]
 
@@ -98,13 +116,34 @@ def _iter_prompt_files(purpose: PromptPurpose | None = None) -> list[Path]:
         Sorted prompt file paths.
     """
 
-    prompt_dirs = _prompt_dirs()
     if purpose is not None:
-        return sorted(prompt_dirs[purpose].rglob("*.txt"))
+        try:
+            index = resolve_prompt_paths(
+                purpose,
+                world_id=DEFAULT_ASSET_WORLD_ID,
+                world_root=WORLD_ASSET_ROOT,
+                lab_only_root=LAB_ONLY_ASSET_ROOT,
+                legacy_prompts_root=PROMPTS_DIR,
+            )
+        except PathResolutionError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return sorted(row.path for row in index.values())
 
+    # Purpose-agnostic listing merges both families while preserving
+    # deterministic de-duplication inside each family.
     paths: list[Path] = []
-    for path in prompt_dirs.values():
-        paths.extend(path.rglob("*.txt"))
+    for prompt_purpose in _prompt_dirs():
+        try:
+            index = resolve_prompt_paths(
+                prompt_purpose,
+                world_id=DEFAULT_ASSET_WORLD_ID,
+                world_root=WORLD_ASSET_ROOT,
+                lab_only_root=LAB_ONLY_ASSET_ROOT,
+                legacy_prompts_root=PROMPTS_DIR,
+            )
+        except PathResolutionError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        paths.extend(row.path for row in index.values())
     return sorted(paths)
 
 
@@ -242,11 +281,19 @@ def load_example(name: str) -> dict:
     HTTPException(500)
         If the file contains invalid JSON.
     """
-    path = EXAMPLES_DIR / f"{name}.json"
-    if not path.exists():
+    try:
+        path = resolve_axis_payload_paths(
+            world_id=DEFAULT_ASSET_WORLD_ID,
+            world_root=WORLD_ASSET_ROOT,
+            lab_only_root=LAB_ONLY_ASSET_ROOT,
+            legacy_examples_root=EXAMPLES_DIR,
+        ).get(name)
+    except PathResolutionError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if path is None or not path.path.exists():
         raise HTTPException(status_code=404, detail=f"Example '{name}' not found.")
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=500, detail=f"Example '{name}' contains invalid JSON: {exc}"
@@ -265,7 +312,16 @@ def list_example_names() -> list[str]:
     -------
     list[str] : Sorted example name stems.
     """
-    return sorted(p.stem for p in EXAMPLES_DIR.glob("*.json"))
+    try:
+        index = resolve_axis_payload_paths(
+            world_id=DEFAULT_ASSET_WORLD_ID,
+            world_root=WORLD_ASSET_ROOT,
+            lab_only_root=LAB_ONLY_ASSET_ROOT,
+            legacy_examples_root=EXAMPLES_DIR,
+        )
+    except PathResolutionError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return sorted(index.keys())
 
 
 # -----------------------------------------------------------------------------
