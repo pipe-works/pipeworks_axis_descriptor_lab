@@ -171,7 +171,9 @@ async function generateCanonical({ model, seed, wasRandom }) {
   }
   const session = await sessionRes.json();
   if (!session.authenticated) {
-    throw new Error("Canonical mode requires an authenticated mud-server session.");
+    throw new Error(
+      "Canonical mode requires a mud-server session. Use the Mud Server Session bar at the top to connect."
+    );
   }
 
   const worldId = session.selected_world_id || state.payload.world_id;

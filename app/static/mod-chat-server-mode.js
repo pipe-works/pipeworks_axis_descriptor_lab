@@ -2,10 +2,12 @@
  * mod-chat-server-mode.js
  * ─────────────────────────────────────────────────────────────────────────────
  * Mud-server runtime mode selection, authentication, world selection, and
- * server-prompt management for the Chat Translation page.
+ * server-prompt management shared across the full app shell.
  *
- * This module isolates the server-backed translation mode so the main chat
- * controller can stay focused on request construction and output rendering.
+ * The auth/session controls are global and reused by Character Description
+ * canonical generation, Chat Translation, and Artifact Editor server flows.
+ * Chat-specific prompt behaviour still lives here to keep related mud-session
+ * concerns in one module.
  *
  * Imports: mod-state, mod-status, mod-chat-state
  */
@@ -667,7 +669,7 @@ export function getEffectiveSystemPrompt() {
 
 /**
  * Wire all mud-server authentication, world-selection, and prompt-editor
- * events for the Chat Translation page.
+ * events for the global Mud Server Session shell.
  *
  * Keeping these listeners inside the server-mode module avoids forcing the
  * parent chat controller to know about the server prompt/editor internals.
