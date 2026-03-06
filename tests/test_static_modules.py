@@ -65,6 +65,10 @@ MODULE_MANIFEST: dict[str, dict] = {
         ],
         "imports_from": ["mod-state.js", "mod-axis-policy.js", "mod-utils.js", "mod-status.js"],
     },
+    "mod-source-paths.js": {
+        "exports": ["resolveArtifactSourcePath", "renderSourceHint"],
+        "imports_from": [],  # shared leaf helper
+    },
     "mod-loaders.js": {
         "exports": [
             "loadExampleList",
@@ -73,7 +77,7 @@ MODULE_MANIFEST: dict[str, dict] = {
             "loadPrompt",
             "wireLoaderEvents",
         ],
-        "imports_from": ["mod-state.js", "mod-status.js", "mod-sync.js"],
+        "imports_from": ["mod-state.js", "mod-status.js", "mod-sync.js", "mod-source-paths.js"],
     },
     "mod-generate.js": {
         "exports": ["generate", "wireGenerateEvents"],
@@ -148,7 +152,7 @@ MODULE_MANIFEST: dict[str, dict] = {
     },
     "mod-artifact-editor.js": {
         "exports": ["initArtifactEditor", "wireArtifactEditorEvents"],
-        "imports_from": ["mod-state.js", "mod-status.js"],
+        "imports_from": ["mod-state.js", "mod-status.js", "mod-source-paths.js"],
     },
     "mod-chat-state.js": {
         "exports": ["chatState", "charDom"],
@@ -219,6 +223,7 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-chat-server-mode.js",
             "mod-chat-game-log.js",
             "mod-chat-import.js",
+            "mod-source-paths.js",
         ],
     },
     "mod-events.js": {
