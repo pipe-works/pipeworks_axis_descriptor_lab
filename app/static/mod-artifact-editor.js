@@ -22,6 +22,7 @@
 
 import { dom } from "./mod-state.js";
 import { setStatus } from "./mod-status.js";
+import { renderSourceHint } from "./mod-source-paths.js";
 
 const artifactState = {
   localListing: null,
@@ -78,6 +79,77 @@ function currentPurpose() {
   return dom.artifactPurpose.value;
 }
 
+function currentPromptPurposeForHint() {
+  if (!isPromptArtifact()) {
+    return "";
+  }
+  if (isServerSource()) {
+    return "chat_translation";
+  }
+  return currentPurpose();
+}
+
+function getSelectedArtifactMeta() {
+  const selectedName = dom.artifactSelect.value;
+  if (!selectedName) {
+    return null;
+  }
+
+  if (isPromptArtifact() && isServerSource()) {
+    return (
+      artifactState.serverManifest?.prompts?.find((entry) => entry.name === selectedName) ??
+      artifactState.serverPromptDraftListing?.prompts?.find((entry) => entry.name === selectedName) ??
+      null
+    );
+  }
+
+  if (isPolicyBundleArtifact() && isServerSource()) {
+    const listing = artifactState.serverPolicyBundleListing;
+    if (!listing) {
+      return null;
+    }
+    if (selectedName === listing.canonical.name) {
+      return listing.canonical;
+    }
+    return listing.drafts.find((entry) => entry.name === selectedName) ?? null;
+  }
+
+  if (artifactState.localListing) {
+    const entries = isPromptArtifact()
+      ? artifactState.localListing.prompts || []
+      : isAxisPayloadArtifact()
+        ? artifactState.localListing.payloads || []
+        : isPolicyBundleArtifact()
+          ? artifactState.localListing.bundles || []
+          : artifactState.localListing.lexicons || [];
+    return entries.find((entry) => entry.name === selectedName) ?? null;
+  }
+
+  if (artifactState.currentDocument?.name === selectedName) {
+    return artifactState.currentDocument;
+  }
+
+  return null;
+}
+
+function updateArtifactSelectSourceHint() {
+  const emptyMessage = isPromptArtifact()
+    ? "Source: select a prompt to view path."
+    : isAxisPayloadArtifact()
+      ? "Source: select an AxisPayload artifact to view path."
+      : isPolicyBundleArtifact()
+        ? "Source: select a policy bundle to view path."
+        : "Source: select a lexicon artifact to view path.";
+
+  renderSourceHint(
+    dom.artifactSelectSourceHint,
+    getSelectedArtifactMeta(),
+    currentArtifactType(),
+    currentPromptPurposeForHint(),
+    emptyMessage
+  );
+}
+
 function currentReference() {
   if (isPromptArtifact()) {
     if (isServerSource()) {
@@ -116,6 +188,7 @@ function renderArtifactOptions(items, preferredName = "") {
   if (preferredName) {
     dom.artifactSelect.value = preferredName;
   }
+  updateArtifactSelectSourceHint();
 }
 
 function setEditorBadge(label, active = false) {
@@ -345,10 +418,14 @@ function renderLoadedDocument(doc, metaPrefix) {
   if (Object.hasOwn(doc, "world_id")) {
     metaLines.splice(2, 0, `world: ${doc.world_id}`);
   }
+  if (Object.hasOwn(doc, "source_kind")) {
+    metaLines.splice(2, 0, `source: ${doc.source_kind}`);
+  }
 
   renderMetaPanel(metaLines.join("\n"));
   renderReferencePanel(doc.reference);
   validateEditor();
+  updateArtifactSelectSourceHint();
   syncControlState();
 }
 
@@ -597,6 +674,7 @@ function syncControlState() {
     dom.artifactSaveHint.textContent =
       "Lexicon JSON is local-only for now. Drafts are validated and saved under app/data/drafts without overwriting shipped canonical files.";
   }
+  updateArtifactSelectSourceHint();
 }
 
 async function refreshArtifactSource() {
@@ -676,6 +754,8 @@ async function loadSelectedArtifact() {
           content: prompt.content || "",
           is_draft: false,
           origin_path: prompt.origin_path,
+          source_kind: prompt.source_kind || "server",
+          world_id: prompt.world_id || dom.artifactWorld.value,
           reference: artifactState.serverManifest.reference,
         },
         "Canonical mud-server prompt"
@@ -930,7 +1010,10 @@ export function wireArtifactEditorEvents() {
   });
   dom.artifactRefreshWorlds.addEventListener("click", refreshArtifactSource);
   dom.artifactBtnLoad.addEventListener("click", loadSelectedArtifact);
-  dom.artifactSelect.addEventListener("change", loadSelectedArtifact);
+  dom.artifactSelect.addEventListener("change", () => {
+    updateArtifactSelectSourceHint();
+    loadSelectedArtifact();
+  });
   dom.artifactEditor.addEventListener("input", validateEditor);
   dom.artifactSaveDraft.addEventListener("click", saveDraft);
   dom.artifactPromoteDraft.addEventListener("click", promoteDraft);
