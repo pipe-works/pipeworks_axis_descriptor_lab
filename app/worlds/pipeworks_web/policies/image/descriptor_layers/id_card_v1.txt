@@ -1,0 +1,3 @@
+Render as a restrained identity card portrait.
+Subject is front-facing, waist-up, centered, and readable.
+No dynamic action pose, no cinematic camera angle, no background narrative scene.

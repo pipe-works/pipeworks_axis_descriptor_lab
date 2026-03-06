@@ -1,0 +1,28 @@
+{
+  "name": "Pipeworks Web",
+  "description": "A minimal world that mirrors pipe-works.org content inside the MUD engine.",
+  "version": "0.1.0",
+  "default_spawn": {
+    "zone": "pipeworks_web",
+    "room": "spawn"
+  },
+  "zones": [
+    "pipeworks_web"
+  ],
+  "global_items": {},
+  "translation_layer": {
+    "enabled": true,
+    "model": "gemma2:2b",
+    "ollama_base_url": "http://localhost:11434",
+    "timeout_seconds": 120.0,
+    "keep_alive": "5m",
+    "strict_mode": true,
+    "max_output_chars": 280,
+    "prompt_template_path": "policies/translation/prompts/ic/default_v1.txt",
+    "active_axes": ["demeanor", "health", "physique", "wealth", "facial_signal"],
+    "deterministic": false
+  },
+  "axis_engine": {
+    "enabled": true
+  }
+}

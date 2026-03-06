@@ -1,0 +1,121 @@
+version: 0.1.0
+source: pipeworks_entity_state_generation
+axes:
+  physique:
+    group: character
+    values:
+    - frail
+    - hunched
+    - skinny
+    - wiry
+    - broad
+    - stocky
+    ordering:
+      type: ordinal
+      values: [frail, hunched, skinny, wiry, broad, stocky]
+  wealth:
+    group: character
+    values:
+    - poor
+    - modest
+    - well-kept
+    - wealthy
+    - decadent
+    ordering:
+      type: ordinal
+      values: [poor, modest, well-kept, wealthy, decadent]
+  health:
+    group: character
+    values:
+    - sickly
+    - limping
+    - weary
+    - scarred
+    - hale
+    ordering:
+      type: ordinal
+      values: [sickly, limping, weary, scarred, hale]
+  demeanor:
+    group: character
+    values:
+    - timid
+    - suspicious
+    - resentful
+    - alert
+    - proud
+    ordering:
+      type: ordinal
+      values: [timid, suspicious, resentful, alert, proud]
+  age:
+    group: character
+    values:
+    - young
+    - middle-aged
+    - old
+    - ancient
+    ordering:
+      type: ordinal
+      values: [young, middle-aged, old, ancient]
+  facial_signal:
+    group: character
+    values:
+    - understated
+    - pronounced
+    - exaggerated
+    - asymmetrical
+    - weathered
+    - soft-featured
+    - sharp-featured
+    ordering:
+      type: ordinal
+      values: [understated, pronounced, exaggerated, asymmetrical, weathered, soft-featured, sharp-featured]
+  legitimacy:
+    group: occupation
+    values:
+    - sanctioned
+    - tolerated
+    - questioned
+    - illicit
+    ordering:
+      type: ordinal
+      values: [sanctioned, tolerated, questioned, illicit]
+  visibility:
+    group: occupation
+    values:
+    - hidden
+    - discrete
+    - routine
+    - conspicuous
+    ordering:
+      type: ordinal
+      values: [hidden, discrete, routine, conspicuous]
+  moral_load:
+    group: occupation
+    values:
+    - neutral
+    - burdened
+    - conflicted
+    - corrosive
+    ordering:
+      type: ordinal
+      values: [neutral, burdened, conflicted, corrosive]
+  dependency:
+    group: occupation
+    values:
+    - optional
+    - useful
+    - necessary
+    - unavoidable
+    ordering:
+      type: ordinal
+      values: [optional, useful, necessary, unavoidable]
+  risk_exposure:
+    group: occupation
+    values:
+    - benign
+    - straining
+    - hazardous
+    - eroding
+    ordering:
+      type: ordinal
+      values: [benign, straining, hazardous, eroding]
