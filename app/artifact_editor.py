@@ -37,8 +37,22 @@ from typing import Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from app.file_loaders import EXAMPLES_DIR, PROMPTS_DIR, load_prompt
+from app.config import (
+    DEFAULT_WORLD_ID,
+    LAB_ONLY_ROOT,
+    WORLD_ROOT,
+)
+from app.file_loaders import EXAMPLES_DIR, PROMPTS_DIR
 from app.mud_server_client import MudServerClient
+from app.path_resolver import (
+    PathResolutionError,
+    ResolvedArtifactPath,
+    resolve_axis_payload_paths,
+    resolve_lexicon_paths,
+    resolve_policy_bundle_paths,
+    resolve_prompt_paths,
+    sorted_resolved_paths,
+)
 from app.schema.axis import AxisPayload
 from app.schema.artifact import (
     AxisPayloadArtifactDocument,
@@ -88,6 +102,9 @@ type LexiconKind = Literal["abstraction", "embodiment", "intensity"]
 _DRAFT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 DATA_DIR = Path(__file__).parent / "data"
 POLICY_BUNDLES_DIR = Path(__file__).parent / "artifacts" / "policy_bundles"
+WORLD_ASSET_ROOT = WORLD_ROOT
+LAB_ONLY_ASSET_ROOT = LAB_ONLY_ROOT
+DEFAULT_ASSET_WORLD_ID = DEFAULT_WORLD_ID
 
 
 class AbstractionLexiconPayload(BaseModel):
@@ -230,15 +247,25 @@ def _policy_bundle_root() -> Path:
 
 
 def _iter_prompt_files(purpose: PromptPurpose) -> list[Path]:
-    """Return all prompt files, including drafts, for one prompt family."""
+    """Return resolved prompt file paths for one prompt family."""
 
-    return sorted(_prompt_root(purpose).rglob("*.txt"))
+    return [row.path for row in _resolved_prompt_rows(purpose)]
 
 
-def _is_draft(path: Path, purpose: PromptPurpose) -> bool:
-    """Return True when the file lives inside the family's drafts directory."""
+def _resolved_prompt_rows(purpose: PromptPurpose) -> list[ResolvedArtifactPath]:
+    """Return resolved prompt rows with world->lab->legacy precedence."""
 
-    return "drafts" in path.relative_to(_prompt_root(purpose)).parts
+    try:
+        index = resolve_prompt_paths(
+            purpose,
+            world_id=DEFAULT_ASSET_WORLD_ID,
+            world_root=WORLD_ASSET_ROOT,
+            lab_only_root=LAB_ONLY_ASSET_ROOT,
+            legacy_prompts_root=PROMPTS_DIR,
+        )
+    except PathResolutionError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return sorted_resolved_paths(index)
 
 
 def _relative_origin_path(path: Path, purpose: PromptPurpose) -> str:
@@ -248,15 +275,24 @@ def _relative_origin_path(path: Path, purpose: PromptPurpose) -> str:
 
 
 def _iter_axis_payload_files() -> list[Path]:
-    """Return all AxisPayload JSON files, including local drafts."""
+    """Return resolved AxisPayload JSON files with world->lab->legacy precedence."""
 
-    return sorted(_examples_root().rglob("*.json"))
+    return [row.path for row in _resolved_axis_payload_rows()]
 
 
-def _axis_payload_is_draft(path: Path) -> bool:
-    """Return True when the payload file lives under examples/drafts/."""
+def _resolved_axis_payload_rows() -> list[ResolvedArtifactPath]:
+    """Return resolved AxisPayload rows with source metadata."""
 
-    return "drafts" in path.relative_to(_examples_root()).parts
+    try:
+        index = resolve_axis_payload_paths(
+            world_id=DEFAULT_ASSET_WORLD_ID,
+            world_root=WORLD_ASSET_ROOT,
+            lab_only_root=LAB_ONLY_ASSET_ROOT,
+            legacy_examples_root=EXAMPLES_DIR,
+        )
+    except PathResolutionError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return sorted_resolved_paths(index)
 
 
 def _axis_payload_origin_path(path: Path) -> str:
@@ -266,15 +302,22 @@ def _axis_payload_origin_path(path: Path) -> str:
 
 
 def _iter_lexicon_json_files() -> list[Path]:
-    """Return deterministic lexicon JSON files, including local drafts."""
+    """Return resolved deterministic lexicon JSON files with lab->legacy precedence."""
 
-    return sorted(_data_root().rglob("*.json"))
+    return [row.path for row in _resolved_lexicon_rows()]
 
 
-def _lexicon_is_draft(path: Path) -> bool:
-    """Return True when the lexicon file lives under data/drafts/."""
+def _resolved_lexicon_rows() -> list[ResolvedArtifactPath]:
+    """Return resolved lexicon rows with source metadata."""
 
-    return "drafts" in path.relative_to(_data_root()).parts
+    try:
+        index = resolve_lexicon_paths(
+            lab_only_root=LAB_ONLY_ASSET_ROOT,
+            legacy_lexicons_root=DATA_DIR,
+        )
+    except PathResolutionError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return sorted_resolved_paths(index)
 
 
 def _lexicon_origin_path(path: Path) -> str:
@@ -284,15 +327,24 @@ def _lexicon_origin_path(path: Path) -> str:
 
 
 def _iter_policy_bundle_files() -> list[Path]:
-    """Return normalized policy bundle JSON files, including local drafts."""
+    """Return resolved policy bundle JSON files with draft-first precedence."""
 
-    return sorted(_policy_bundle_root().rglob("*.json"))
+    return [row.path for row in _resolved_policy_bundle_rows()]
 
 
-def _policy_bundle_is_draft(path: Path) -> bool:
-    """Return True when the policy bundle file lives under drafts/."""
+def _resolved_policy_bundle_rows() -> list[ResolvedArtifactPath]:
+    """Return resolved policy-bundle rows with source metadata."""
 
-    return "drafts" in path.relative_to(_policy_bundle_root()).parts
+    try:
+        index = resolve_policy_bundle_paths(
+            world_id=DEFAULT_ASSET_WORLD_ID,
+            world_root=WORLD_ASSET_ROOT,
+            lab_only_root=LAB_ONLY_ASSET_ROOT,
+            legacy_policy_bundle_root=POLICY_BUNDLES_DIR,
+        )
+    except PathResolutionError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return sorted_resolved_paths(index)
 
 
 def _policy_bundle_origin_path(path: Path) -> str:
@@ -741,13 +793,13 @@ def list_local_prompt_artifacts(purpose: PromptPurpose) -> LocalPromptArtifactLi
 
     prompts = [
         PromptArtifactSummary(
-            name=path.stem,
+            name=row.stem,
             purpose=purpose,
-            is_draft=_is_draft(path, purpose),
+            is_draft=row.is_draft,
             is_active=False,
-            origin_path=_relative_origin_path(path, purpose),
+            origin_path=row.source_path,
         )
-        for path in _iter_prompt_files(purpose)
+        for row in _resolved_prompt_rows(purpose)
     ]
     return LocalPromptArtifactListResponse(
         purpose=purpose,
@@ -760,13 +812,13 @@ def list_local_axis_payload_artifacts() -> LocalAxisPayloadArtifactListResponse:
     """List shipped and draft AxisPayload JSON files under app/examples."""
 
     payloads: list[AxisPayloadArtifactSummary] = []
-    for path in _iter_axis_payload_files():
-        payload = AxisPayload.model_validate_json(path.read_text(encoding="utf-8"))
+    for row in _resolved_axis_payload_rows():
+        payload = AxisPayload.model_validate_json(row.path.read_text(encoding="utf-8"))
         payloads.append(
             AxisPayloadArtifactSummary(
-                name=path.stem,
-                is_draft=_axis_payload_is_draft(path),
-                origin_path=_axis_payload_origin_path(path),
+                name=row.stem,
+                is_draft=row.is_draft,
+                origin_path=row.source_path,
                 world_id=payload.world_id,
             )
         )
@@ -781,14 +833,14 @@ def list_local_lexicon_json_artifacts() -> LocalLexiconJsonArtifactListResponse:
     """List shipped and draft deterministic lexicon JSON files under app/data."""
 
     lexicons: list[LexiconJsonArtifactSummary] = []
-    for path in _iter_lexicon_json_files():
-        kind, payload = _parse_lexicon_payload(path.read_text(encoding="utf-8"))
+    for row in _resolved_lexicon_rows():
+        kind, payload = _parse_lexicon_payload(row.path.read_text(encoding="utf-8"))
         lexicons.append(
             LexiconJsonArtifactSummary(
-                name=path.stem,
+                name=row.stem,
                 artifact_kind=kind,
-                is_draft=_lexicon_is_draft(path),
-                origin_path=_lexicon_origin_path(path),
+                is_draft=row.is_draft,
+                origin_path=row.source_path,
                 version=str(payload.model_dump()["version"]),
             )
         )
@@ -803,13 +855,13 @@ def list_local_policy_bundle_artifacts() -> LocalPolicyBundleArtifactListRespons
     """List shipped and draft normalized policy bundle JSON files."""
 
     bundles: list[PolicyBundleArtifactSummary] = []
-    for path in _iter_policy_bundle_files():
-        payload = _parse_policy_bundle_payload(path.read_text(encoding="utf-8"))
+    for row in _resolved_policy_bundle_rows():
+        payload = _parse_policy_bundle_payload(row.path.read_text(encoding="utf-8"))
         bundles.append(
             PolicyBundleArtifactSummary(
-                name=path.stem,
-                is_draft=_policy_bundle_is_draft(path),
-                origin_path=_policy_bundle_origin_path(path),
+                name=row.stem,
+                is_draft=row.is_draft,
+                origin_path=row.source_path,
                 world_id=payload.world_id,
                 version=payload.version,
             )
@@ -824,21 +876,16 @@ def list_local_policy_bundle_artifacts() -> LocalPolicyBundleArtifactListRespons
 def load_local_prompt_artifact(name: str, purpose: PromptPurpose) -> PromptArtifactDocument:
     """Load one local prompt file together with its editor contract."""
 
-    target: Path | None = None
-    for path in _iter_prompt_files(purpose):
-        if path.stem == name:
-            target = path
-            break
-
+    target = next((row for row in _resolved_prompt_rows(purpose) if row.stem == name), None)
     if target is None:
         raise HTTPException(status_code=404, detail=f"Prompt artifact '{name}' not found.")
 
     return PromptArtifactDocument(
         name=name,
         purpose=purpose,
-        content=load_prompt(name, purpose=purpose),
-        is_draft=_is_draft(target, purpose),
-        origin_path=_relative_origin_path(target, purpose),
+        content=target.path.read_text(encoding="utf-8").strip(),
+        is_draft=target.is_draft,
+        origin_path=target.source_path,
         reference=build_prompt_reference(purpose),
     )
 
@@ -846,22 +893,17 @@ def load_local_prompt_artifact(name: str, purpose: PromptPurpose) -> PromptArtif
 def load_local_axis_payload_artifact(name: str) -> AxisPayloadArtifactDocument:
     """Load one local AxisPayload JSON artifact together with its reference contract."""
 
-    target: Path | None = None
-    for path in _iter_axis_payload_files():
-        if path.stem == name:
-            target = path
-            break
-
+    target = next((row for row in _resolved_axis_payload_rows() if row.stem == name), None)
     if target is None:
         raise HTTPException(status_code=404, detail=f"Axis payload artifact '{name}' not found.")
 
-    payload = AxisPayload.model_validate_json(target.read_text(encoding="utf-8"))
+    payload = AxisPayload.model_validate_json(target.path.read_text(encoding="utf-8"))
     normalized = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
     return AxisPayloadArtifactDocument(
         name=name,
         content=normalized,
-        is_draft=_axis_payload_is_draft(target),
-        origin_path=_axis_payload_origin_path(target),
+        is_draft=target.is_draft,
+        origin_path=target.source_path,
         world_id=payload.world_id,
         reference=_axis_payload_reference(),
     )
@@ -870,23 +912,18 @@ def load_local_axis_payload_artifact(name: str) -> AxisPayloadArtifactDocument:
 def load_local_lexicon_json_artifact(name: str) -> LexiconJsonArtifactDocument:
     """Load one local deterministic lexicon JSON artifact and its reference contract."""
 
-    target: Path | None = None
-    for path in _iter_lexicon_json_files():
-        if path.stem == name:
-            target = path
-            break
-
+    target = next((row for row in _resolved_lexicon_rows() if row.stem == name), None)
     if target is None:
         raise HTTPException(status_code=404, detail=f"Lexicon artifact '{name}' not found.")
 
-    kind, payload = _parse_lexicon_payload(target.read_text(encoding="utf-8"))
+    kind, payload = _parse_lexicon_payload(target.path.read_text(encoding="utf-8"))
     normalized = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
     return LexiconJsonArtifactDocument(
         name=name,
         artifact_kind=kind,
         content=normalized,
-        is_draft=_lexicon_is_draft(target),
-        origin_path=_lexicon_origin_path(target),
+        is_draft=target.is_draft,
+        origin_path=target.source_path,
         version=str(payload.model_dump()["version"]),
         reference=_lexicon_reference(kind),
     )
@@ -895,22 +932,17 @@ def load_local_lexicon_json_artifact(name: str) -> LexiconJsonArtifactDocument:
 def load_local_policy_bundle_artifact(name: str) -> PolicyBundleArtifactDocument:
     """Load one normalized policy bundle JSON artifact and its reference contract."""
 
-    target: Path | None = None
-    for path in _iter_policy_bundle_files():
-        if path.stem == name:
-            target = path
-            break
-
+    target = next((row for row in _resolved_policy_bundle_rows() if row.stem == name), None)
     if target is None:
         raise HTTPException(status_code=404, detail=f"Policy bundle artifact '{name}' not found.")
 
-    payload = _parse_policy_bundle_payload(target.read_text(encoding="utf-8"))
+    payload = _parse_policy_bundle_payload(target.path.read_text(encoding="utf-8"))
     normalized = json.dumps(payload.model_dump(), ensure_ascii=False, indent=2)
     return PolicyBundleArtifactDocument(
         name=name,
         content=normalized,
-        is_draft=_policy_bundle_is_draft(target),
-        origin_path=_policy_bundle_origin_path(target),
+        is_draft=target.is_draft,
+        origin_path=target.source_path,
         world_id=payload.world_id,
         version=payload.version,
         reference=_policy_bundle_reference(),
