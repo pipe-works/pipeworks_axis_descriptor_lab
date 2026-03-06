@@ -22,6 +22,7 @@ class TestIndexRoute:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert 'id="nav-artifact-editor"' in resp.text
+        assert 'id="nav-pipeline-build"' in resp.text
 
     def test_character_description_layout_matches_three_column_structure(
         self, client: TestClient
@@ -63,6 +64,24 @@ class TestIndexRoute:
         assert 'id="artifact-editor"' in resp.text
         assert '<option value="policy_bundle">Policy Bundle JSON</option>' in resp.text
         assert '<option value="lexicon_json">Lexicon JSON</option>' in resp.text
+
+    def test_pipeline_build_route_prefers_pipeline_page(self, client: TestClient) -> None:
+        """`/pipeline-build` should render the same shell with Pipeline Build preselected."""
+        with patch("app.main.ChatRenderer.list_models", return_value=["gemma2:2b"]):
+            resp = client.get("/pipeline-build")
+
+        assert resp.status_code == 200
+        assert 'id="page-pipeline-build"' in resp.text
+        assert re.search(r'id="nav-pipeline-build"[^>]*is-active', resp.text)
+        assert 'id="pipeline-stage-list"' in resp.text
+        assert 'id="pipeline-world-select"' in resp.text
+        assert 'id="pipeline-policy-summary"' in resp.text
+        assert 'id="pipeline-species-input"' in resp.text
+        assert 'id="pipeline-axis-source-mode"' in resp.text
+        assert 'id="pipeline-axis-json"' in resp.text
+        assert 'id="pipeline-compile-button"' in resp.text
+        assert 'id="pipeline-compile-request"' in resp.text
+        assert 'id="pipeline-provenance-panel"' in resp.text
 
 
 class TestListExamples:

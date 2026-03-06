@@ -57,9 +57,10 @@
      PAGE NAVIGATION
 ════════════════════════════════════════════════════════════════════════════ -->
 <nav class="app-nav" aria-label="Page navigation">
-  <button id="nav-char-desc" class="btn btn--nav is-active" type="button">Character Description</button>
-  <button id="nav-chat-trans" class="btn btn--nav" type="button">Chat Translation</button>
-  <button id="nav-artifact-editor" class="btn btn--nav" type="button">Artifact Editor</button>
+  <button id="nav-char-desc" class="btn btn--nav {% if initial_page == 'char' %}is-active{% endif %}" type="button">Character Description</button>
+  <button id="nav-chat-trans" class="btn btn--nav {% if initial_page == 'chat' %}is-active{% endif %}" type="button">Chat Translation</button>
+  <button id="nav-artifact-editor" class="btn btn--nav {% if initial_page == 'artifact' %}is-active{% endif %}" type="button">Artifact Editor</button>
+  <button id="nav-pipeline-build" class="btn btn--nav {% if initial_page == 'pipeline' %}is-active{% endif %}" type="button">Pipeline Build</button>
 </nav>
 
 <!-- Global mud-server session controls.
@@ -113,7 +114,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PAGE: CHARACTER DESCRIPTION (existing content)
 ════════════════════════════════════════════════════════════════════════════ -->
-<div id="page-char-description">
+<div id="page-char-description"{% if initial_page != 'char' %} class="hidden"{% endif %}>
 <main class="app-grid">
 
   <!-- ── LEFT PANEL: Payload selector + axes + editable payload tools ─────── -->
@@ -486,7 +487,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PAGE: CHAT TRANSLATION
 ════════════════════════════════════════════════════════════════════════════ -->
-<div id="page-chat-translation" class="hidden">
+<div id="page-chat-translation"{% if initial_page != 'chat' %} class="hidden"{% endif %}>
 <main class="chat-grid">
 
   <!-- ── CHARACTER A PANEL ─────────────────────────────────────────────────── -->
@@ -840,7 +841,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PAGE: ARTIFACT EDITOR
 ════════════════════════════════════════════════════════════════════════════ -->
-<div id="page-artifact-editor" class="hidden">
+<div id="page-artifact-editor"{% if initial_page != 'artifact' %} class="hidden"{% endif %}>
 <main class="app-grid artifact-grid">
 
   <section class="panel panel--left artifact-panel" aria-label="Artifact Editor Controls">
@@ -950,6 +951,163 @@
 </div><!-- #page-artifact-editor -->
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
+     PAGE: PIPELINE BUILD
+════════════════════════════════════════════════════════════════════════════ -->
+<div id="page-pipeline-build"{% if initial_page != 'pipeline' %} class="hidden"{% endif %}>
+<main class="app-grid pipeline-build-grid">
+
+  <section class="panel panel--left pipeline-panel" aria-label="Pipeline Build Stages">
+    <h2 class="panel__heading">Session + World</h2>
+    <div class="control-row">
+      <label class="control-label" for="pipeline-world-select">Session</label>
+      <span id="pipeline-session-badge" class="badge badge--muted">checking</span>
+    </div>
+    <div id="pipeline-mode-text" class="artifact-note">Mode: unknown</div>
+
+    <div class="control-row" style="margin-top:0.5rem;">
+      <label class="control-label" for="pipeline-world-select">World</label>
+      <select id="pipeline-world-select" class="select">
+        <option value="">— select world —</option>
+      </select>
+      <button id="pipeline-world-refresh" class="btn btn--secondary" type="button">Refresh</button>
+    </div>
+
+    <div id="pipeline-session-summary" class="artifact-meta" style="margin-top:0.75rem;">
+      Session and world status will appear here.
+    </div>
+    <hr class="divider" />
+
+    <h2 class="panel__heading">Stages</h2>
+    <ol id="pipeline-stage-list" class="artifact-reference">
+      <li data-stage="session_world">Session + World <span class="badge badge--muted">ready</span></li>
+      <li data-stage="policy_bundle">Policy Bundle <span class="badge badge--muted">locked</span></li>
+      <li data-stage="identity">Character Identity <span class="badge badge--muted">locked</span></li>
+      <li data-stage="axis_input">Axis Input <span class="badge badge--muted">locked</span></li>
+      <li data-stage="block_selection">Block Selection <span class="badge badge--muted">locked</span></li>
+      <li data-stage="descriptor_tone">Descriptor + Tone <span class="badge badge--muted">locked</span></li>
+      <li data-stage="composition_hashes">Composition + Hashes <span class="badge badge--muted">locked</span></li>
+      <li data-stage="compile_output">Compile + Output <span class="badge badge--muted">locked</span></li>
+    </ol>
+  </section>
+
+  <section class="panel panel--centre pipeline-panel" aria-label="Pipeline Build Stage Editor">
+    <h2 class="panel__heading">Policy Bundle</h2>
+    <div class="control-row">
+      <label class="control-label" for="pipeline-policy-refresh">Bundle</label>
+      <button id="pipeline-policy-refresh" class="btn btn--secondary" type="button">Reload policy</button>
+    </div>
+    <div id="pipeline-world-config" class="artifact-meta" style="margin-top:0.75rem;">
+      World configuration metadata will appear here.
+    </div>
+    <hr class="divider" />
+    <div id="pipeline-policy-summary" class="artifact-reference">
+      Policy bundle metadata will appear here.
+    </div>
+    <hr class="divider" />
+
+    <h2 class="panel__heading">Character Identity</h2>
+    <div class="control-row">
+      <label class="control-label" for="pipeline-species-input">Species</label>
+      <input id="pipeline-species-input" class="input" type="text" value="goblin" />
+    </div>
+    <div class="control-row" style="margin-top:0.5rem;">
+      <label class="control-label" for="pipeline-gender-select">Gender</label>
+      <select id="pipeline-gender-select" class="select">
+        <option value="male" selected>male</option>
+        <option value="female">female</option>
+      </select>
+    </div>
+    <hr class="divider" />
+
+    <h2 class="panel__heading">Axis Input</h2>
+    <div class="control-row">
+      <label class="control-label" for="pipeline-axis-source-mode">Mode</label>
+      <select id="pipeline-axis-source-mode" class="select">
+        <option value="preset" selected>Preset</option>
+        <option value="manual">Manual</option>
+        <option value="json">JSON</option>
+      </select>
+    </div>
+    <div class="control-row" style="margin-top:0.5rem;">
+      <label class="control-label" for="pipeline-axis-preset-select">Preset</label>
+      <select id="pipeline-axis-preset-select" class="select">
+        <option value="">— select axis preset —</option>
+      </select>
+      <button id="pipeline-axis-load-preset" class="btn btn--secondary" type="button">Load</button>
+    </div>
+    <div id="pipeline-axis-preset-source-hint" class="control-path-hint">
+      Source: select an axis preset to view path.
+    </div>
+
+    <div id="pipeline-axis-manual-panel" class="slider-panel">
+      <p class="placeholder-text">Load a preset or paste JSON to edit axis scores manually.</p>
+    </div>
+
+    <label class="control-label" for="pipeline-axis-json" style="margin-top:0.5rem;">Axis JSON</label>
+    <textarea
+      id="pipeline-axis-json"
+      class="code-editor code-editor--sm"
+      rows="8"
+      spellcheck="false"
+      placeholder='{\"axes\": {\"demeanor\": {\"label\": \"proud\", \"score\": 0.81}}, \"policy_hash\": \"...\", \"seed\": 42, \"world_id\": \"pipeworks_web\"}'
+    ></textarea>
+    <button id="pipeline-axis-relabel" class="btn btn--secondary" type="button" style="margin-top:0.5rem;">
+      Relabel axes
+    </button>
+    <hr class="divider" />
+
+    <h2 class="panel__heading">Stage Editor</h2>
+    <div id="pipeline-stage-editor" class="artifact-reference">
+      Session + World, Policy Bundle, Character Identity, and Axis Input controls are active. Downstream stages remain locked until later phases.
+    </div>
+  </section>
+
+  <section class="panel panel--right pipeline-panel" aria-label="Pipeline Build Output">
+    <h2 class="panel__heading">Build Output</h2>
+    <label class="control-label" for="pipeline-world-context-input">World context (comma list)</label>
+    <input id="pipeline-world-context-input" class="input" type="text" placeholder="ledgerfall, docks" />
+    <label class="control-label" for="pipeline-occupation-signals-input" style="margin-top:0.5rem;">Occupation signals (comma list)</label>
+    <input id="pipeline-occupation-signals-input" class="input" type="text" placeholder="trader, scribe" />
+    <div class="control-row" style="margin-top:0.5rem;">
+      <label class="control-label" for="pipeline-model-id-input">Model</label>
+      <input id="pipeline-model-id-input" class="input input--sm" type="text" placeholder="flux-2-klein-4b" />
+    </div>
+    <div class="control-row" style="margin-top:0.5rem;">
+      <label class="control-label" for="pipeline-aspect-ratio-input">Aspect</label>
+      <input id="pipeline-aspect-ratio-input" class="input input--sm" type="text" placeholder="3:4" />
+      <label class="control-label" for="pipeline-seed-input" style="margin-left:0.5rem;">Seed</label>
+      <input id="pipeline-seed-input" class="input input--sm" type="number" placeholder="42" />
+    </div>
+    <hr class="divider" />
+
+    <label class="control-label" for="pipeline-compile-request">Compile request preview</label>
+    <div id="pipeline-compile-request" class="artifact-reference">
+      Compile request will appear here.
+    </div>
+    <button id="pipeline-compile-button" class="btn btn--primary btn--full" type="button" style="margin-top:0.5rem;">
+      Compile canonical prompt
+    </button>
+    <hr class="divider" />
+
+    <label class="control-label" for="pipeline-compile-result">Compiled prompt</label>
+    <div id="pipeline-compile-result" class="artifact-reference">
+      Compile output will appear here.
+    </div>
+    <label class="control-label" for="pipeline-provenance-panel" style="margin-top:0.5rem;">Provenance</label>
+    <div id="pipeline-provenance-panel" class="artifact-meta">
+      Returned provenance fields will appear here.
+    </div>
+    <hr class="divider" />
+
+    <div id="pipeline-build-summary" class="artifact-meta">
+      Hashes, request preview, and compile output will appear here.
+    </div>
+  </section>
+
+</main>
+</div><!-- #page-pipeline-build -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
      STATUS BAR
 ════════════════════════════════════════════════════════════════════════════ -->
 <footer class="status-bar">
@@ -960,7 +1118,8 @@
 <!-- Server-injected data for JS modules -->
 <script>
   window.__LAB_CONFIG__ = {
-    translationMode: "{{ translation_mode }}"
+    translationMode: "{{ translation_mode }}",
+    initialPage: "{{ initial_page | default('char') }}"
   };
 </script>
 

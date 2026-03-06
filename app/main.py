@@ -27,6 +27,7 @@ Run with:
 Endpoints
 ---------
 GET  /                         → serves index.html
+GET  /pipeline-build           → serves index.html with Pipeline Build preselected
 GET  /api/examples             → list of available example names
 GET  /api/examples/{name}      → returns a single example JSON payload
 GET  /api/prompts              → list of available prompt names (optionally by purpose)
@@ -206,14 +207,12 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 # -----------------------------------------------------------------------------
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def index(request: Request) -> HTMLResponse:
-    """
-    Serve the single-page application shell.
+def _render_index(request: Request, *, initial_page: str = "char") -> HTMLResponse:
+    """Render the SPA shell with a selected initial top-level page.
 
-    Passes the default model name and the list of locally available Ollama
-    models into the Jinja2 template so the frontend can pre-populate its
-    model selector without an extra API round-trip.
+    The Axis Lab keeps a single HTML shell and switches between page sections
+    client-side. This helper allows server routes such as ``/pipeline-build``
+    to deep-link into the same shell while setting the initial active page.
     """
     available_models = ChatRenderer.list_models()
     return templates.TemplateResponse(
@@ -225,8 +224,29 @@ def index(request: Request) -> HTMLResponse:
             "ollama_host": OLLAMA_HOST,
             "app_version": _APP_VERSION,
             "translation_mode": compute_translation_mode(),
+            "initial_page": initial_page,
         },
     )
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def index(request: Request) -> HTMLResponse:
+    """
+    Serve the single-page application shell.
+
+    Passes the default model name and the list of locally available Ollama
+    models into the Jinja2 template so the frontend can pre-populate its
+    model selector without an extra API round-trip.
+    """
+
+    return _render_index(request, initial_page="char")
+
+
+@app.get("/pipeline-build", response_class=HTMLResponse, include_in_schema=False)
+def pipeline_build_page(request: Request) -> HTMLResponse:
+    """Serve the shared SPA shell with the Pipeline Build page preselected."""
+
+    return _render_index(request, initial_page="pipeline")
 
 
 @app.get("/api/examples", summary="List available example names")

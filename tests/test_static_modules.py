@@ -69,6 +69,44 @@ MODULE_MANIFEST: dict[str, dict] = {
         "exports": ["resolveArtifactSourcePath", "renderSourceHint"],
         "imports_from": [],  # shared leaf helper
     },
+    "mod-pipeline-build-state.js": {
+        "exports": [
+            "PIPELINE_STAGE_ORDER",
+            "PIPELINE_STAGE_STATUS",
+            "pipelineBuildState",
+            "resetPipelineBuildState",
+        ],
+        "imports_from": [],  # pipeline scaffold state leaf
+    },
+    "mod-pipeline-build-api.js": {
+        "exports": [
+            "fetchMudSession",
+            "fetchMudWorlds",
+            "selectMudWorld",
+            "fetchMudWorldConfig",
+            "fetchMudImagePolicyBundle",
+            "fetchLocalAxisPayloads",
+            "fetchLocalAxisPayload",
+            "relabelAxisPayload",
+            "compileImagePrompt",
+        ],
+        "imports_from": [],  # pipeline API helper leaf
+    },
+    "mod-pipeline-build-hash.js": {
+        "exports": ["stableStringify", "sha256Hex", "hashNormalizedPayload"],
+        "imports_from": [],  # deterministic hash helper leaf
+    },
+    "mod-pipeline-build.js": {
+        "exports": ["initPipelineBuild", "wirePipelineBuildEvents"],
+        "imports_from": [
+            "mod-state.js",
+            "mod-status.js",
+            "mod-pipeline-build-state.js",
+            "mod-pipeline-build-api.js",
+            "mod-pipeline-build-hash.js",
+            "mod-source-paths.js",
+        ],
+    },
     "mod-loaders.js": {
         "exports": [
             "loadExampleList",
@@ -239,6 +277,7 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-navigation.js",
             "mod-chat-translation.js",
             "mod-artifact-editor.js",
+            "mod-pipeline-build.js",
         ],
     },
     "mod-init.js": {
@@ -252,6 +291,7 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-loaders.js",
             "mod-chat-translation.js",
             "mod-artifact-editor.js",
+            "mod-pipeline-build.js",
         ],
     },
 }
