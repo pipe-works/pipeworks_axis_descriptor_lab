@@ -1,0 +1,142 @@
+schema_version: 0.1.0
+policy_schema: pipeworks_policy_v1
+
+registry:
+  id: clothing_registry
+  version: 1
+  kind: clothing
+
+composition_contract:
+  slots: [environment, activity, wealth]
+  max_entries_per_slot: 1
+
+defaults:
+  profile_id: clothing_default_v1
+
+slots:
+  environment:
+  - id: clothing_environment_coastal_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 90
+    fragment_path: policies/image/blocks/clothing/environment/coastal_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        world_context_any: [coastal, harbor]
+
+  - id: clothing_environment_neutral_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 10
+    fragment_path: policies/image/blocks/clothing/environment/neutral_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        fallback: true
+
+  activity:
+  - id: clothing_activity_general_labour_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 80
+    fragment_path: policies/image/blocks/clothing/activity/general_labour_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        occupation_signal_any: [manual_labour, dock_work, field_work]
+
+  - id: clothing_activity_trade_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 70
+    fragment_path: policies/image/blocks/clothing/activity/trade_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        occupation_signal_any: [trade, merchant]
+
+  - id: clothing_activity_neutral_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 10
+    fragment_path: policies/image/blocks/clothing/activity/general_labour_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        fallback: true
+
+  wealth:
+  - id: clothing_wealth_poor_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 95
+    fragment_path: policies/image/blocks/clothing/wealth/poor_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        axis_labels:
+          wealth_any: [poor]
+
+  - id: clothing_wealth_modest_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 90
+    fragment_path: policies/image/blocks/clothing/wealth/modest_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        axis_labels:
+          wealth_any: [modest]
+
+  - id: clothing_wealth_well_kept_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 85
+    fragment_path: policies/image/blocks/clothing/wealth/well_kept_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        axis_labels:
+          wealth_any: [well-kept]
+
+  - id: clothing_wealth_wealthy_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 80
+    fragment_path: policies/image/blocks/clothing/wealth/wealthy_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        axis_labels:
+          wealth_any: [wealthy]
+
+  - id: clothing_wealth_decadent_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 75
+    fragment_path: policies/image/blocks/clothing/wealth/decadent_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        axis_labels:
+          wealth_any: [decadent]
+
+profiles:
+- id: clothing_default_v1
+  version: 1
+  status: active
+  render_priority: 100
+  strategy: slot_select
+  slot_priority: [environment, activity, wealth]
+  compatible_genders: [male, female]

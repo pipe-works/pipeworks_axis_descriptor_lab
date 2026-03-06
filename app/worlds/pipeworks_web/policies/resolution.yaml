@@ -1,0 +1,102 @@
+# data/worlds/pipeworks_web/policies/resolution.yaml
+# version: "1.0"
+#
+# Machine-readable resolution rules for the pipeworks_web world.
+# The axis engine interprets this file at startup.  No game logic lives here.
+#
+# pipeworks_web is the primary testing world.  The grammar is intentionally
+# identical to daily_undertaking so that integration tests run against the same
+# resolver math.  Any experimental grammar changes go here first.
+#
+# Convention:
+# - higher float score = more of the axis quality (hale = 0.80+, proud = 0.80+)
+# - resolver functions are named in mud_server/axis/resolvers.py
+# - new stimulus types add new top-level keys under `interactions`
+# - new resolver algorithms add new names to the resolver registry
+# - neither operation requires modifying existing blocks
+
+version: '1.0'
+
+interactions:
+
+  chat:
+
+    # Channel multipliers scale all deltas by a fixed factor.
+    # yell carries more social force and physical cost than say.
+    # whisper carries less.
+    channel_multipliers:
+      say: 1.0
+      yell: 1.5
+      whisper: 0.5
+
+    # Minimum demeanor score gap below which dominance_shift produces no delta.
+    # Two similarly-matched characters talk without either gaining social ground.
+    # NOTE: shared_drain (health) still applies regardless — the conversation
+    # happened, regardless of who dominated. See D5 design decision.
+    min_gap_threshold: 0.05
+
+    axes:
+
+      demeanor:
+        resolver: dominance_shift
+        base_magnitude: 0.03
+        # The entity with the higher demeanor score is the "winner".
+        # winner delta: +base_magnitude * channel_multiplier * score_gap
+        # loser  delta: -base_magnitude * channel_multiplier * score_gap
+        # score_gap = abs(speaker.demeanor - listener.demeanor)
+        # No delta if score_gap < min_gap_threshold.
+
+      health:
+        resolver: shared_drain
+        base_magnitude: 0.01
+        # Both entities lose base_magnitude * channel_multiplier per interaction.
+        # Social interaction has a universal physical cost.
+        # This applies even when demeanor gap is below min_gap_threshold.
+        # Floor: score clamped to 0.0. At 0.0 character is incapacitated.
+        # TODO(tick-system): health regenerates via world tick rate. The tick
+        # system is not yet built. When it is, wire regen here at base_regen
+        # rate per tick. Until then, health only recovers via admin override.
+
+      # ── Axes not involved in chat interactions ────────────────────────────
+      # Each is listed explicitly with no_effect rather than silently omitted,
+      # so that the resolver can assert all axes are accounted for.
+      # Future stimulus types that affect these axes will add blocks under
+      # their own top-level key (e.g., interactions.environmental.axes.health).
+
+      wealth:
+        resolver: no_effect
+        # Affected by: economic outcomes, trade. Not by chat.
+
+      physique:
+        resolver: no_effect
+        # Affected by: physical actions, exertion, injury. Not by chat.
+
+      age:
+        resolver: no_effect
+        # Affected by: time passage only. Effectively static in PoC.
+
+      facial_signal:
+        resolver: no_effect
+        # Observational descriptor. Not mechanically affected by chat.
+        # Could be affected by social outcomes in future (e.g., reputation events).
+
+      legitimacy:
+        resolver: no_effect
+        # Affected by: public outcomes, confrontations, formal rulings. Not by chat.
+
+      visibility:
+        resolver: no_effect
+        # Candidate for yell channel specifically (yelling raises conspicuousness)
+        # but deferred — adds grammar complexity before the base loop is closed.
+
+      moral_load:
+        resolver: no_effect
+        # Affected by: witness events, choices with moral weight. Not by chat.
+
+      dependency:
+        resolver: no_effect
+        # Affected by: economic and social outcome events. Not by chat.
+
+      risk_exposure:
+        resolver: no_effect
+        # Affected by: environmental and occupation events. Not by chat.

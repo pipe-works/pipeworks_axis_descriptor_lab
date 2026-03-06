@@ -1,0 +1,16 @@
+{
+  "id": "pipeworks_web",
+  "name": "Pipeworks Web",
+  "description": "A compact, curated world for showcasing Pipeworks content.",
+  "spawn_room": "spawn",
+  "rooms": [
+    {
+      "id": "spawn",
+      "name": "Pipeworks Web Entry",
+      "description": "Welcome, builder. This is the Pipeworks web world. Use it to map ideas, draft rooms, and prototype worlds before full build-out.",
+      "exits": {},
+      "items": []
+    }
+  ],
+  "items": []
+}

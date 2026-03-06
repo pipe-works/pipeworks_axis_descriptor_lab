@@ -1,0 +1,32 @@
+schema_version: 0.1.0
+policy_schema: pipeworks_policy_v1
+
+registry:
+  id: species_registry
+  version: 1
+  kind: species
+
+entries:
+- id: goblin_pipeworks_v1
+  version: 1
+  block_type: species
+  status: active
+  render_priority: 100
+  block_path: policies/image/blocks/species/goblin_v1.yaml
+  compatible_species: [goblin]
+  compatible_genders: [male, female]
+  selection_rules:
+    when:
+      species_any: [goblin]
+
+- id: human_pipeworks_v1
+  version: 1
+  block_type: species
+  status: active
+  render_priority: 90
+  block_path: policies/image/blocks/species/human_v1.yaml
+  compatible_species: [human]
+  compatible_genders: [male, female]
+  selection_rules:
+    when:
+      species_any: [human]

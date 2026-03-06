@@ -1,0 +1,60 @@
+schema_version: 0.1.0
+policy_schema: pipeworks_policy_v1
+world_id: pipeworks_web
+
+policy_bundle:
+  id: pipeworks_web_default
+  version: 1
+
+identity_contract:
+  fixed_traits:
+    gender:
+      type: enum
+      allowed_values: [male, female]
+      required: true
+
+axis:
+  active_bundle:
+    id: axis_core_v1
+    version: 1
+    files:
+      axes: policies/axis/axes.yaml
+      thresholds: policies/axis/thresholds.yaml
+      resolution: policies/axis/resolution.yaml
+
+translation:
+  active_prompt:
+    id: ic_default_v1
+    version: 1
+    path: policies/translation/prompts/ic/default_v1.txt
+
+image:
+  descriptor_layer:
+    id: id_card_v1
+    version: 1
+    path: policies/image/descriptor_layers/id_card_v1.txt
+
+  tone_profile:
+    id: ledger_engraving_v1
+    version: 1
+    path: policies/image/tone_profiles/ledger_engraving_v1.json
+
+  registries:
+    species: policies/image/registries/species_registry.yaml
+    clothing: policies/image/registries/clothing_registry.yaml
+
+  composition:
+    order:
+    - species_canon_block
+    - descriptor_layer_output
+    - clothing_block
+    - tone_profile_block
+    required_runtime_inputs:
+    - entity.identity.gender
+    - entity.species
+    - entity.axes
+
+hash_contract:
+  algorithm: sha256
+  policy_hash_mode: compiler_inputs_content_hash
+  axis_hash_source: resolved_axis_payload
