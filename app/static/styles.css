@@ -181,6 +181,19 @@
   font-size: var(--text-xs);
 }
 
+/* Small source-path hint shown below artifact dropdown controls so users can
+   see whether options come from world, lab-only, or legacy roots. */
+.control-path-hint {
+  margin-top: var(--sp-1);
+  margin-bottom: var(--sp-2);
+  padding-left: 7.4rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--col-text-muted);
+  opacity: 0.9;
+  word-break: break-word;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    SETTINGS GRID (model / temperature / tokens)
 ════════════════════════════════════════════════════════════════════════════ */

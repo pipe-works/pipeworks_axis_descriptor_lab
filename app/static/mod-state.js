@@ -128,12 +128,14 @@ export const $ = (id) => document.getElementById(id);
 export const dom = {
   // ── Left panel: payload editor ────────────────────────────────────── //
   exampleSelect:        $("example-select"),
+  exampleSourceHint:    $("example-source-hint"),
   btnLoadExample:       $("btn-load-example"),
   jsonTextarea:         $("json-textarea"),
   jsonStatusBadge:      $("json-status-badge"),
   systemPromptTextarea: $("system-prompt-textarea"),
   systemPromptBadge:    $("system-prompt-badge"),
   promptSelect:         $("prompt-select"),
+  promptSourceHint:     $("prompt-source-hint"),
   btnLoadPrompt:        $("btn-load-prompt"),
 
   // ── Centre panel: axis controls ───────────────────────────────────── //
@@ -189,6 +191,7 @@ export const dom = {
 
   // ── Chat Translation — Character A ───────────────────────────────── //
   chatAExampleSelect:   $("chat-a-example-select"),
+  chatAExampleSourceHint: $("chat-a-example-source-hint"),
   chatABtnLoadExample:  $("chat-a-btn-load-example"),
   chatAJson:            $("chat-a-json"),
   chatAJsonBadge:       $("chat-a-json-badge"),
@@ -201,6 +204,7 @@ export const dom = {
 
   // ── Chat Translation — Character B ───────────────────────────────── //
   chatBExampleSelect:   $("chat-b-example-select"),
+  chatBExampleSourceHint: $("chat-b-example-source-hint"),
   chatBBtnLoadExample:  $("chat-b-btn-load-example"),
   chatBJson:            $("chat-b-json"),
   chatBJsonBadge:       $("chat-b-json-badge"),
@@ -247,6 +251,7 @@ export const dom = {
   chatStrictMode:       $("chat-strict-mode"),
   chatMaxChars:         $("chat-max-chars"),
   chatPromptSelect:     $("chat-prompt-select"),
+  chatPromptSourceHint: $("chat-prompt-source-hint"),
   chatBtnLoadPrompt:    $("chat-btn-load-prompt"),
   chatSystemPrompt:     $("chat-system-prompt"),
   chatPromptBadge:      $("chat-prompt-badge"),
@@ -259,6 +264,7 @@ export const dom = {
   artifactWorld:             $("artifact-world"),
   artifactRefreshWorlds:     $("artifact-refresh-worlds"),
   artifactSelect:            $("artifact-select"),
+  artifactSelectSourceHint:  $("artifact-select-source-hint"),
   artifactBtnLoad:           $("artifact-btn-load"),
   artifactCurrentName:       $("artifact-current-name"),
   artifactDraftNameLabel:    $("artifact-draft-name-label"),

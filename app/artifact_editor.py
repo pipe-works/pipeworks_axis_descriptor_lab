@@ -798,6 +798,8 @@ def list_local_prompt_artifacts(purpose: PromptPurpose) -> LocalPromptArtifactLi
             is_draft=row.is_draft,
             is_active=False,
             origin_path=row.source_path,
+            source_kind=row.source_kind,
+            world_id=row.world_id,
         )
         for row in _resolved_prompt_rows(purpose)
     ]
@@ -819,6 +821,7 @@ def list_local_axis_payload_artifacts() -> LocalAxisPayloadArtifactListResponse:
                 name=row.stem,
                 is_draft=row.is_draft,
                 origin_path=row.source_path,
+                source_kind=row.source_kind,
                 world_id=payload.world_id,
             )
         )
@@ -841,6 +844,7 @@ def list_local_lexicon_json_artifacts() -> LocalLexiconJsonArtifactListResponse:
                 artifact_kind=kind,
                 is_draft=row.is_draft,
                 origin_path=row.source_path,
+                source_kind=row.source_kind,
                 version=str(payload.model_dump()["version"]),
             )
         )
@@ -862,6 +866,7 @@ def list_local_policy_bundle_artifacts() -> LocalPolicyBundleArtifactListRespons
                 name=row.stem,
                 is_draft=row.is_draft,
                 origin_path=row.source_path,
+                source_kind=row.source_kind,
                 world_id=payload.world_id,
                 version=payload.version,
             )
@@ -886,6 +891,8 @@ def load_local_prompt_artifact(name: str, purpose: PromptPurpose) -> PromptArtif
         content=target.path.read_text(encoding="utf-8").strip(),
         is_draft=target.is_draft,
         origin_path=target.source_path,
+        source_kind=target.source_kind,
+        world_id=target.world_id,
         reference=build_prompt_reference(purpose),
     )
 
@@ -904,6 +911,7 @@ def load_local_axis_payload_artifact(name: str) -> AxisPayloadArtifactDocument:
         content=normalized,
         is_draft=target.is_draft,
         origin_path=target.source_path,
+        source_kind=target.source_kind,
         world_id=payload.world_id,
         reference=_axis_payload_reference(),
     )
@@ -924,6 +932,7 @@ def load_local_lexicon_json_artifact(name: str) -> LexiconJsonArtifactDocument:
         content=normalized,
         is_draft=target.is_draft,
         origin_path=target.source_path,
+        source_kind=target.source_kind,
         version=str(payload.model_dump()["version"]),
         reference=_lexicon_reference(kind),
     )
@@ -943,6 +952,7 @@ def load_local_policy_bundle_artifact(name: str) -> PolicyBundleArtifactDocument
         content=normalized,
         is_draft=target.is_draft,
         origin_path=target.source_path,
+        source_kind=target.source_kind,
         world_id=payload.world_id,
         version=payload.version,
         reference=_policy_bundle_reference(),
@@ -1147,6 +1157,7 @@ def list_server_policy_bundle_artifacts(
             name=str(entry.get("name") or ""),
             is_draft=True,
             origin_path=str(entry.get("origin_path") or ""),
+            source_kind="server",
             world_id=str(entry.get("world_id") or world_id),
             version=str(entry.get("version") or ""),
         )
@@ -1175,6 +1186,7 @@ def load_server_policy_bundle_draft_artifact(
         content=normalized,
         is_draft=True,
         origin_path=str(data.get("origin_path") or ""),
+        source_kind="server",
         world_id=payload.world_id,
         version=payload.version,
         reference=_policy_bundle_reference(),
@@ -1222,6 +1234,7 @@ def get_server_policy_bundle_artifact(
         content=normalized,
         is_draft=False,
         origin_path=", ".join(data.get("source_files") or []),
+        source_kind="server",
         world_id=payload.world_id,
         version=payload.version,
         reference=_policy_bundle_reference(),
@@ -1278,6 +1291,8 @@ def list_server_prompt_artifacts(
             is_draft=True,
             is_active=False,
             origin_path=str(entry.get("origin_path") or ""),
+            source_kind="server",
+            world_id=world_id,
         )
         for entry in data.get("drafts", [])
     ]
@@ -1310,6 +1325,8 @@ def load_server_prompt_draft_artifact(
         content=str(data.get("content") or ""),
         is_draft=True,
         origin_path=str(data.get("origin_path") or ""),
+        source_kind="server",
+        world_id=world_id,
         reference=build_prompt_reference(
             "chat_translation",
             source_mode="server",
@@ -1345,6 +1362,8 @@ def get_server_prompt_manifest(
                 is_draft=False,
                 is_active=is_active,
                 origin_path=filename,
+                source_kind="server",
+                world_id=world_id,
                 content=str(entry.get("content", "")),
             )
         )

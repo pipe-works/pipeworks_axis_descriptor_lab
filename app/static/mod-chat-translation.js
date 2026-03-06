@@ -41,6 +41,7 @@ import {
   wireGameLogEvents,
 } from "./mod-chat-game-log.js";
 import { wireChatImportEvents } from "./mod-chat-import.js";
+import { renderSourceHint } from "./mod-source-paths.js";
 
 /**
  * Timeout for `/api/translate_chat` requests.
@@ -51,6 +52,31 @@ import { wireChatImportEvents } from "./mod-chat-import.js";
  * @type {number}
  */
 const TRANSLATE_TIMEOUT_MS = 120_000;
+const chatExampleMetaByName = new Map();
+const chatPromptMetaByName = new Map();
+
+function updateChatExampleSourceHint(ch) {
+  const hintElement =
+    ch === "a" ? dom.chatAExampleSourceHint : dom.chatBExampleSourceHint;
+  const select = charDom(ch).exampleSelect;
+  renderSourceHint(
+    hintElement,
+    chatExampleMetaByName.get(select.value) || null,
+    "axis_payload",
+    "",
+    `Source: select Character ${ch.toUpperCase()} example to view path.`
+  );
+}
+
+function updateChatPromptSourceHint() {
+  renderSourceHint(
+    dom.chatPromptSourceHint,
+    chatPromptMetaByName.get(dom.chatPromptSelect.value) || null,
+    "prompt_template",
+    "chat_translation",
+    "Source: select an IC prompt to view path."
+  );
+}
 
 /**
  * Fetch and load an example payload for character `ch`.
@@ -110,20 +136,24 @@ function snapshotActiveAxes(ch) {
  */
 async function loadChatExampleList() {
   try {
-    const res = await fetch("/api/examples");
+    const res = await fetch("/api/artifacts/local/axis-payloads");
     if (!res.ok) return;
 
-    const names = await res.json();
+    const payload = await res.json();
+    const rows = Array.isArray(payload.payloads) ? payload.payloads : [];
+    chatExampleMetaByName.clear();
     for (const ch of ["a", "b"]) {
       const select = charDom(ch).exampleSelect;
       while (select.options.length > 1) select.remove(1);
 
-      for (const name of names) {
+      for (const row of rows) {
+        chatExampleMetaByName.set(row.name, row);
         const option = document.createElement("option");
-        option.value = name;
-        option.textContent = name;
+        option.value = row.name;
+        option.textContent = row.name;
         select.appendChild(option);
       }
+      updateChatExampleSourceHint(ch);
     }
   } catch {
     // Ignore startup fetch failures so the rest of the page can still render.
@@ -209,18 +239,22 @@ async function randomiseChatChar(ch) {
  */
 async function loadChatIcPromptList() {
   try {
-    const res = await fetch("/api/prompts?purpose=chat_translation");
+    const res = await fetch("/api/artifacts/local/chat-prompts?purpose=chat_translation");
     if (!res.ok) return;
 
-    const names = await res.json();
+    const payload = await res.json();
+    const rows = Array.isArray(payload.prompts) ? payload.prompts : [];
+    chatPromptMetaByName.clear();
     while (dom.chatPromptSelect.options.length > 1) dom.chatPromptSelect.remove(1);
 
-    for (const name of names) {
+    for (const row of rows) {
+      chatPromptMetaByName.set(row.name, row);
       const option = document.createElement("option");
-      option.value = name;
-      option.textContent = name;
+      option.value = row.name;
+      option.textContent = row.name;
       dom.chatPromptSelect.appendChild(option);
     }
+    updateChatPromptSourceHint();
   } catch {
     // Ignore startup fetch failures so the rest of the page can still render.
   }
@@ -724,6 +758,9 @@ export async function initChatTranslation() {
   ]);
   charDom("a").exampleSelect.value = "proud_operator";
   charDom("b").exampleSelect.value = "resentful_debtor";
+  updateChatExampleSourceHint("a");
+  updateChatExampleSourceHint("b");
+  updateChatPromptSourceHint();
 
   chatState.liveMode = dom.chatLiveToggle.checked;
   updateLiveModeUI();
@@ -765,6 +802,7 @@ export function wireChatTranslationEvents() {
     cd.btnLoadExample.addEventListener("click", () => {
       loadChatExample(ch, cd.exampleSelect.value);
     });
+    cd.exampleSelect.addEventListener("change", () => updateChatExampleSourceHint(ch));
 
     cd.jsonTextarea.addEventListener(
       "input",
@@ -821,11 +859,13 @@ export function wireChatTranslationEvents() {
       const text = await res.text();
       dom.chatSystemPrompt.value = text;
       updateChatPromptBadge();
+      updateChatPromptSourceHint();
       setStatus(`IC prompt "${name}" loaded.`);
     } catch (err) {
       setStatus(`Prompt load error: ${err.message}`);
     }
   });
+  dom.chatPromptSelect.addEventListener("change", updateChatPromptSourceHint);
   dom.chatSystemPrompt.addEventListener("input", () => updateChatPromptBadge());
 
   dom.btnTranslate.addEventListener("click", () => translate());

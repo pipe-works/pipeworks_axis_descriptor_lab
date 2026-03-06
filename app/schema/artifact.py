@@ -27,6 +27,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+type ArtifactSourceKind = Literal[
+    "world_canonical",
+    "world_draft",
+    "lab_only",
+    "legacy",
+    "server",
+]
+
 
 class ArtifactPlaceholder(BaseModel):
     """One supported template placeholder and its meaning.
@@ -107,6 +115,14 @@ class PromptArtifactSummary(BaseModel):
         ...,
         description="Path relative to the owning prompts directory or world policies directory.",
     )
+    source_kind: ArtifactSourceKind | None = Field(
+        default=None,
+        description="Resolver source bucket for this artifact (world/lab/legacy/server).",
+    )
+    world_id: str | None = Field(
+        default=None,
+        description="Owning world id when the source is world-scoped or server-backed.",
+    )
     content: str | None = Field(
         default=None,
         description="Prompt text, included when the response is meant to hydrate the editor directly.",
@@ -141,6 +157,14 @@ class PromptArtifactDocument(BaseModel):
     content: str = Field(..., description="Raw prompt text.")
     is_draft: bool = Field(..., description="True when the file is stored under drafts/.")
     origin_path: str = Field(..., description="Relative file path from the family root.")
+    source_kind: ArtifactSourceKind | None = Field(
+        default=None,
+        description="Resolver source bucket for this artifact (world/lab/legacy/server).",
+    )
+    world_id: str | None = Field(
+        default=None,
+        description="Owning world id when the source is world-scoped or server-backed.",
+    )
     reference: ArtifactPromptReference = Field(
         ...,
         description="Reference contract to use while editing this prompt.",
@@ -316,6 +340,10 @@ class AxisPayloadArtifactSummary(BaseModel):
         ...,
         description="Path relative to the examples root.",
     )
+    source_kind: ArtifactSourceKind | None = Field(
+        default=None,
+        description="Resolver source bucket for this artifact (world/lab/legacy).",
+    )
     world_id: str = Field(..., description="World ID declared by the payload.")
 
 
@@ -339,6 +367,10 @@ class AxisPayloadArtifactDocument(BaseModel):
     content: str = Field(..., description="Pretty-printed raw JSON text.")
     is_draft: bool = Field(..., description="True when stored under examples/drafts/.")
     origin_path: str = Field(..., description="Path relative to the examples root.")
+    source_kind: ArtifactSourceKind | None = Field(
+        default=None,
+        description="Resolver source bucket for this artifact (world/lab/legacy).",
+    )
     world_id: str = Field(..., description="World ID declared by the payload.")
     reference: AxisPayloadReference = Field(
         ...,
@@ -424,6 +456,10 @@ class LexiconJsonArtifactSummary(BaseModel):
         ...,
         description="Path relative to the app/data root.",
     )
+    source_kind: ArtifactSourceKind | None = Field(
+        default=None,
+        description="Resolver source bucket for this artifact (lab-only/legacy).",
+    )
     version: str = Field(..., description="Version declared by the lexicon file.")
 
 
@@ -451,6 +487,10 @@ class LexiconJsonArtifactDocument(BaseModel):
     content: str = Field(..., description="Pretty-printed raw JSON text.")
     is_draft: bool = Field(..., description="True when stored under data/drafts/.")
     origin_path: str = Field(..., description="Path relative to the data root.")
+    source_kind: ArtifactSourceKind | None = Field(
+        default=None,
+        description="Resolver source bucket for this artifact (lab-only/legacy).",
+    )
     version: str = Field(..., description="Version declared by the lexicon file.")
     reference: LexiconJsonReference = Field(
         ...,
@@ -532,6 +572,10 @@ class PolicyBundleArtifactSummary(BaseModel):
         ...,
         description="Path relative to the policy bundle root.",
     )
+    source_kind: ArtifactSourceKind | None = Field(
+        default=None,
+        description="Resolver source bucket for this artifact (world/lab/legacy/server).",
+    )
     world_id: str = Field(..., description="World identifier declared by the policy bundle.")
     version: str = Field(..., description="Version declared by the policy bundle.")
 
@@ -556,6 +600,10 @@ class PolicyBundleArtifactDocument(BaseModel):
     content: str = Field(..., description="Pretty-printed raw JSON text.")
     is_draft: bool = Field(..., description="True when stored under policy bundle drafts/.")
     origin_path: str = Field(..., description="Path relative to the policy bundle root.")
+    source_kind: ArtifactSourceKind | None = Field(
+        default=None,
+        description="Resolver source bucket for this artifact (world/lab/legacy/server).",
+    )
     world_id: str = Field(..., description="World identifier declared by the policy bundle.")
     version: str = Field(..., description="Version declared by the policy bundle.")
     reference: PolicyBundleReference = Field(

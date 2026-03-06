@@ -22,6 +22,30 @@
 import { state, dom } from "./mod-state.js";
 import { setStatus } from "./mod-status.js";
 import { syncJsonTextarea, buildSlidersFromJson, setJsonBadge, updateSystemPromptBadge } from "./mod-sync.js";
+import { renderSourceHint } from "./mod-source-paths.js";
+
+const exampleMetaByName = new Map();
+const promptMetaByName = new Map();
+
+function updateExampleSourceHint() {
+  renderSourceHint(
+    dom.exampleSourceHint,
+    exampleMetaByName.get(dom.exampleSelect.value) || null,
+    "axis_payload",
+    "",
+    "Source: select an example to view path."
+  );
+}
+
+function updatePromptSourceHint() {
+  renderSourceHint(
+    dom.promptSourceHint,
+    promptMetaByName.get(dom.promptSelect.value) || null,
+    "prompt_template",
+    "character_description",
+    "Source: select a prompt to view path."
+  );
+}
 
 /**
  * Fetch the list of available examples from the server and populate the
@@ -32,13 +56,22 @@ import { syncJsonTextarea, buildSlidersFromJson, setJsonBadge, updateSystemPromp
  */
 export async function loadExampleList() {
   try {
-    const res  = await fetch("/api/examples");
-    const list = await res.json();
+    const res = await fetch("/api/artifacts/local/axis-payloads");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    const list = Array.isArray(payload.payloads) ? payload.payloads : [];
+
+    exampleMetaByName.clear();
     const defaultOpt = new Option("\u2014 choose \u2014", "");
-    const opts = list.map((name) => new Option(name, name));
+    const opts = list.map((row) => {
+      exampleMetaByName.set(row.name, row);
+      return new Option(row.name, row.name);
+    });
     dom.exampleSelect.replaceChildren(defaultOpt, ...opts);
+    updateExampleSourceHint();
   } catch (err) {
     setStatus(`Failed to load examples: ${err.message}`);
+    updateExampleSourceHint();
   }
 }
 
@@ -69,6 +102,7 @@ export async function loadExample(name) {
     syncJsonTextarea();
     buildSlidersFromJson();
     setJsonBadge(true);
+    updateExampleSourceHint();
     setStatus(`Loaded ${name}.`);
   } catch (err) {
     setStatus(`Error loading example: ${err.message}`);
@@ -85,14 +119,22 @@ export async function loadExample(name) {
  */
 export async function loadPromptList() {
   try {
-    const res  = await fetch("/api/prompts?purpose=character_description");
-    const list = await res.json();
+    const res = await fetch("/api/artifacts/local/chat-prompts?purpose=character_description");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    const list = Array.isArray(payload.prompts) ? payload.prompts : [];
 
+    promptMetaByName.clear();
     const defaultOpt = new Option("\u2014 choose \u2014", "");
-    const opts = list.map((name) => new Option(name, name));
+    const opts = list.map((row) => {
+      promptMetaByName.set(row.name, row);
+      return new Option(row.name, row.name);
+    });
     dom.promptSelect.replaceChildren(defaultOpt, ...opts);
+    updatePromptSourceHint();
   } catch (err) {
     setStatus(`Failed to load prompt list: ${err.message}`);
+    updatePromptSourceHint();
   }
 }
 
@@ -133,6 +175,7 @@ export async function loadPrompt(name) {
     const details = document.getElementById("system-prompt-details");
     if (details && !details.open) details.open = true;
 
+    updatePromptSourceHint();
     setStatus(`Loaded prompt: ${name}`);
   } catch (err) {
     setStatus(`Error loading prompt: ${err.message}`);
@@ -161,6 +204,7 @@ export function wireLoaderEvents() {
     const name = dom.exampleSelect.value;
     if (name) loadExample(name);
   });
+  dom.exampleSelect.addEventListener("change", updateExampleSourceHint);
 
   // ── Load prompt button ─────────────────────────────────────────── //
   dom.btnLoadPrompt.addEventListener("click", () => {
@@ -177,6 +221,7 @@ export function wireLoaderEvents() {
   // Highlight the Load button when the user selects a different prompt
   // to signal "you've picked something but not loaded it yet"
   dom.promptSelect.addEventListener("change", () => {
+    updatePromptSourceHint();
     if (dom.promptSelect.value) {
       dom.btnLoadPrompt.classList.add("is-active");
     } else {
