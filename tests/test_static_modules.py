@@ -430,6 +430,27 @@ class TestModuleImports:
         assert f'"./{module_name}"' not in content, f"{module_name} imports from itself"
 
 
+class TestPipelineBuildContracts:
+    """Lightweight source contracts for Pipeline Build behavior."""
+
+    def test_unauthenticated_flow_preserves_entered_state_by_default(self) -> None:
+        """401 handling should preserve entered state unless explicitly disabled."""
+        content = _read_module("mod-pipeline-build.js")
+        assert (
+            "function applyUnauthenticatedState(errorMessage = null, { preserveEnteredState = true } = {})"
+            in content
+        )
+        assert "if (!preserveEnteredState)" in content
+        assert "Entered state preserved for re-auth." in content
+
+    def test_action_log_messages_are_sanitised(self) -> None:
+        """Action-log messages should redact common secret-bearing fields."""
+        content = _read_module("mod-pipeline-build.js")
+        assert "function sanitiseActionLogMessage(rawMessage)" in content
+        assert "password|token|secret|authorization" in content
+        assert "message: safeMessage" in content
+
+
 # ── 6. No circular dependencies ────────────────────────────────────────────
 
 

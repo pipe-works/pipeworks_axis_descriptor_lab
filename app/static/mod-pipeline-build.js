@@ -46,12 +46,22 @@ const STAGE_LABEL = {
 
 const MAX_ACTION_LOG_ENTRIES = 24;
 
+function sanitiseActionLogMessage(rawMessage) {
+  const compact = String(rawMessage || "").replace(/\s+/g, " ").trim();
+  const redacted = compact.replace(
+    /\b(password|token|secret|authorization)\b\s*[:=]\s*([^\s,;]+)/gi,
+    "$1=[redacted]"
+  );
+  return redacted.slice(0, 280);
+}
+
 function appendActionLog(message, level = "info") {
   const timestamp = new Date().toISOString();
+  const safeMessage = sanitiseActionLogMessage(message);
   pipelineBuildState.actionLog.unshift({
     timestamp,
     level,
-    message: String(message || "").trim(),
+    message: safeMessage,
   });
   if (pipelineBuildState.actionLog.length > MAX_ACTION_LOG_ENTRIES) {
     pipelineBuildState.actionLog.length = MAX_ACTION_LOG_ENTRIES;
@@ -746,17 +756,22 @@ function renderPipelinePanels({ syncAxisJsonEditor = false } = {}) {
   renderStageEditorHint();
 }
 
-function applyUnauthenticatedState(errorMessage = null) {
+function applyUnauthenticatedState(errorMessage = null, { preserveEnteredState = true } = {}) {
   pipelineBuildState.session.authenticated = false;
-  pipelineBuildState.worlds = [];
-  pipelineBuildState.selectedWorldId = null;
-  pipelineBuildState.worldConfig = null;
-  pipelineBuildState.policyBundle = null;
-  pipelineBuildState.policyHash = null;
-  pipelineBuildState.axisHash = null;
-  pipelineBuildState.compilerInputHash = null;
-  pipelineBuildState.compile.requestBody = null;
-  pipelineBuildState.compile.result = null;
+
+  // Re-auth flow should keep user-entered form/context state by default.
+  // We only wipe cached world/policy/compile context when explicitly requested.
+  if (!preserveEnteredState) {
+    pipelineBuildState.worlds = [];
+    pipelineBuildState.selectedWorldId = null;
+    pipelineBuildState.worldConfig = null;
+    pipelineBuildState.policyBundle = null;
+    pipelineBuildState.policyHash = null;
+    pipelineBuildState.axisHash = null;
+    pipelineBuildState.compilerInputHash = null;
+    pipelineBuildState.compile.requestBody = null;
+    pipelineBuildState.compile.result = null;
+  }
 
   setStageStatus("session_world", PIPELINE_STAGE_STATUS.READY);
   setStageStatus("policy_bundle", PIPELINE_STAGE_STATUS.LOCKED);
@@ -766,7 +781,14 @@ function applyUnauthenticatedState(errorMessage = null) {
   pipelineBuildState.activeStage = "session_world";
 
   pipelineBuildState.lastError = errorMessage;
-  appendActionLog(errorMessage || "Mud session unauthenticated.", "warn");
+  if (preserveEnteredState) {
+    appendActionLog(
+      `${errorMessage || "Mud session unauthenticated."} Entered state preserved for re-auth.`,
+      "warn"
+    );
+  } else {
+    appendActionLog(errorMessage || "Mud session unauthenticated.", "warn");
+  }
   renderPipelinePanels({ syncAxisJsonEditor: true });
 }
 
