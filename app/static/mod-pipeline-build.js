@@ -45,13 +45,34 @@ const STAGE_LABEL = {
 };
 
 const MAX_ACTION_LOG_ENTRIES = 24;
+const AXIS_HASH_INPUT_FIELDS = [
+  "world_id",
+  "policy_hash",
+  "seed",
+  "axes[*].label",
+  "axes[*].score",
+];
+const COMPILER_INPUT_HASH_FIELDS = [
+  "world_id",
+  "species",
+  "gender",
+  "axes",
+  "world_context",
+  "occupation_signals",
+  "model_id",
+  "aspect_ratio",
+  "seed",
+];
 
 function sanitiseActionLogMessage(rawMessage) {
   const compact = String(rawMessage || "").replace(/\s+/g, " ").trim();
-  const redacted = compact.replace(
+  let redacted = compact.replace(
     /\b(password|token|secret|authorization)\b\s*[:=]\s*([^\s,;]+)/gi,
     "$1=[redacted]"
   );
+  redacted = redacted.replace(/\bBearer\s+[A-Za-z0-9\-._~+/]+=*/gi, "Bearer [redacted]");
+  redacted = redacted.replace(/\b(api[_-]?key)\b\s*[:=]\s*([^\s,;]+)/gi, "$1=[redacted]");
+  if (!redacted) return "(message omitted)";
   return redacted.slice(0, 280);
 }
 
@@ -86,17 +107,62 @@ function isIdentityValid() {
 }
 
 function isAxisPayloadValid(payload) {
-  if (!payload || typeof payload !== "object") return false;
-  if (!payload.axes || typeof payload.axes !== "object") return false;
+  return validateAxisPayloadSchema(payload).length === 0;
+}
+
+function validateAxisPayloadSchema(payload) {
+  const errors = [];
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    errors.push("Payload must be a JSON object.");
+    return errors;
+  }
+  if (!payload.axes || typeof payload.axes !== "object" || Array.isArray(payload.axes)) {
+    errors.push("Payload must include an 'axes' object.");
+    return errors;
+  }
 
   const axisEntries = Object.entries(payload.axes);
-  if (axisEntries.length === 0) return false;
-  for (const [, value] of axisEntries) {
-    if (!value || typeof value !== "object") return false;
-    const score = Number(value.score);
-    if (!Number.isFinite(score) || score < 0 || score > 1) return false;
+  if (axisEntries.length === 0) {
+    errors.push("Payload 'axes' object must include at least one axis.");
   }
-  return true;
+
+  for (const [axisName, axisValue] of axisEntries) {
+    if (!axisValue || typeof axisValue !== "object" || Array.isArray(axisValue)) {
+      errors.push(`Axis '${axisName}' must be an object.`);
+      continue;
+    }
+    if (typeof axisValue.label !== "string" || !axisValue.label.trim()) {
+      errors.push(`Axis '${axisName}' label must be a non-empty string.`);
+    }
+    const score = Number(axisValue.score);
+    if (!Number.isFinite(score) || score < 0 || score > 1) {
+      errors.push(`Axis '${axisName}' score must be a number between 0 and 1.`);
+    }
+  }
+
+  if (
+    payload.world_id !== undefined &&
+    (typeof payload.world_id !== "string" || !payload.world_id.trim())
+  ) {
+    errors.push("'world_id' must be a non-empty string when present.");
+  }
+  if (
+    payload.policy_hash !== undefined &&
+    payload.policy_hash !== null &&
+    typeof payload.policy_hash !== "string"
+  ) {
+    errors.push("'policy_hash' must be a string or null when present.");
+  }
+  if (
+    payload.seed !== undefined &&
+    payload.seed !== null &&
+    !Number.isInteger(Number(payload.seed))
+  ) {
+    errors.push("'seed' must be an integer or null when present.");
+  }
+
+  return errors;
 }
 
 function quantizeScore(value) {
@@ -244,7 +310,29 @@ function renderStageStatuses() {
     }
 
     row.classList.toggle("is-stage-active", stageKey === pipelineBuildState.activeStage);
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `${STAGE_LABEL[stageKey] || stageKey} stage (${stageStatus})`);
   }
+}
+
+function focusStageControl(stageKey) {
+  const focusTargetMap = {
+    session_world: () => dom.pipelineWorldSelect,
+    policy_bundle: () => dom.pipelinePolicyRefresh,
+    identity: () => dom.pipelineSpeciesInput,
+    axis_input: () => dom.pipelineAxisSourceMode,
+    block_selection: () => dom.pipelineBlockSelectionSummary,
+    descriptor_tone: () => dom.pipelineDescriptorToneSummary,
+    composition_hashes: () => dom.pipelineCompositionPreview,
+    compile_output: () => dom.pipelineCompileButton,
+  };
+  const target = focusTargetMap[stageKey]?.();
+  if (target && typeof target.focus === "function") {
+    target.focus();
+    return true;
+  }
+  return false;
 }
 
 function renderSessionHeader() {
@@ -261,6 +349,17 @@ function renderSessionHeader() {
     const mode = pipelineBuildState.session.modeKey || "unknown";
     const server = pipelineBuildState.session.serverUrl || "(no server)";
     dom.pipelineModeText.textContent = `Mode: ${mode} · Server: ${server}`;
+  }
+
+  if (dom.pipelineWorldSourceHint) {
+    const server = pipelineBuildState.session.serverUrl || "(no server)";
+    dom.pipelineWorldSourceHint.textContent =
+      `Source: mud server canonical @ ${server} (/api/mud/worlds, /api/mud/world-config/{world_id}).`;
+  }
+  if (dom.pipelinePolicySourceHint) {
+    const server = pipelineBuildState.session.serverUrl || "(no server)";
+    dom.pipelinePolicySourceHint.textContent =
+      `Source: mud server canonical @ ${server} (/api/mud/world-image-policy-bundle/{world_id}).`;
   }
 }
 
@@ -599,7 +698,10 @@ function renderCompositionPreview() {
     `composition_order: ${compositionOrder.length ? compositionOrder.join(" -> ") : "(none)"}`,
     `policy_hash: ${pipelineBuildState.policyHash || "(not loaded)"}`,
     `axis_hash: ${pipelineBuildState.axisHash || "(not computed)"}`,
+    `axis_hash_inputs: ${AXIS_HASH_INPUT_FIELDS.join(", ")}`,
     `compiler_input_hash: ${pipelineBuildState.compilerInputHash || "(not computed)"}`,
+    `compiler_hash_inputs: ${COMPILER_INPUT_HASH_FIELDS.join(", ")}`,
+    "excluded_from_hashes: compiled_prompt",
     `source: ${result ? "compile_response" : "policy_bundle/runtime"}`,
   ].join("\n");
 }
@@ -1064,6 +1166,22 @@ async function handleAxisJsonInput() {
 
   try {
     const parsed = JSON.parse(raw);
+    const schemaErrors = validateAxisPayloadSchema(parsed);
+    if (schemaErrors.length > 0) {
+      pipelineBuildState.compile.result = null;
+      pipelineBuildState.axis.payload = null;
+      applyStageProgression();
+      setStageStatus("axis_input", PIPELINE_STAGE_STATUS.ERROR);
+      lockAfterAxis();
+      await recomputeHashes();
+      pipelineBuildState.lastError = `Axis JSON schema error: ${schemaErrors[0]}`;
+      renderBuildSummary();
+      renderStageStatuses();
+      renderStageEditorHint();
+      renderCompilePanels();
+      setStatus(`Pipeline Build — ${pipelineBuildState.lastError}`);
+      return;
+    }
     pipelineBuildState.lastError = null;
     await updateAxisStateFromPayload(parsed, { syncAxisJsonEditor: false });
   } catch {
@@ -1078,6 +1196,7 @@ async function handleAxisJsonInput() {
     renderStageStatuses();
     renderStageEditorHint();
     renderCompilePanels();
+    setStatus("Pipeline Build — Axis JSON parse error.");
   }
 }
 
@@ -1237,12 +1356,52 @@ export async function initPipelineBuild() {
   await refreshSessionAndWorlds({ quiet: true });
 }
 
+function wireStageListInteractions() {
+  if (!dom.pipelineStageList) return;
+
+  dom.pipelineStageList.addEventListener("click", (event) => {
+    const row = event.target?.closest?.("li[data-stage]");
+    if (!row) return;
+    const stageKey = row.dataset.stage;
+    if (!stageKey) return;
+    focusStageControl(stageKey);
+  });
+
+  dom.pipelineStageList.addEventListener("keydown", (event) => {
+    const row = event.target?.closest?.("li[data-stage]");
+    if (!row) return;
+
+    const rows = Array.from(dom.pipelineStageList.querySelectorAll("li[data-stage]"));
+    const idx = rows.indexOf(row);
+    if (idx < 0) return;
+
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      const next = rows[idx + delta] || row;
+      next.focus();
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      const stageKey = row.dataset.stage;
+      if (!stageKey) return;
+      if (focusStageControl(stageKey)) {
+        setStatus(`Pipeline Build — focused ${STAGE_LABEL[stageKey] || stageKey} controls.`);
+      }
+    }
+  });
+}
+
 /**
  * Wire Pipeline Build page events.
  *
  * @returns {void}
  */
 export function wirePipelineBuildEvents() {
+  wireStageListInteractions();
+
   dom.pipelineWorldRefresh?.addEventListener("click", () => {
     refreshSessionAndWorlds();
   });
