@@ -28,6 +28,7 @@ from app.file_loaders import (
     load_example,
     load_prompt,
 )
+from app.path_resolver import PathResolutionError
 
 # ── load_default_prompt ─────────────────────────────────────────────────────
 
@@ -98,6 +99,17 @@ class TestLoadExample:
             with pytest.raises(HTTPException) as exc_info:
                 load_example("bad")
             assert exc_info.value.status_code == 500
+
+    def test_resolution_error_raises_500(self) -> None:
+        """Resolver ambiguity must surface as HTTPException(500)."""
+        with patch(
+            "app.file_loaders.resolve_axis_payload_paths",
+            side_effect=PathResolutionError("ambiguous axis payload"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                load_example("proud_operator")
+        assert exc_info.value.status_code == 500
+        assert "ambiguous axis payload" in str(exc_info.value.detail)
 
     def test_prefers_lab_only_example_over_legacy(self, tmp_path: Path) -> None:
         """Lab-only examples must win over legacy examples on same stem."""
@@ -214,6 +226,17 @@ class TestListExampleNames:
         assert "resentful_debtor" in names
         assert names == sorted(names)
 
+    def test_resolution_error_raises_500(self) -> None:
+        """Resolver ambiguity must surface as HTTPException(500)."""
+        with patch(
+            "app.file_loaders.resolve_axis_payload_paths",
+            side_effect=PathResolutionError("ambiguous examples"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                list_example_names()
+        assert exc_info.value.status_code == 500
+        assert "ambiguous examples" in str(exc_info.value.detail)
+
 
 # ── list_prompt_names ───────────────────────────────────────────────────────
 
@@ -251,3 +274,25 @@ class TestListPromptNames:
         assert "pipeworks_web_ic_prompt" in names
         assert "daily_undertaking_ic_prompt" in names
         assert "system_prompt_v01" not in names
+
+    def test_resolution_error_raises_500_for_filtered_listing(self) -> None:
+        """Prompt resolver ambiguity must surface as HTTPException(500)."""
+        with patch(
+            "app.file_loaders.resolve_prompt_paths",
+            side_effect=PathResolutionError("ambiguous prompts"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                list_prompt_names("chat_translation")
+        assert exc_info.value.status_code == 500
+        assert "ambiguous prompts" in str(exc_info.value.detail)
+
+    def test_resolution_error_raises_500_for_unfiltered_listing(self) -> None:
+        """Unfiltered listing must also surface resolver ambiguities."""
+        with patch(
+            "app.file_loaders.resolve_prompt_paths",
+            side_effect=PathResolutionError("ambiguous mixed listing"),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                list_prompt_names()
+        assert exc_info.value.status_code == 500
+        assert "ambiguous mixed listing" in str(exc_info.value.detail)

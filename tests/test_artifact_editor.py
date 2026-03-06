@@ -9,6 +9,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.mud_server_client import MudServerConnectionError, MudServerSessionExpiredError
+from app.path_resolver import PathResolutionError
 
 
 class TestLocalPromptArtifacts:
@@ -140,6 +141,16 @@ class TestLocalPromptArtifacts:
 
         assert resp.status_code == 409
 
+    def test_returns_500_when_prompt_resolution_is_ambiguous(self, client: TestClient) -> None:
+        """Prompt-list route must surface resolver ambiguity as HTTP 500."""
+        with patch(
+            "app.artifact_editor.resolve_prompt_paths",
+            side_effect=PathResolutionError("ambiguous prompt resolution"),
+        ):
+            resp = client.get("/api/artifacts/local/chat-prompts?purpose=chat_translation")
+        assert resp.status_code == 500
+        assert "ambiguous prompt resolution" in resp.json()["detail"]
+
 
 class TestLocalAxisPayloadArtifacts:
     """Local AxisPayload JSON artifact listing, loading, and draft creation."""
@@ -220,6 +231,18 @@ class TestLocalAxisPayloadArtifacts:
             )
 
         assert resp.status_code == 409
+
+    def test_returns_500_when_axis_payload_resolution_is_ambiguous(
+        self, client: TestClient
+    ) -> None:
+        """Axis-payload list route must surface resolver ambiguity as HTTP 500."""
+        with patch(
+            "app.artifact_editor.resolve_axis_payload_paths",
+            side_effect=PathResolutionError("ambiguous axis payload resolution"),
+        ):
+            resp = client.get("/api/artifacts/local/axis-payloads")
+        assert resp.status_code == 500
+        assert "ambiguous axis payload resolution" in resp.json()["detail"]
 
 
 class TestLocalLexiconArtifacts:
@@ -321,6 +344,16 @@ class TestLocalLexiconArtifacts:
 
         assert resp.status_code == 409
 
+    def test_returns_500_when_lexicon_resolution_is_ambiguous(self, client: TestClient) -> None:
+        """Lexicon-list route must surface resolver ambiguity as HTTP 500."""
+        with patch(
+            "app.artifact_editor.resolve_lexicon_paths",
+            side_effect=PathResolutionError("ambiguous lexicon resolution"),
+        ):
+            resp = client.get("/api/artifacts/local/lexicons")
+        assert resp.status_code == 500
+        assert "ambiguous lexicon resolution" in resp.json()["detail"]
+
 
 class TestLocalPolicyBundleArtifacts:
     """Local normalized policy bundle JSON artifact listing, loading, and draft creation."""
@@ -408,6 +441,18 @@ class TestLocalPolicyBundleArtifacts:
             )
 
         assert resp.status_code == 409
+
+    def test_returns_500_when_policy_bundle_resolution_is_ambiguous(
+        self, client: TestClient
+    ) -> None:
+        """Policy-bundle list route must surface resolver ambiguity as HTTP 500."""
+        with patch(
+            "app.artifact_editor.resolve_policy_bundle_paths",
+            side_effect=PathResolutionError("ambiguous policy bundle resolution"),
+        ):
+            resp = client.get("/api/artifacts/local/policy-bundles")
+        assert resp.status_code == 500
+        assert "ambiguous policy bundle resolution" in resp.json()["detail"]
 
 
 class TestServerPromptManifest:
