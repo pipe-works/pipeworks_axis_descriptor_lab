@@ -256,6 +256,59 @@ class MudServerClient:
             raise TypeError(f"Expected dict from world-prompts, got {type(result).__name__}")
         return result
 
+    def world_image_policy_bundle(self, world_id: str) -> dict:
+        """GET /api/lab/world-image-policy-bundle/{world_id} → image policy bundle.
+
+        Raises:
+            MudServerSessionExpiredError: Session invalid/expired.
+            MudServerConnectionError: Server unreachable or timed out.
+        """
+
+        result = self._get(f"/api/lab/world-image-policy-bundle/{world_id}")
+        if not isinstance(result, dict):  # pragma: no cover
+            raise TypeError(
+                f"Expected dict from world-image-policy-bundle, got {type(result).__name__}"
+            )
+        return result
+
+    def compile_image_prompt(
+        self,
+        *,
+        world_id: str,
+        species: str,
+        gender: str,
+        axes: dict,
+        world_context: list[str] | None = None,
+        occupation_signals: list[str] | None = None,
+        model_id: str | None = None,
+        aspect_ratio: str | None = None,
+        seed: int | None = None,
+    ) -> dict:
+        """POST /api/lab/compile-image-prompt → canonical compiled prompt package.
+
+        The mud server remains authoritative for policy/selection/provenance.
+        This helper only forwards validated request fields and returns the
+        server response verbatim.
+
+        Raises:
+            MudServerSessionExpiredError: Session invalid/expired.
+            MudServerConnectionError: Server unreachable or timed out.
+        """
+
+        body = {
+            "session_id": self._session_id,
+            "world_id": world_id,
+            "species": species,
+            "gender": gender,
+            "axes": axes,
+            "world_context": list(world_context or []),
+            "occupation_signals": list(occupation_signals or []),
+            "model_id": model_id,
+            "aspect_ratio": aspect_ratio,
+            "seed": seed,
+        }
+        return self._post("/api/lab/compile-image-prompt", body)
+
     def create_world_prompt_draft(
         self,
         *,

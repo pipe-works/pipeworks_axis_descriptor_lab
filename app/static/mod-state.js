@@ -148,6 +148,9 @@ export const dom = {
   tempInput:            $("temp-input"),
   tokensInput:          $("tokens-input"),
   seedInput:            $("seed-input"),
+  generateModeSelect:   $("generate-mode-select"),
+  canonicalSpeciesInput: $("canonical-species-input"),
+  canonicalGenderSelect: $("canonical-gender-select"),
   btnGenerate:          $("btn-generate"),
   btnSetBaseline:       $("btn-set-baseline"),
 
