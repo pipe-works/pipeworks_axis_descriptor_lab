@@ -96,11 +96,12 @@ class TestIndexRoute:
         assert 'id="pipeline-policy-view-file"' in resp.text
         assert 'id="pipeline-policy-file-modal"' in resp.text
         assert 'id="pipeline-policy-source-hint"' in resp.text
-        assert 'id="pipeline-axis-preset-source-hint"' in resp.text
+        assert 'id="pipeline-axis-source-hint"' in resp.text
         assert 'id="pipeline-species-input"' in resp.text
         assert 'id="pipeline-species-source-hint"' in resp.text
-        assert 'id="pipeline-axis-source-mode"' in resp.text
-        assert 'id="pipeline-axis-json"' in resp.text
+        assert 'id="pipeline-axis-seed-mode"' in resp.text
+        assert 'id="pipeline-axis-generate"' in resp.text
+        assert 'id="pipeline-axis-output"' in resp.text
         assert 'id="pipeline-block-selection-summary"' in resp.text
         assert 'id="pipeline-descriptor-tone-summary"' in resp.text
         assert 'id="pipeline-composition-preview"' in resp.text

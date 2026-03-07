@@ -1016,8 +1016,8 @@
       class="btn btn--secondary btn--sm hidden"
       type="button"
       style="margin-top:0.5rem;"
-      data-tooltip="Open a detailed explanation of Stage 4 Axis Input flow, validation rules, and canonical endpoints."
-    >active_stage: Axis Input</button>
+      data-tooltip="Open a detailed explanation of Stage 4 Condition Axis Input flow, validation rules, and canonical endpoints."
+    >active_stage: Condition Axis Input</button>
     <hr class="divider" />
 
     <h2 class="panel__heading">Stages</h2>
@@ -1025,7 +1025,7 @@
       <li data-stage="session_world">Session + World <span class="badge badge--muted">ready</span></li>
       <li data-stage="policy_bundle">Policy Bundle <span class="badge badge--muted">locked</span></li>
       <li data-stage="identity">Species Canon Inputs <span class="badge badge--muted">locked</span></li>
-      <li data-stage="axis_input">Axis Input <span class="badge badge--muted">locked</span></li>
+      <li data-stage="axis_input">Condition Axis Input <span class="badge badge--muted">locked</span></li>
       <li data-stage="block_selection">Block Selection <span class="badge badge--muted">locked</span></li>
       <li data-stage="descriptor_tone">Descriptor + Tone <span class="badge badge--muted">locked</span></li>
       <li data-stage="composition_hashes">Composition + Hashes <span class="badge badge--muted">locked</span></li>
@@ -1092,41 +1092,34 @@
     </div>
     <hr class="divider" />
 
-    <h2 class="panel__heading">Axis Input</h2>
+    <h2 class="panel__heading">Condition Axis Input</h2>
     <div class="control-row">
-      <label class="control-label" for="pipeline-axis-source-mode">Mode</label>
-      <select id="pipeline-axis-source-mode" class="select">
-        <option value="preset" selected>Preset</option>
-        <option value="manual">Manual</option>
-        <option value="json">JSON</option>
+      <label class="control-label" for="pipeline-axis-seed-mode">Seed</label>
+      <select id="pipeline-axis-seed-mode" class="select">
+        <option value="random" selected>Random</option>
+        <option value="fixed">Fixed</option>
       </select>
+      <input
+        id="pipeline-axis-fixed-seed"
+        class="input input--sm"
+        type="number"
+        value="42"
+        placeholder="42"
+        disabled
+      />
+      <button id="pipeline-axis-generate" class="btn btn--secondary" type="button">
+        Generate condition axis
+      </button>
     </div>
-    <div class="control-row" style="margin-top:0.5rem;">
-      <label class="control-label" for="pipeline-axis-preset-select">Preset</label>
-      <select id="pipeline-axis-preset-select" class="select">
-        <option value="">— select axis preset —</option>
-      </select>
-      <button id="pipeline-axis-load-preset" class="btn btn--secondary" type="button">Load</button>
+    <div id="pipeline-axis-source-hint" class="control-path-hint">
+      Source: mud server canonical @ /api/mud/pipeline-build/generate-condition-axis
     </div>
-    <div id="pipeline-axis-preset-source-hint" class="control-path-hint">
-      Source: select an axis preset to view path.
+    <label class="control-label" for="pipeline-axis-output" style="margin-top:0.5rem;">
+      Generated condition axis (read-only)
+    </label>
+    <div id="pipeline-axis-output" class="artifact-reference">
+      Generate condition axis payload to continue.
     </div>
-
-    <div id="pipeline-axis-manual-panel" class="slider-panel">
-      <p class="placeholder-text">Load a preset or paste JSON to edit axis scores manually.</p>
-    </div>
-
-    <label class="control-label" for="pipeline-axis-json" style="margin-top:0.5rem;">Axis JSON</label>
-    <textarea
-      id="pipeline-axis-json"
-      class="code-editor code-editor--sm"
-      rows="8"
-      spellcheck="false"
-      placeholder='{\"axes\": {\"demeanor\": {\"label\": \"proud\", \"score\": 0.81}}, \"policy_hash\": \"...\", \"seed\": 42, \"world_id\": \"pipeworks_web\"}'
-    ></textarea>
-    <button id="pipeline-axis-relabel" class="btn btn--secondary" type="button" style="margin-top:0.5rem;">
-      Relabel axes
-    </button>
     <hr class="divider" />
 
     <h2 class="panel__heading">Block Selection (read-only)</h2>
@@ -1143,7 +1136,7 @@
 
     <h2 class="panel__heading">Stage Editor</h2>
     <div id="pipeline-stage-editor" class="artifact-reference">
-      Session + World, Policy Bundle, Species Canon Inputs, and Axis Input controls are active. Downstream stages remain locked until later phases.
+      Session + World, Policy Bundle, Species Canon Inputs, and Condition Axis Input controls are active. Downstream stages remain locked until later phases.
     </div>
     <hr class="divider" />
 
@@ -1225,7 +1218,7 @@
   </section>
 </div>
 
-<!-- Pipeline Build: Axis Input info modal -->
+<!-- Pipeline Build: Condition Axis Input info modal -->
 <div
   id="pipeline-axis-input-modal"
   class="modal hidden"
@@ -1236,12 +1229,12 @@
   <div id="pipeline-axis-input-modal-backdrop" class="modal__backdrop"></div>
   <section class="modal__card">
     <div class="modal__header">
-      <h3 id="pipeline-axis-input-modal-title" class="panel__heading">Axis Input Stage</h3>
+      <h3 id="pipeline-axis-input-modal-title" class="panel__heading">Condition Axis Input Stage</h3>
       <button id="pipeline-axis-input-modal-close-x" class="btn btn--secondary btn--sm" type="button">Close</button>
     </div>
     <p>
-      Axis Input is the runtime payload stage that turns deterministic axis values into canonical compile inputs.
-      It supports preset load, manual score edits, and raw JSON mode with schema validation.
+      Condition Axis Input is the runtime payload stage that turns deterministic condition-axis values into canonical compile inputs.
+      In production canonical mode this stage uses server-generated payloads only.
     </p>
     <p>
       Stage gate:
@@ -1250,6 +1243,8 @@
     </p>
     <p>
       Canonical endpoints used from this stage onward:
+      <br />
+      <code>POST /api/mud/pipeline-build/generate-condition-axis</code>
       <br />
       <code>POST /api/mud/pipeline-build/resolve-image-selection</code>
       <br />

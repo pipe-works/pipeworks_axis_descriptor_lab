@@ -87,6 +87,7 @@ MODULE_MANIFEST: dict[str, dict] = {
             "fetchMudImagePolicyBundle",
             "fetchPipelineBuildBootstrap",
             "resolvePipelineImageSelection",
+            "generatePipelineConditionAxis",
             "fetchLocalAxisPayloads",
             "fetchLocalAxisPayload",
             "relabelAxisPayload",
@@ -106,7 +107,6 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-pipeline-build-state.js",
             "mod-pipeline-build-api.js",
             "mod-pipeline-build-hash.js",
-            "mod-source-paths.js",
         ],
     },
     "mod-loaders.js": {
@@ -464,20 +464,33 @@ class TestPipelineBuildContracts:
         assert "password|token|secret|authorization" in content
         assert "message: safeMessage" in content
 
-    def test_axis_source_hint_is_rendered_from_axis_payload_metadata(self) -> None:
-        """Axis preset selector must surface local source-path metadata hints."""
+    def test_axis_source_hint_is_rendered_for_canonical_stage4_generation(self) -> None:
+        """Stage 4 should surface canonical condition-axis API source hints."""
         content = _read_module("mod-pipeline-build.js")
-        assert "renderSourceHint(" in content
-        assert "dom.pipelineAxisPresetSourceHint" in content
-        assert '"axis_payload"' in content
+        assert "dom.pipelineAxisSourceHint" in content
+        assert "Condition Axis API: /api/mud/pipeline-build/generate-condition-axis" in content
 
-    def test_axis_json_schema_validation_path_exists(self) -> None:
-        """Raw axis JSON mode should validate schema beyond JSON parse."""
+    def test_generated_axis_payload_schema_validation_path_exists(self) -> None:
+        """Generated condition-axis payloads should be schema-validated before stage advance."""
         content = _read_module("mod-pipeline-build.js")
         assert "function validateAxisPayloadSchema(payload)" in content
-        assert "Axis JSON schema error" in content
+        assert "Canonical condition axis payload schema error" in content
         assert "payload.axes" in content
         assert "label must be a non-empty string" in content
+
+    def test_canonical_condition_axis_generation_is_wired(self) -> None:
+        """Stage 4 should call canonical generation endpoint with seed controls."""
+        content = _read_module("mod-pipeline-build.js")
+        api_content = _read_module("mod-pipeline-build-api.js")
+
+        assert "function buildConditionAxisGenerationRequest()" in content
+        assert 'pipelineBuildState.axis.seedMode === "fixed"' in content
+        assert "async function handleGenerateConditionAxis()" in content
+        assert "const payload = await generatePipelineConditionAxis(requestBody);" in content
+        assert 'dom.pipelineAxisGenerate?.addEventListener("click", () => {' in content
+
+        assert "export async function generatePipelineConditionAxis(body)" in api_content
+        assert '"/api/mud/pipeline-build/generate-condition-axis"' in api_content
 
     def test_stage_progression_can_mark_downstream_stages_complete(self) -> None:
         """Resolve/compile results should promote downstream stage statuses."""
@@ -644,15 +657,15 @@ class TestPipelineBuildContracts:
         assert "mud session expired. Please reconnect." in content
 
     def test_source_hints_present_for_world_policy_axis_and_species_inputs(self) -> None:
-        """Pipeline UI should surface source hints for world, policy bundle, axis presets, and species."""
+        """Pipeline UI should surface source hints for world, policy bundle, axis generation, and species."""
         template = _read_template()
         content = _read_module("mod-pipeline-build.js")
 
         assert 'id="pipeline-world-source-hint"' in template
         assert 'id="pipeline-policy-source-hint"' in template
-        assert 'id="pipeline-axis-preset-source-hint"' in template
+        assert 'id="pipeline-axis-source-hint"' in template
         assert 'id="pipeline-species-source-hint"' in template
-        assert "dom.pipelineAxisPresetSourceHint" in content
+        assert "dom.pipelineAxisSourceHint" in content
         assert "dom.pipelineSpeciesSourceHint" in content
 
     def test_pipeline_api_error_parser_supports_code_and_stage_fields(self) -> None:

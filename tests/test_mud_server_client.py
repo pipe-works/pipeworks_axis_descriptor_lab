@@ -30,6 +30,7 @@ import app.mud_server_client as mud_client_module
 from app.mud_server_client import (
     MudServerClient,
     MudServerConnectionError,
+    MudServerFeatureUnavailableError,
     MudServerSessionExpiredError,
     get_mud_client,
     get_mud_mode_config,
@@ -465,6 +466,93 @@ class TestCompileImagePrompt:
                 gender="male",
                 axes={"wealth": {"label": "modest", "score": 0.3}},
             )
+
+
+class TestGenerateConditionAxisPayload:
+    """generate_condition_axis_payload forwards canonical axis generation requests."""
+
+    def test_generate_condition_axis_payload_posts_expected_body(
+        self, client: MudServerClient
+    ) -> None:
+        client._session_id = "abc-123"
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "axes": {"demeanor": {"label": "proud", "score": 0.81}},
+            "policy_hash": "policy_hash_value",
+            "seed": 42,
+            "world_id": "pipeworks_web",
+        }
+        mock_resp.raise_for_status = MagicMock()
+        client._client.post.return_value = mock_resp
+
+        result = client.generate_condition_axis_payload(world_id="pipeworks_web", seed=42)
+
+        assert result["world_id"] == "pipeworks_web"
+        call_args = client._client.post.call_args
+        assert call_args[0][0].endswith("/api/lab/generate-condition-axis")
+        body = call_args[1]["json"]
+        assert body["session_id"] == "abc-123"
+        assert body["world_id"] == "pipeworks_web"
+        assert body["seed"] == 42
+
+    def test_generate_condition_axis_payload_falls_back_on_404(
+        self, client: MudServerClient
+    ) -> None:
+        client._session_id = "abc-123"
+
+        not_found_response = MagicMock()
+        not_found_response.status_code = 404
+        not_found_response.text = "not found"
+        not_found_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Not Found",
+            request=MagicMock(),
+            response=not_found_response,
+        )
+        not_found_response.json.return_value = {"detail": "not found"}
+
+        ok_response = MagicMock()
+        ok_response.status_code = 200
+        ok_response.raise_for_status = MagicMock()
+        ok_response.json.return_value = {
+            "axes": {"demeanor": {"label": "proud", "score": 0.81}},
+            "policy_hash": "policy_hash_value",
+            "seed": 17,
+            "world_id": "pipeworks_web",
+        }
+
+        client._client.post.side_effect = [not_found_response, ok_response]
+
+        result = client.generate_condition_axis_payload(world_id="pipeworks_web", seed=None)
+
+        assert result["seed"] == 17
+        first_call = client._client.post.call_args_list[0]
+        second_call = client._client.post.call_args_list[1]
+        assert first_call[0][0].endswith("/api/lab/generate-condition-axis")
+        assert second_call[0][0].endswith("/api/lab/generate-axis-payload")
+
+    def test_generate_condition_axis_payload_not_authenticated_raises(
+        self, client: MudServerClient
+    ) -> None:
+        with pytest.raises(MudServerSessionExpiredError):
+            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=None)
+
+    def test_generate_condition_axis_payload_both_candidates_404_raises_unavailable(
+        self, client: MudServerClient
+    ) -> None:
+        client._session_id = "abc-123"
+
+        resp_a = MagicMock()
+        resp_a.status_code = 404
+        resp_a.text = "Not Found"
+        resp_b = MagicMock()
+        resp_b.status_code = 404
+        resp_b.text = "Not Found"
+        client._client.post.side_effect = [resp_a, resp_b]
+
+        with pytest.raises(MudServerFeatureUnavailableError, match="does not expose"):
+            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=7)
 
 
 # ---------------------------------------------------------------------------

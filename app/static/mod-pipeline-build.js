@@ -6,7 +6,7 @@
  * Phase D scope
  * ─────────────
  * Implements Stage 1 (Session + World), Stage 2 (Policy Bundle), Stage 3
- * (Species Canon Inputs), Stage 4 (Axis Input), and Stage 8 compile execution
+ * (Species Canon Inputs), Stage 4 (Condition Axis Input), and Stage 8 compile execution
  * against the canonical mud-server compile endpoint.
  */
 
@@ -21,23 +21,20 @@ import {
 import {
   PipelineApiError,
   compileImagePrompt,
-  fetchLocalAxisPayload,
-  fetchLocalAxisPayloads,
   fetchPipelineBuildBootstrap,
   fetchMudSession,
   fetchMudWorlds,
-  relabelAxisPayload,
+  generatePipelineConditionAxis,
   resolvePipelineImageSelection,
   selectMudWorld,
 } from "./mod-pipeline-build-api.js";
 import { hashNormalizedPayload } from "./mod-pipeline-build-hash.js";
-import { renderSourceHint } from "./mod-source-paths.js";
 
 const STAGE_LABEL = {
   session_world: "Session + World",
   policy_bundle: "Policy Bundle",
   identity: "Species Canon Inputs",
-  axis_input: "Axis Input",
+  axis_input: "Condition Axis Input",
   block_selection: "Block Selection",
   descriptor_tone: "Descriptor + Tone",
   composition_hashes: "Composition + Hashes",
@@ -163,11 +160,6 @@ function validateAxisPayloadSchema(payload) {
   }
 
   return errors;
-}
-
-function quantizeScore(value) {
-  const clamped = Math.min(1, Math.max(0, Number(value)));
-  return Math.round(clamped * 100) / 100;
 }
 
 function parseCsvList(raw) {
@@ -422,7 +414,7 @@ function focusStageControl(stageKey) {
       return dom.pipelinePolicyRefresh;
     },
     identity: () => dom.pipelineGenderSelect,
-    axis_input: () => dom.pipelineAxisSourceMode,
+    axis_input: () => dom.pipelineAxisGenerate,
     block_selection: () => dom.pipelineBlockSelectionSummary,
     descriptor_tone: () => dom.pipelineDescriptorToneSummary,
     composition_hashes: () => dom.pipelineCompositionPreview,
@@ -919,125 +911,40 @@ function renderIdentityControls() {
   }
 }
 
-function renderAxisPresetSelect() {
-  if (!dom.pipelineAxisPresetSelect) return;
-
-  const selected = pipelineBuildState.axis.selectedPresetName || "";
-  const presets = Array.isArray(pipelineBuildState.axis.presets)
-    ? pipelineBuildState.axis.presets
-    : [];
-
-  dom.pipelineAxisPresetSelect.innerHTML = '<option value="">— select axis preset —</option>';
-  for (const row of presets) {
-    const option = document.createElement("option");
-    option.value = row.name;
-    option.textContent = row.name;
-    dom.pipelineAxisPresetSelect.appendChild(option);
-  }
-  dom.pipelineAxisPresetSelect.value = selected;
-
+function renderAxisControls() {
   const axisLocked = pipelineBuildState.stageStatus.axis_input === PIPELINE_STAGE_STATUS.LOCKED;
-  dom.pipelineAxisPresetSelect.disabled = axisLocked || pipelineBuildState.busy;
-  if (dom.pipelineAxisLoadPreset) {
-    dom.pipelineAxisLoadPreset.disabled = axisLocked || pipelineBuildState.busy;
+  const axisBusy = axisLocked || pipelineBuildState.busy;
+
+  if (dom.pipelineAxisSeedMode) {
+    dom.pipelineAxisSeedMode.value = pipelineBuildState.axis.seedMode;
+    dom.pipelineAxisSeedMode.disabled = axisBusy;
   }
 
-  renderSourceHint(
-    dom.pipelineAxisPresetSourceHint,
-    pipelineBuildState.axis.selectedPresetMeta,
-    "axis_payload",
-    "",
-    "Source: select an axis preset to view path."
-  );
-}
-
-function renderAxisJsonEditor() {
-  if (!dom.pipelineAxisJson) return;
-
-  const payload = pipelineBuildState.axis.payload;
-  dom.pipelineAxisJson.value = payload ? JSON.stringify(payload, null, 2) : "";
-
-  const axisLocked = pipelineBuildState.stageStatus.axis_input === PIPELINE_STAGE_STATUS.LOCKED;
-  dom.pipelineAxisJson.disabled = axisLocked || pipelineBuildState.busy;
-  if (dom.pipelineAxisRelabel) {
-    dom.pipelineAxisRelabel.disabled =
-      axisLocked || pipelineBuildState.busy || !isAxisPayloadValid(payload);
+  const fixedMode = pipelineBuildState.axis.seedMode === "fixed";
+  if (dom.pipelineAxisFixedSeed) {
+    dom.pipelineAxisFixedSeed.value = String(pipelineBuildState.axis.fixedSeed);
+    dom.pipelineAxisFixedSeed.disabled = axisBusy || !fixedMode;
   }
-}
 
-function renderAxisManualPanel() {
-  if (!dom.pipelineAxisManualPanel) return;
+  if (dom.pipelineAxisGenerate) {
+    dom.pipelineAxisGenerate.disabled = axisBusy || !isIdentityValid();
+  }
 
-  const payload = pipelineBuildState.axis.payload;
-  const axisLocked = pipelineBuildState.stageStatus.axis_input === PIPELINE_STAGE_STATUS.LOCKED;
-  const manualMode = pipelineBuildState.axis.sourceMode === "manual";
+  if (dom.pipelineAxisSourceHint) {
+    const server = pipelineBuildState.session.serverUrl || "(no server)";
+    dom.pipelineAxisSourceHint.textContent =
+      [
+        `Source: mud server canonical @ ${server}`,
+        "Condition Axis API: /api/mud/pipeline-build/generate-condition-axis",
+      ].join("\n");
+  }
 
-  if (!payload?.axes || Object.keys(payload.axes).length === 0) {
-    dom.pipelineAxisManualPanel.innerHTML =
-      '<p class="placeholder-text">Load a preset or paste JSON to edit axis scores manually.</p>';
+  if (!dom.pipelineAxisOutput) return;
+  if (!pipelineBuildState.axis.payload) {
+    dom.pipelineAxisOutput.textContent = "Generate condition axis payload to continue.";
     return;
   }
-
-  const rows = [];
-  for (const [axisName, axisValue] of Object.entries(payload.axes)) {
-    const row = document.createElement("div");
-    row.className = "axis-row";
-
-    const name = document.createElement("div");
-    name.className = "axis-name";
-    name.textContent = axisName;
-
-    const range = document.createElement("input");
-    range.type = "range";
-    range.min = "0";
-    range.max = "1";
-    range.step = "0.01";
-    range.value = String(quantizeScore(axisValue.score));
-    range.disabled = !manualMode || axisLocked || pipelineBuildState.busy;
-
-    const box = document.createElement("input");
-    box.type = "number";
-    box.className = "input input--sm";
-    box.min = "0";
-    box.max = "1";
-    box.step = "0.01";
-    box.value = String(quantizeScore(axisValue.score));
-    box.disabled = !manualMode || axisLocked || pipelineBuildState.busy;
-
-    range.addEventListener("input", async () => {
-      const score = quantizeScore(range.value);
-      box.value = String(score);
-      payload.axes[axisName].score = score;
-      await updateAxisStateFromPayload(payload, { syncAxisJsonEditor: true });
-    });
-
-    box.addEventListener("change", async () => {
-      const score = quantizeScore(box.value);
-      range.value = String(score);
-      box.value = String(score);
-      payload.axes[axisName].score = score;
-      await updateAxisStateFromPayload(payload, { syncAxisJsonEditor: true });
-    });
-
-    row.appendChild(name);
-    row.appendChild(range);
-    row.appendChild(box);
-    rows.push(row);
-  }
-
-  dom.pipelineAxisManualPanel.innerHTML = "";
-  for (const row of rows) dom.pipelineAxisManualPanel.appendChild(row);
-}
-
-function renderAxisControls() {
-  if (dom.pipelineAxisSourceMode) {
-    dom.pipelineAxisSourceMode.value = pipelineBuildState.axis.sourceMode;
-    dom.pipelineAxisSourceMode.disabled =
-      pipelineBuildState.stageStatus.axis_input === PIPELINE_STAGE_STATUS.LOCKED;
-  }
-
-  renderAxisPresetSelect();
-  renderAxisManualPanel();
+  dom.pipelineAxisOutput.textContent = JSON.stringify(pipelineBuildState.axis.payload, null, 2);
 }
 
 function renderRuntimeControls() {
@@ -1270,13 +1177,13 @@ function renderStageEditorHint() {
 
   if (identityStatus !== PIPELINE_STAGE_STATUS.COMPLETE) {
     dom.pipelineStageEditor.textContent =
-      "Set gender and species to unlock Axis Input.";
+      "Set gender and species to unlock Condition Axis Input.";
     return;
   }
 
   if (axisStatus !== PIPELINE_STAGE_STATUS.COMPLETE) {
     dom.pipelineStageEditor.textContent =
-      "Load axis preset, edit manually, or paste valid axis JSON to unlock compile.";
+      "Generate canonical condition axis payload to unlock compile.";
     return;
   }
 
@@ -1299,9 +1206,6 @@ function renderPipelinePanels({ syncAxisJsonEditor = false } = {}) {
   renderPolicyBundleSummary();
   renderIdentityControls();
   renderAxisControls();
-  if (syncAxisJsonEditor) {
-    renderAxisJsonEditor();
-  }
   renderBlockSelectionSummary();
   renderDescriptorToneSummary();
   renderRuntimeControls();
@@ -1462,6 +1366,11 @@ async function loadPolicyBundleForWorld(worldId, { quiet = false } = {}) {
 async function applyWorldSelection(worldId, { quiet = false } = {}) {
   pipelineBuildState.compile.result = null;
   clearResolvePreview();
+  const previousWorldId = pipelineBuildState.selectedWorldId;
+  const worldChanged = String(previousWorldId || "") !== String(worldId || "");
+  if (worldChanged) {
+    pipelineBuildState.axis.payload = null;
+  }
 
   if (!worldId) {
     pipelineBuildState.selectedWorldId = null;
@@ -1589,26 +1498,6 @@ async function refreshSessionAndWorlds({ quiet = false } = {}) {
   }
 }
 
-async function refreshAxisPresetList() {
-  try {
-    const payload = await fetchLocalAxisPayloads();
-    const presets = Array.isArray(payload.payloads) ? payload.payloads : [];
-    pipelineBuildState.axis.presets = presets;
-
-    if (!pipelineBuildState.axis.selectedPresetName && presets[0]) {
-      pipelineBuildState.axis.selectedPresetName = presets[0].name;
-      pipelineBuildState.axis.selectedPresetMeta = presets[0];
-    }
-    renderAxisPresetSelect();
-    appendActionLog(`Loaded ${presets.length} local axis presets.`);
-  } catch (err) {
-    pipelineBuildState.lastError = err.message || String(err);
-    renderPipelinePanels({ syncAxisJsonEditor: false });
-    setStatus(`Pipeline Build — failed to load axis presets: ${pipelineBuildState.lastError}`);
-    appendActionLog(`Axis preset list load failed: ${pipelineBuildState.lastError}`, "error");
-  }
-}
-
 async function updateAxisStateFromPayload(payload, { syncAxisJsonEditor = false } = {}) {
   pipelineBuildState.compile.result = null;
   clearResolvePreview();
@@ -1619,34 +1508,37 @@ async function updateAxisStateFromPayload(payload, { syncAxisJsonEditor = false 
   renderPipelinePanels({ syncAxisJsonEditor });
 }
 
-async function loadAxisPresetByName(name) {
-  if (!name) {
-    setStatus("Pipeline Build — choose an axis preset first.");
-    return;
+function normaliseFixedSeed(rawValue) {
+  const parsed = parseInt(String(rawValue || "").trim(), 10);
+  if (!Number.isInteger(parsed)) {
+    return 42;
   }
+  return parsed;
+}
 
-  try {
-    const doc = await fetchLocalAxisPayload(name);
-    const parsed = JSON.parse(doc.content);
+function buildConditionAxisGenerationRequest() {
+  if (!pipelineBuildState.selectedWorldId) return null;
+  return {
+    world_id: pipelineBuildState.selectedWorldId,
+    seed: pipelineBuildState.axis.seedMode === "fixed" ? pipelineBuildState.axis.fixedSeed : null,
+  };
+}
 
-    pipelineBuildState.axis.selectedPresetName = name;
-    pipelineBuildState.axis.selectedPresetMeta =
-      pipelineBuildState.axis.presets.find((row) => row.name === name) || doc;
+function handleAxisSeedModeChange() {
+  const nextMode = String(dom.pipelineAxisSeedMode?.value || "random");
+  pipelineBuildState.axis.seedMode = nextMode === "fixed" ? "fixed" : "random";
+  renderAxisControls();
+}
 
-    await updateAxisStateFromPayload(parsed, { syncAxisJsonEditor: true });
-    setStatus(`Pipeline Build — axis preset '${name}' loaded.`);
-    appendActionLog(`Axis preset '${name}' loaded.`);
-  } catch (err) {
-    pipelineBuildState.lastError = err.message || String(err);
-    renderPipelinePanels({ syncAxisJsonEditor: false });
-    setStatus(`Pipeline Build — failed to load axis preset: ${pipelineBuildState.lastError}`);
-    appendActionLog(`Axis preset '${name}' failed to load: ${pipelineBuildState.lastError}`, "error");
-  }
+function handleAxisFixedSeedInput() {
+  pipelineBuildState.axis.fixedSeed = normaliseFixedSeed(dom.pipelineAxisFixedSeed?.value);
+  renderAxisControls();
 }
 
 async function handleIdentityChange() {
   pipelineBuildState.compile.result = null;
   clearResolvePreview();
+  pipelineBuildState.axis.payload = null;
   pipelineBuildState.identity.species = String(dom.pipelineSpeciesInput?.value || "").trim();
   pipelineBuildState.identity.gender = String(dom.pipelineGenderSelect?.value || "male");
   applyStageProgression();
@@ -1655,85 +1547,80 @@ async function handleIdentityChange() {
   renderPipelinePanels({ syncAxisJsonEditor: false });
 }
 
-async function handleAxisJsonInput() {
-  if (!dom.pipelineAxisJson) return;
-
-  const raw = dom.pipelineAxisJson.value;
-  if (!raw.trim()) {
-    pipelineBuildState.compile.result = null;
-    clearResolvePreview();
-    pipelineBuildState.axis.payload = null;
-    applyStageProgression();
-    await recomputeHashes();
-    await refreshResolvePreview({ quiet: true });
-    renderBuildSummary();
-    renderStageStatuses();
-    renderStageEditorHint();
-    renderCompilePanels();
+async function handleGenerateConditionAxis() {
+  const requestBody = buildConditionAxisGenerationRequest();
+  if (!requestBody) {
+    setStatus("Pipeline Build — select a world before generating condition axis.");
+    return;
+  }
+  if (!isIdentityValid()) {
+    setStatus("Pipeline Build — set species and gender before generating condition axis.");
     return;
   }
 
+  // TODO(pipeline-phase-next): Add equivalent canonical generation UX for
+  // offline/development paths after production contract hardening is complete.
+  pipelineBuildState.busy = true;
+  appendActionLog(
+    requestBody.seed === null
+      ? "Generating canonical condition axis (random seed)."
+      : `Generating canonical condition axis (seed=${requestBody.seed}).`
+  );
+  renderPipelinePanels({ syncAxisJsonEditor: false });
+
   try {
-    const parsed = JSON.parse(raw);
-    const schemaErrors = validateAxisPayloadSchema(parsed);
+    const payload = await generatePipelineConditionAxis(requestBody);
+    const schemaErrors = validateAxisPayloadSchema(payload);
     if (schemaErrors.length > 0) {
-      pipelineBuildState.compile.result = null;
-      clearResolvePreview();
-      pipelineBuildState.axis.payload = null;
-      applyStageProgression();
-      setStageStatus("axis_input", PIPELINE_STAGE_STATUS.ERROR);
-      lockAfterAxis();
-      await recomputeHashes();
-      await refreshResolvePreview({ quiet: true });
-      pipelineBuildState.lastError = `Axis JSON schema error: ${schemaErrors[0]}`;
-      renderBuildSummary();
-      renderStageStatuses();
-      renderStageEditorHint();
-      renderCompilePanels();
-      setStatus(`Pipeline Build — ${pipelineBuildState.lastError}`);
-      return;
+      throw new Error(`Canonical condition axis payload schema error: ${schemaErrors[0]}`);
     }
+
     pipelineBuildState.lastError = null;
-    await updateAxisStateFromPayload(parsed, { syncAxisJsonEditor: false });
-  } catch {
-    pipelineBuildState.compile.result = null;
-    clearResolvePreview();
-    pipelineBuildState.axis.payload = null;
-    applyStageProgression();
-    setStageStatus("axis_input", PIPELINE_STAGE_STATUS.ERROR);
-    lockAfterAxis();
-    await recomputeHashes();
-    await refreshResolvePreview({ quiet: true });
-    pipelineBuildState.lastError = "Axis JSON parse error.";
-    renderBuildSummary();
-    renderStageStatuses();
-    renderStageEditorHint();
-    renderCompilePanels();
-    setStatus("Pipeline Build — Axis JSON parse error.");
-  }
-}
-
-async function handleAxisRelabel() {
-  const payload = pipelineBuildState.axis.payload;
-  if (!isAxisPayloadValid(payload)) {
-    setStatus("Pipeline Build — load or enter a valid axis payload first.");
-    return;
-  }
-
-  try {
-    const relabeled = await relabelAxisPayload(payload);
-    await updateAxisStateFromPayload(relabeled, { syncAxisJsonEditor: true });
-    setStatus("Pipeline Build — axis labels recomputed.");
-    appendActionLog("Axis labels recomputed via /api/relabel.");
+    await updateAxisStateFromPayload(payload, { syncAxisJsonEditor: false });
+    setStatus("Pipeline Build — canonical condition axis generated.");
+    appendActionLog("Canonical condition axis generated.");
   } catch (err) {
     const detail =
       err instanceof PipelineApiError
         ? err.detail || err.message
         : err?.message || String(err);
+
+    if (err instanceof PipelineApiError && err.status === 401) {
+      applyUnauthenticatedState(detail);
+      setStatus("Pipeline Build — mud session expired. Please reconnect.");
+      appendActionLog("Condition axis generation failed: mud session expired.", "warn");
+      return;
+    }
+    if (err instanceof PipelineApiError && err.code === "PIPELINE_UPSTREAM_UNSUPPORTED") {
+      pipelineBuildState.compile.result = null;
+      clearResolvePreview();
+      pipelineBuildState.axis.payload = null;
+      setStageStatus("axis_input", PIPELINE_STAGE_STATUS.ERROR);
+      lockAfterAxis();
+      await recomputeHashes();
+      pipelineBuildState.lastError = detail;
+      renderPipelinePanels({ syncAxisJsonEditor: false });
+      setStatus(
+        "Pipeline Build — production server does not yet expose canonical condition-axis generation."
+      );
+      appendActionLog(`Condition axis generation unsupported: ${detail}`, "warn");
+      return;
+    }
+
+    pipelineBuildState.compile.result = null;
+    clearResolvePreview();
+    pipelineBuildState.axis.payload = null;
+    applyStageErrorFromPipelineApi(err);
+    setStageStatus("axis_input", PIPELINE_STAGE_STATUS.ERROR);
+    lockAfterAxis();
+    await recomputeHashes();
     pipelineBuildState.lastError = detail;
     renderPipelinePanels({ syncAxisJsonEditor: false });
-    setStatus(`Pipeline Build — axis relabel failed: ${detail}`);
-    appendActionLog(`Axis relabel failed: ${detail}`, "error");
+    setStatus(`Pipeline Build — condition axis generation failed: ${detail}`);
+    appendActionLog(`Condition axis generation failed: ${detail}`, "error");
+  } finally {
+    pipelineBuildState.busy = false;
+    renderPipelinePanels({ syncAxisJsonEditor: false });
   }
 }
 
@@ -1868,7 +1755,6 @@ export async function initPipelineBuild() {
   resetPipelineBuildState();
   appendActionLog("Pipeline Build initialized.");
   renderPipelinePanels({ syncAxisJsonEditor: true });
-  await refreshAxisPresetList();
   await refreshSessionAndWorlds({ quiet: true });
 }
 
@@ -1942,29 +1828,14 @@ export function wirePipelineBuildEvents() {
     handleIdentityChange();
   });
 
-  dom.pipelineAxisSourceMode?.addEventListener("change", () => {
-    pipelineBuildState.axis.sourceMode = dom.pipelineAxisSourceMode.value;
-    renderAxisControls();
+  dom.pipelineAxisSeedMode?.addEventListener("change", () => {
+    handleAxisSeedModeChange();
   });
-
-  dom.pipelineAxisPresetSelect?.addEventListener("change", () => {
-    const selected = dom.pipelineAxisPresetSelect.value;
-    pipelineBuildState.axis.selectedPresetName = selected || null;
-    pipelineBuildState.axis.selectedPresetMeta =
-      pipelineBuildState.axis.presets.find((row) => row.name === selected) || null;
-    renderAxisControls();
+  dom.pipelineAxisFixedSeed?.addEventListener("input", () => {
+    handleAxisFixedSeedInput();
   });
-
-  dom.pipelineAxisLoadPreset?.addEventListener("click", () => {
-    loadAxisPresetByName(dom.pipelineAxisPresetSelect?.value || "");
-  });
-
-  dom.pipelineAxisJson?.addEventListener("input", () => {
-    handleAxisJsonInput();
-  });
-
-  dom.pipelineAxisRelabel?.addEventListener("click", () => {
-    handleAxisRelabel();
+  dom.pipelineAxisGenerate?.addEventListener("click", () => {
+    handleGenerateConditionAxis();
   });
 
   dom.pipelineWorldContextInput?.addEventListener("input", () => {

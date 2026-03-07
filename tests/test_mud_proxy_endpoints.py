@@ -25,7 +25,11 @@ from fastapi.testclient import TestClient
 
 import app.routes_mud as routes_mud
 from app.main import app
-from app.mud_server_client import MudServerConnectionError, MudServerSessionExpiredError
+from app.mud_server_client import (
+    MudServerConnectionError,
+    MudServerFeatureUnavailableError,
+    MudServerSessionExpiredError,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -1147,6 +1151,149 @@ class TestMudPipelineBuildResolveImageSelection:
         assert resp.status_code == 401
         data = resp.json()
         assert data["code"] == "PIPELINE_AUTH_REQUIRED"
+        assert data["stage"] == "session_world"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/mud/pipeline-build/generate-condition-axis
+# ---------------------------------------------------------------------------
+
+
+class TestMudPipelineBuildGenerateConditionAxis:
+    """Pipeline stage-4 canonical axis generation endpoint tests."""
+
+    def test_generate_condition_axis_success(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.generate_condition_axis_payload.return_value = {
+            "axes": {"demeanor": {"label": "proud", "score": 0.81}},
+            "policy_hash": "policy_hash_value",
+            "seed": 42,
+            "world_id": "pipeworks_web",
+        }
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": 42,
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["world_id"] == "pipeworks_web"
+        assert data["seed"] == 42
+        assert data["axes"]["demeanor"]["label"] == "proud"
+        mock.generate_condition_axis_payload.assert_called_once_with(
+            world_id="pipeworks_web",
+            seed=42,
+        )
+
+    def test_generate_condition_axis_auth_expired_returns_structured_401(
+        self, test_client: TestClient
+    ) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.generate_condition_axis_payload.side_effect = MudServerSessionExpiredError("expired")
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": None,
+                },
+            )
+
+        assert resp.status_code == 401
+        data = resp.json()
+        assert data["code"] == "PIPELINE_AUTH_REQUIRED"
+        assert data["stage"] == "session_world"
+
+    def test_generate_condition_axis_connection_error(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.generate_condition_axis_payload.side_effect = MudServerConnectionError("down")
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": None,
+                },
+            )
+
+        assert resp.status_code == 502
+        data = resp.json()
+        assert data["code"] == "PIPELINE_UPSTREAM_UNAVAILABLE"
+        assert data["stage"] == "axis_input"
+
+    def test_generate_condition_axis_upstream_http_error(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        response = MagicMock()
+        response.status_code = 409
+        response.json.return_value = {
+            "detail": "Condition-axis generation unavailable for this world."
+        }
+        response.text = "Condition-axis generation unavailable for this world."
+        mock.generate_condition_axis_payload.side_effect = httpx.HTTPStatusError(
+            "Conflict",
+            request=MagicMock(),
+            response=response,
+        )
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": 99,
+                },
+            )
+
+        assert resp.status_code == 409
+        data = resp.json()
+        assert data["code"] == "PIPELINE_UPSTREAM_HTTP_ERROR"
+        assert data["stage"] == "axis_input"
+        assert "Condition-axis generation unavailable" in data["detail"]
+
+    def test_generate_condition_axis_unsupported_by_upstream_returns_501(
+        self, test_client: TestClient
+    ) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.generate_condition_axis_payload.side_effect = MudServerFeatureUnavailableError(
+            "Mud server does not expose condition-axis generation endpoints "
+            "(/api/lab/generate-condition-axis, /api/lab/generate-axis-payload)."
+        )
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": None,
+                },
+            )
+
+        assert resp.status_code == 501
+        data = resp.json()
+        assert data["code"] == "PIPELINE_UPSTREAM_UNSUPPORTED"
+        assert data["stage"] == "axis_input"
+        assert "does not expose canonical condition-axis generation" in data["detail"]
+
+    def test_generate_condition_axis_standalone_503(self, test_client: TestClient) -> None:
+        with patch("app.routes_mud.get_mud_client", return_value=None):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": None,
+                },
+            )
+
+        assert resp.status_code == 503
+        data = resp.json()
+        assert data["code"] == "PIPELINE_MODE_UNAVAILABLE"
         assert data["stage"] == "session_world"
 
 
