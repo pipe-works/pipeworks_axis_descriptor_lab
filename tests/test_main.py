@@ -73,7 +73,6 @@ class TestIndexRoute:
         assert 'id="page-chat-translation"' in resp.text
         assert 'id="chat-mode-select"' in resp.text
         assert 'id="chat-login-panel"' in resp.text
-        assert 'id="chat-world-select"' in resp.text
         assert 'id="chat-a-json"' in resp.text
         assert 'id="chat-b-json"' in resp.text
         assert 'id="chat-system-prompt"' in resp.text
@@ -90,6 +89,8 @@ class TestIndexRoute:
         assert 'id="pipeline-stage-list"' in resp.text
         assert 'id="pipeline-world-select"' in resp.text
         assert 'id="pipeline-world-source-hint"' in resp.text
+        assert 'id="pipeline-axis-input-info-trigger"' in resp.text
+        assert 'id="pipeline-axis-input-modal"' in resp.text
         assert 'id="pipeline-policy-summary"' in resp.text
         assert 'id="pipeline-policy-source-hint"' in resp.text
         assert 'id="pipeline-axis-preset-source-hint"' in resp.text

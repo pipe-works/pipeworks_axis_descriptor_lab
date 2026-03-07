@@ -450,7 +450,11 @@ function renderSessionHeader() {
   if (dom.pipelineWorldSourceHint) {
     const server = pipelineBuildState.session.serverUrl || "(no server)";
     dom.pipelineWorldSourceHint.textContent =
-      `Source: mud server canonical @ ${server} (/api/mud/worlds, /api/mud/world-config/{world_id}).`;
+      [
+        `Source: mud server canonical @ ${server}`,
+        "Worlds API: /api/mud/worlds",
+        "World Config API: /api/mud/world-config/{world_id}",
+      ].join("\n");
   }
   if (dom.pipelinePolicySourceHint) {
     const server = pipelineBuildState.session.serverUrl || "(no server)";
@@ -499,6 +503,16 @@ function renderSessionSummary() {
   }
 
   dom.pipelineSessionSummary.textContent = lines.join("\n");
+
+  if (dom.pipelineAxisInputInfoTrigger) {
+    const axisInputActive = pipelineBuildState.activeStage === "axis_input";
+    dom.pipelineAxisInputInfoTrigger.classList.toggle("hidden", !axisInputActive);
+  }
+}
+
+function setAxisInputInfoModalOpen(isOpen) {
+  if (!dom.pipelineAxisInputModal) return;
+  dom.pipelineAxisInputModal.classList.toggle("hidden", !isOpen);
 }
 
 function renderWorldConfig() {
@@ -1636,9 +1650,35 @@ export function wirePipelineBuildEvents() {
     exportCompileResponseJson();
   });
 
+  dom.pipelineAxisInputInfoTrigger?.addEventListener("click", () => {
+    setAxisInputInfoModalOpen(true);
+  });
+  dom.pipelineAxisInputModalBackdrop?.addEventListener("click", () => {
+    setAxisInputInfoModalOpen(false);
+  });
+  dom.pipelineAxisInputModalCloseX?.addEventListener("click", () => {
+    setAxisInputInfoModalOpen(false);
+  });
+  dom.pipelineAxisInputModalClose?.addEventListener("click", () => {
+    setAxisInputInfoModalOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    setAxisInputInfoModalOpen(false);
+  });
+
   document.addEventListener("pipeline-build-activated", () => {
     setStatus("Pipeline Build — active.");
     appendActionLog("Pipeline Build tab activated.");
+    refreshSessionAndWorlds({ quiet: true });
+  });
+
+  // Keep Session + World details in sync when the global mud mode changes.
+  document.addEventListener("mud-session-context-changed", () => {
+    if (dom.pagePipelineBuild?.classList.contains("hidden")) {
+      return;
+    }
+    appendActionLog("Mud mode context changed. Refreshing Session + World.");
     refreshSessionAndWorlds({ quiet: true });
   });
 }

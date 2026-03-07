@@ -136,6 +136,28 @@ function applySessionModeState(data) {
   syncDevelopmentUrlControls();
 }
 
+/**
+ * Broadcast mud session/mode context changes to cross-page consumers.
+ *
+ * Pipeline Build and other canonical flows rely on the shared mud-session
+ * shell, so they need a stable event whenever runtime mode context changes.
+ *
+ * @param {string} reason - Short machine-readable trigger reason.
+ * @returns {void}
+ */
+function dispatchMudSessionContextChanged(reason) {
+  document.dispatchEvent(
+    new CustomEvent("mud-session-context-changed", {
+      detail: {
+        reason,
+        mode_key: chatState.modeKey,
+        translation_mode: chatState.translationMode,
+        active_server_url: chatState.activeServerUrl,
+      },
+    })
+  );
+}
+
 function resetServerState({ dispatchCleared = true } = {}) {
   chatState.authenticated = false;
   chatState.worlds = [];
@@ -265,7 +287,7 @@ export async function setRuntimeMode(
   } else {
     hideLoginPanel();
     dom.chatBtnDisconnect.classList.add("hidden");
-    dom.chatWorldSelector.classList.add("hidden");
+    dom.chatWorldSelector?.classList.add("hidden");
     toggleServerControls(false);
   }
 
@@ -273,6 +295,8 @@ export async function setRuntimeMode(
     const label = chatState.availableModes.find((option) => option.key === chatState.modeKey)?.label;
     setStatus(`${label || "Chat mode"} selected.`);
   }
+
+  dispatchMudSessionContextChanged("runtime_mode_changed");
 }
 
 /**
@@ -309,7 +333,7 @@ function showLoginPanel(message = "") {
   }
   dom.chatLoginPanel.classList.remove("hidden");
   dom.chatBtnDisconnect.classList.add("hidden");
-  dom.chatWorldSelector.classList.add("hidden");
+  dom.chatWorldSelector?.classList.add("hidden");
   toggleServerControls(false);
   if (message) {
     dom.chatLoginError.textContent = message;
@@ -402,7 +426,7 @@ async function fetchWorlds() {
     const data = await res.json();
     chatState.worlds = data.worlds || [];
     populateWorldSelect();
-    dom.chatWorldSelector.classList.remove("hidden");
+    dom.chatWorldSelector?.classList.remove("hidden");
     return true;
   } catch (err) {
     setStatus(`Failed to fetch worlds: ${err.message}`);
@@ -412,6 +436,19 @@ async function fetchWorlds() {
 
 function populateWorldSelect() {
   const sel = dom.chatWorldSelect;
+  const enabled = chatState.worlds.filter(world => world.translation_enabled);
+  const target = chatState.worldId
+    || (enabled.length === 1 ? enabled[0].world_id : null)
+    || (chatState.worlds.length === 1 ? chatState.worlds[0].world_id : null);
+
+  if (!sel) {
+    if (target) {
+      chatState.worldId = target;
+      selectWorld(target);
+    }
+    return;
+  }
+
   sel.innerHTML = '<option value="">— select world —</option>';
   for (const world of chatState.worlds) {
     const opt = document.createElement("option");
@@ -419,17 +456,12 @@ function populateWorldSelect() {
     opt.textContent = world.name || world.world_id;
     sel.appendChild(opt);
   }
-  const enabled = chatState.worlds.filter(world => world.translation_enabled);
-  const target = chatState.worldId
-    || (enabled.length === 1 ? enabled[0].world_id : null)
-    || (chatState.worlds.length === 1 ? chatState.worlds[0].world_id : null);
 
-  if (target) {
-    sel.value = target;
-    if (sel.value === target) {
-      chatState.worldId = target;
-      selectWorld(target);
-    }
+  if (!target) return;
+  sel.value = target;
+  if (sel.value === target) {
+    chatState.worldId = target;
+    selectWorld(target);
   }
 }
 
@@ -667,6 +699,21 @@ export function getEffectiveSystemPrompt() {
   return dom.chatSystemPrompt.value.trim() || null;
 }
 
+function wireWorldSelectEvent() {
+  if (!dom.chatWorldSelect) return;
+  dom.chatWorldSelect.addEventListener("change", () => {
+    const worldId = dom.chatWorldSelect.value;
+    chatState.worldId = worldId || null;
+    selectWorld(worldId);
+  });
+}
+
+function hideSharedWorldSelector() {
+  if (dom.chatWorldSelector) {
+    dom.chatWorldSelector.classList.add("hidden");
+  }
+}
+
 /**
  * Wire all mud-server authentication, world-selection, and prompt-editor
  * events for the global Mud Server Session shell.
@@ -732,11 +779,7 @@ export function wireServerModeEvents() {
   });
 
   dom.chatBtnDisconnect.addEventListener("click", () => doLogout());
-  dom.chatWorldSelect.addEventListener("change", () => {
-    const worldId = dom.chatWorldSelect.value;
-    chatState.worldId = worldId || null;
-    selectWorld(worldId);
-  });
+  wireWorldSelectEvent();
 
   if (dom.chatServerPromptSelect) {
     dom.chatServerPromptSelect.addEventListener("change", () => {
@@ -761,7 +804,7 @@ export function wireServerModeEvents() {
     } else {
       hideLoginPanel();
       dom.chatBtnDisconnect.classList.add("hidden");
-      dom.chatWorldSelector.classList.add("hidden");
+      hideSharedWorldSelector();
       toggleServerControls(false);
     }
   });

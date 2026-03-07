@@ -577,6 +577,20 @@ class TestPipelineBuildContracts:
             in content
         )
 
+    def test_pipeline_refreshes_session_world_when_mud_mode_changes(self) -> None:
+        """Pipeline Build should refresh Session + World when global mud mode changes."""
+        content = _read_module("mod-pipeline-build.js")
+        assert 'document.addEventListener("mud-session-context-changed", () => {' in content
+        assert 'dom.pagePipelineBuild?.classList.contains("hidden")' in content
+        assert "refreshSessionAndWorlds({ quiet: true });" in content
+
+    def test_mode_switch_dispatches_mud_session_context_changed_event(self) -> None:
+        """Runtime mode switches should broadcast a context-change event."""
+        content = _read_module("mod-chat-server-mode.js")
+        assert "function dispatchMudSessionContextChanged(reason)" in content
+        assert 'new CustomEvent("mud-session-context-changed"' in content
+        assert 'dispatchMudSessionContextChanged("runtime_mode_changed");' in content
+
     def test_compile_request_contract_flow_is_wired(self) -> None:
         """Compile action should build request payload then post to compile endpoint."""
         content = _read_module("mod-pipeline-build.js")

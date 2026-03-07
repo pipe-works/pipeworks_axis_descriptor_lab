@@ -558,7 +558,7 @@ def _build_mode_options() -> tuple[MudRuntimeModeOption, ...]:
         options.append(
             MudRuntimeModeOption(
                 key="configured",
-                label="Configured server",
+                label="Production Server",
                 translation_mode=_classify_translation_mode(_ENV_MUD_SERVER_URL),
                 server_url=_ENV_MUD_SERVER_URL,
             )
@@ -568,9 +568,11 @@ def _build_mode_options() -> tuple[MudRuntimeModeOption, ...]:
 
 
 def _default_mode_key() -> str:
-    """Choose the startup mode key from the configured environment defaults."""
-    if _ENV_MUD_SERVER_URL:
-        return "configured" if _ENV_MUD_SERVER_URL != _RUNTIME_DEV_SERVER_URL else "development"
+    """Choose the startup mode key from environment defaults.
+
+    Startup defaults to standalone/local mode so the app does not immediately
+    prompt for mud-server authentication on first load.
+    """
     return "standalone"
 
 
