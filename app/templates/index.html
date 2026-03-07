@@ -1024,7 +1024,7 @@
     <ol id="pipeline-stage-list" class="artifact-reference">
       <li data-stage="session_world">Session + World <span class="badge badge--muted">ready</span></li>
       <li data-stage="policy_bundle">Policy Bundle <span class="badge badge--muted">locked</span></li>
-      <li data-stage="identity">Character Identity <span class="badge badge--muted">locked</span></li>
+      <li data-stage="identity">Species Canon Inputs <span class="badge badge--muted">locked</span></li>
       <li data-stage="axis_input">Axis Input <span class="badge badge--muted">locked</span></li>
       <li data-stage="block_selection">Block Selection <span class="badge badge--muted">locked</span></li>
       <li data-stage="descriptor_tone">Descriptor + Tone <span class="badge badge--muted">locked</span></li>
@@ -1067,20 +1067,28 @@
       <div id="pipeline-policy-source-hint" class="control-path-hint hidden">
         Source: mud server canonical (`/api/mud/world-image-policy-bundle/{world_id}`).
       </div>
-      <hr class="divider" />
     </details>
 
-    <h2 class="panel__heading">Character Identity</h2>
+    <h2 class="panel__heading">Species Canon Inputs</h2>
     <div class="control-row">
-      <label class="control-label" for="pipeline-species-input">Species</label>
-      <input id="pipeline-species-input" class="input" type="text" value="goblin" />
-    </div>
-    <div class="control-row" style="margin-top:0.5rem;">
       <label class="control-label" for="pipeline-gender-select">Gender</label>
       <select id="pipeline-gender-select" class="select">
         <option value="male" selected>male</option>
         <option value="female">female</option>
       </select>
+    </div>
+    <div class="control-row" style="margin-top:0.5rem;">
+      <label class="control-label" for="pipeline-species-input">Species</label>
+      <select
+        id="pipeline-species-input"
+        class="select"
+        data-tooltip="Canonical species options from runtime_options.species in the active world bootstrap payload."
+      >
+        <option value="" selected>(no canonical species options available)</option>
+      </select>
+    </div>
+    <div id="pipeline-species-source-hint" class="control-path-hint">
+      Source: canonical species options from runtime_options.species.
     </div>
     <hr class="divider" />
 
@@ -1135,7 +1143,7 @@
 
     <h2 class="panel__heading">Stage Editor</h2>
     <div id="pipeline-stage-editor" class="artifact-reference">
-      Session + World, Policy Bundle, Character Identity, and Axis Input controls are active. Downstream stages remain locked until later phases.
+      Session + World, Policy Bundle, Species Canon Inputs, and Axis Input controls are active. Downstream stages remain locked until later phases.
     </div>
     <hr class="divider" />
 

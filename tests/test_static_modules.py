@@ -643,15 +643,17 @@ class TestPipelineBuildContracts:
         assert "applyUnauthenticatedState(detail);" in content
         assert "mud session expired. Please reconnect." in content
 
-    def test_source_hints_present_for_world_policy_and_axis_selectors(self) -> None:
-        """Pipeline UI should surface source hints for world, policy bundle, and axis presets."""
+    def test_source_hints_present_for_world_policy_axis_and_species_inputs(self) -> None:
+        """Pipeline UI should surface source hints for world, policy bundle, axis presets, and species."""
         template = _read_template()
         content = _read_module("mod-pipeline-build.js")
 
         assert 'id="pipeline-world-source-hint"' in template
         assert 'id="pipeline-policy-source-hint"' in template
         assert 'id="pipeline-axis-preset-source-hint"' in template
+        assert 'id="pipeline-species-source-hint"' in template
         assert "dom.pipelineAxisPresetSourceHint" in content
+        assert "dom.pipelineSpeciesSourceHint" in content
 
     def test_pipeline_api_error_parser_supports_code_and_stage_fields(self) -> None:
         """Pipeline API helper should preserve structured error code/stage metadata."""

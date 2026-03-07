@@ -594,6 +594,80 @@ class TestMudPipelineBuildBootstrap:
         mock.world_config.assert_called_once_with("pipeworks_web")
         mock.world_image_policy_bundle.assert_called_once_with("pipeworks_web")
 
+    def test_pipeline_bootstrap_species_falls_back_to_local_registry(
+        self, test_client: TestClient, tmp_path
+    ) -> None:
+        """Bootstrap should derive species options from local policy registry when config omits them."""
+        mock = _mock_mud_client(authenticated=True)
+        mock.list_worlds.return_value = [
+            {
+                "world_id": "pipeworks_web",
+                "name": "Pipeworks Web",
+                "description": "Canonical web world.",
+                "translation_enabled": True,
+            }
+        ]
+        mock.world_config.return_value = {
+            "world_id": "pipeworks_web",
+            "name": "Pipeworks Web",
+            "image_generation": {
+                "runtime_options": {
+                    "gender": ["male", "female"],
+                }
+            },
+        }
+        mock.world_image_policy_bundle.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_schema": "pipeworks_policy_v1",
+            "policy_bundle_id": "pipeworks_web_default",
+            "policy_bundle_version": 1,
+            "policy_hash": "abc123",
+            "composition_order": [
+                "species_canon_block",
+                "clothing_block",
+                "descriptor_layer",
+                "tone_profile",
+            ],
+            "required_runtime_inputs": ["entity.identity.gender", "entity.species", "entity.axes"],
+            "missing_components": [],
+        }
+
+        world_root = tmp_path / "pipeworks_web" / "policies"
+        (world_root / "image" / "registries").mkdir(parents=True)
+        (world_root / "manifest.yaml").write_text(
+            "\n".join(
+                [
+                    "image:",
+                    "  registries:",
+                    "    species: policies/image/registries/species_registry.yaml",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (world_root / "image" / "registries" / "species_registry.yaml").write_text(
+            "\n".join(
+                [
+                    "entries:",
+                    "- id: goblin_pipeworks_v1",
+                    "  compatible_species: [goblin]",
+                    "- id: human_pipeworks_v1",
+                    "  compatible_species: [human]",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with (
+            patch("app.routes_mud.get_mud_client", return_value=mock),
+            patch("app.routes_mud.WORLD_ROOT", tmp_path),
+        ):
+            resp = test_client.get("/api/mud/pipeline-build/bootstrap/pipeworks_web")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["runtime_options"]["species"] == ["goblin", "human"]
+        assert data["runtime_options"]["gender"] == ["male", "female"]
+
     def test_pipeline_bootstrap_world_not_found(self, test_client: TestClient) -> None:
         mock = _mock_mud_client(authenticated=True)
         mock.list_worlds.return_value = [{"world_id": "other_world", "name": "Other"}]

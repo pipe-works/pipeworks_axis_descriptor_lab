@@ -11,13 +11,16 @@ HTTP responses for the frontend.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pipeworks_ipc import compute_payload_hash
 
+from app.config import WORLD_ROOT
 from app.mud_server_client import (
     MudServerConnectionError,
     MudServerSessionExpiredError,
@@ -116,8 +119,83 @@ def _nested_dict(parent: dict[str, Any], key: str) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _extract_runtime_options(world_config: dict[str, Any]) -> MudPipelineRuntimeOptions:
-    """Extract optional runtime option sets from world configuration metadata."""
+def _parse_inline_token_list(raw: str) -> list[str]:
+    """Parse a ``[a, b, c]`` token list to normalized unique strings."""
+
+    text = raw.strip()
+    if text.startswith("[") and text.endswith("]"):
+        text = text[1:-1]
+    tokens = [part.strip() for part in text.split(",")]
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for token in tokens:
+        value = token.strip().strip("'\"")
+        if value and value not in seen:
+            normalized.append(value)
+            seen.add(value)
+    return normalized
+
+
+def _extract_species_from_local_policy_registry(
+    world_id: str, world_root: Path = WORLD_ROOT
+) -> list[str]:
+    """Fallback species resolver from mirrored local policy files.
+
+    Resolution path:
+    1. ``<world>/policies/manifest.yaml`` -> ``image.registries.species``
+    2. species registry entries -> ``compatible_species`` values
+    """
+
+    world_policies_root = world_root / world_id / "policies"
+    manifest_path = world_policies_root / "manifest.yaml"
+    if not manifest_path.is_file():
+        return []
+
+    try:
+        manifest_text = manifest_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    registry_rel_path: str | None = None
+    for line in manifest_text.splitlines():
+        match = re.match(r"^\s*species:\s*(\S.*)$", line)
+        if not match:
+            continue
+        candidate = match.group(1).strip().strip("'\"")
+        if candidate.endswith(".yaml") or candidate.endswith(".yml"):
+            registry_rel_path = candidate
+            break
+    if not registry_rel_path:
+        return []
+
+    registry_path = world_root / world_id / registry_rel_path
+    if not registry_path.is_file():
+        return []
+
+    try:
+        registry_text = registry_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    species: list[str] = []
+    seen: set[str] = set()
+    for line in registry_text.splitlines():
+        match = re.match(r"^\s*compatible_species:\s*(\[.*\])\s*$", line)
+        if not match:
+            continue
+        for value in _parse_inline_token_list(match.group(1)):
+            if value and value not in seen:
+                species.append(value)
+                seen.add(value)
+    return species
+
+
+def _extract_runtime_options(
+    world_id: str,
+    world_config: dict[str, Any],
+) -> MudPipelineRuntimeOptions:
+    """Extract runtime option sets from world config with policy-registry fallback."""
 
     image_generation = _nested_dict(world_config, "image_generation")
     runtime_options = _nested_dict(image_generation, "runtime_options")
@@ -125,6 +203,8 @@ def _extract_runtime_options(world_config: dict[str, Any]) -> MudPipelineRuntime
         runtime_options = _nested_dict(world_config, "runtime_options")
 
     species = _as_string_list(runtime_options.get("species"))
+    if not species:
+        species = _extract_species_from_local_policy_registry(world_id)
     gender = _as_string_list(runtime_options.get("gender"))
     world_context_tags = _as_string_list(runtime_options.get("world_context_tags"))
     occupation_tags = _as_string_list(
@@ -344,7 +424,7 @@ def mud_pipeline_build_bootstrap(world_id: str) -> MudPipelineBootstrapResponse 
         world_config = client.world_config(world_id)
         bundle_payload = client.world_image_policy_bundle(world_id)
         policy_bundle = MudImagePolicyBundleResponse.model_validate(bundle_payload)
-        runtime_options = _extract_runtime_options(world_config)
+        runtime_options = _extract_runtime_options(world_id, world_config)
 
         world_summary = {
             "world_row": world_row,

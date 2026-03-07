@@ -105,7 +105,7 @@ export const pipelineBuildState = {
     occupationTags: [],
   },
   identity: {
-    species: "goblin",
+    species: "",
     gender: "male",
   },
   axis: {
@@ -159,7 +159,7 @@ export function resetPipelineBuildState() {
   pipelineBuildState.runtimeOptions.gender = ["male", "female"];
   pipelineBuildState.runtimeOptions.worldContextTags = [];
   pipelineBuildState.runtimeOptions.occupationTags = [];
-  pipelineBuildState.identity.species = "goblin";
+  pipelineBuildState.identity.species = "";
   pipelineBuildState.identity.gender = "male";
   pipelineBuildState.axis.sourceMode = "preset";
   pipelineBuildState.axis.presets = [];

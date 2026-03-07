@@ -296,6 +296,7 @@ export const dom = {
   pipelinePolicyBundlePath:  $("pipeline-policy-bundle-path"),
   pipelinePolicySummary:     $("pipeline-policy-summary"),
   pipelineSpeciesInput:      $("pipeline-species-input"),
+  pipelineSpeciesSourceHint: $("pipeline-species-source-hint"),
   pipelineGenderSelect:      $("pipeline-gender-select"),
   pipelineAxisSourceMode:    $("pipeline-axis-source-mode"),
   pipelineAxisPresetSelect:  $("pipeline-axis-preset-select"),
