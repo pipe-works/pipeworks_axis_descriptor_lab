@@ -85,6 +85,8 @@ MODULE_MANIFEST: dict[str, dict] = {
             "selectMudWorld",
             "fetchMudWorldConfig",
             "fetchMudImagePolicyBundle",
+            "fetchPipelineBuildBootstrap",
+            "resolvePipelineImageSelection",
             "fetchLocalAxisPayloads",
             "fetchLocalAxisPayload",
             "relabelAxisPayload",
@@ -472,14 +474,15 @@ class TestPipelineBuildContracts:
         assert "label must be a non-empty string" in content
 
     def test_stage_progression_can_mark_downstream_stages_complete(self) -> None:
-        """Compile result presence should promote downstream stage statuses."""
+        """Resolve/compile results should promote downstream stage statuses."""
         content = _read_module("mod-pipeline-build.js")
         assert "const hasCompileResult = Boolean(pipelineBuildState.compile.result);" in content
-        assert "const downstreamStatus = hasCompileResult" in content
-        assert 'setStageStatus("block_selection", downstreamStatus);' in content
-        assert 'setStageStatus("descriptor_tone", downstreamStatus);' in content
-        assert 'setStageStatus("composition_hashes", downstreamStatus);' in content
-        assert 'setStageStatus("compile_output", downstreamStatus);' in content
+        assert "const hasResolvePreview = Boolean(pipelineBuildState.resolve.result);" in content
+        assert "const previewStatus = hasCompileResult || hasResolvePreview" in content
+        assert 'setStageStatus("block_selection", previewStatus);' in content
+        assert 'setStageStatus("descriptor_tone", previewStatus);' in content
+        assert 'setStageStatus("composition_hashes", previewStatus);' in content
+        assert 'setStageStatus("compile_output",' in content
 
     def test_composition_preview_exposes_hash_contract(self) -> None:
         """Composition preview must include policy/axis/compiler hash fields."""
@@ -491,7 +494,8 @@ class TestPipelineBuildContracts:
             '`compiler_input_hash: ${pipelineBuildState.compilerInputHash || "(not computed)"}`'
             in content
         )
-        assert '`source: ${result ? "compile_response" : "policy_bundle/runtime"}`' in content
+        assert '"resolve_preview"' in content
+        assert '"policy_bundle/runtime"' in content
 
     def test_hash_input_disclosure_excludes_compiled_prompt(self) -> None:
         """Hash contract must explicitly exclude final compiled prompt text."""

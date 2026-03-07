@@ -10,6 +10,8 @@ editing environment files.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from app.schema.axis import AxisValue
@@ -179,3 +181,128 @@ class MudImagePolicyBundleResponse(BaseModel):
     composition_order: list[str] = Field(default_factory=list)
     required_runtime_inputs: list[str] = Field(default_factory=list)
     missing_components: list[str] = Field(default_factory=list)
+
+
+class MudPipelineRuntimeOptions(BaseModel):
+    """Runtime option sets used by Pipeline Build stage controls.
+
+    The bootstrap endpoint uses this model to expose optional selector values
+    without forcing the frontend to infer them from world configuration files.
+    """
+
+    species: list[str] = Field(
+        default_factory=list,
+        description="Allowed species identifiers for image compile/selection.",
+    )
+    gender: list[str] = Field(
+        default_factory=lambda: ["male", "female"],
+        description="Allowed gender values for phase-1 image policy.",
+    )
+    world_context_tags: list[str] = Field(
+        default_factory=list,
+        description="Known world-context tags accepted by clothing selection.",
+    )
+    occupation_tags: list[str] = Field(
+        default_factory=list,
+        description="Known occupation/activity tags accepted by clothing selection.",
+    )
+
+
+class MudPipelineBootstrapResponse(BaseModel):
+    """Response body for ``GET /api/mud/pipeline-build/bootstrap/{world_id}``.
+
+    This aggregated payload keeps the frontend stateless by returning all stage-1
+    and stage-2 inputs in one call.
+    """
+
+    world_id: str = Field(..., description="World identifier used for bootstrap.")
+    world_summary: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Resolved world row + world config summary metadata.",
+    )
+    policy_bundle: MudImagePolicyBundleResponse = Field(
+        ...,
+        description="Canonical image policy bundle metadata for the world.",
+    )
+    runtime_options: MudPipelineRuntimeOptions = Field(
+        default_factory=MudPipelineRuntimeOptions,
+        description="Runtime option sets for stage selectors.",
+    )
+    required_fields: list[str] = Field(
+        default_factory=list,
+        description="Runtime compile contract fields required by policy composition.",
+    )
+
+
+class MudPipelineResolveRequest(BaseModel):
+    """Request body for ``POST /api/mud/pipeline-build/resolve-image-selection``.
+
+    The request intentionally excludes generation-only controls so the response
+    can represent pre-prompt selection/resolve state for stages 5-7.
+    """
+
+    world_id: str = Field(..., description="Target world ID on the mud server.")
+    species: str = Field(
+        default="goblin",
+        description="Species identifier used for species block selection.",
+    )
+    gender: str = Field(
+        default="male",
+        description="Identity gender value expected by policy selection rules.",
+    )
+    axes: dict[str, AxisValue] = Field(
+        ...,
+        description="Axis label/score payload used for deterministic selection.",
+    )
+    world_context: list[str] = Field(
+        default_factory=list,
+        description="Optional world-context tags used by clothing selection.",
+    )
+    occupation_signals: list[str] = Field(
+        default_factory=list,
+        description="Optional occupation/activity tags used by clothing selection.",
+    )
+
+
+class MudPipelineSelectedBlocks(BaseModel):
+    """Selected block IDs returned by the resolve preview endpoint."""
+
+    species_canon_block: str | None = Field(
+        default=None,
+        description="Selected species canon block entry id.",
+    )
+    clothing_block: dict[str, str | None] = Field(
+        default_factory=dict,
+        description="Selected clothing block entry ids keyed by clothing slot.",
+    )
+
+
+class MudPipelineResolveResponse(BaseModel):
+    """Response body for ``POST /api/mud/pipeline-build/resolve-image-selection``.
+
+    This response intentionally omits the compiled prompt text so stage-5/6/7
+    UI state can be rendered without coupling to stage-8 side effects.
+    """
+
+    selected_blocks: MudPipelineSelectedBlocks = Field(
+        ...,
+        description="Selected species/clothing blocks for the current runtime inputs.",
+    )
+    descriptor_layer: str | None = Field(
+        default=None,
+        description="Resolved descriptor layer identifier.",
+    )
+    tone_profile: str | None = Field(
+        default=None,
+        description="Resolved tone profile identifier.",
+    )
+    composition_order: list[str] = Field(
+        default_factory=list,
+        description="Composition order used by canonical prompt assembly.",
+    )
+    policy_hash: str = Field(..., description="Deterministic hash of policy compiler inputs.")
+    axis_hash: str = Field(..., description="Deterministic hash of axis runtime payload.")
+    compiler_input_hash: str = Field(
+        ...,
+        description="Deterministic hash of normalized compiler inputs, excluding compiled prompt text.",
+    )

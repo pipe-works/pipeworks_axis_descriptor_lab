@@ -49,8 +49,14 @@ export const PIPELINE_STAGE_STATUS = {
  *   session: { authenticated: boolean, modeKey: string|null, serverUrl: string|null },
   *   worlds: Array<object>,
   *   selectedWorldId: string|null,
-  *   worldConfig: object|null,
-  *   policyBundle: object|null,
+ *   worldConfig: object|null,
+ *   policyBundle: object|null,
+ *   runtimeOptions: {
+ *     species: Array<string>,
+ *     gender: Array<string>,
+ *     worldContextTags: Array<string>,
+ *     occupationTags: Array<string>
+ *   },
  *   identity: { species: string, gender: string },
  *   axis: {
  *     sourceMode: string,
@@ -67,6 +73,7 @@ export const PIPELINE_STAGE_STATUS = {
  *     seed: number|null
  *   },
  *   compile: { requestBody: object|null, result: object|null },
+ *   resolve: { requestBody: object|null, result: object|null },
  *   policyHash: string|null,
  *   axisHash: string|null,
  *   compilerInputHash: string|null,
@@ -89,6 +96,12 @@ export const pipelineBuildState = {
   selectedWorldId: null,
   worldConfig: null,
   policyBundle: null,
+  runtimeOptions: {
+    species: [],
+    gender: ["male", "female"],
+    worldContextTags: [],
+    occupationTags: [],
+  },
   identity: {
     species: "goblin",
     gender: "male",
@@ -108,6 +121,10 @@ export const pipelineBuildState = {
     seed: null,
   },
   compile: {
+    requestBody: null,
+    result: null,
+  },
+  resolve: {
     requestBody: null,
     result: null,
   },
@@ -135,6 +152,10 @@ export function resetPipelineBuildState() {
   pipelineBuildState.selectedWorldId = null;
   pipelineBuildState.worldConfig = null;
   pipelineBuildState.policyBundle = null;
+  pipelineBuildState.runtimeOptions.species = [];
+  pipelineBuildState.runtimeOptions.gender = ["male", "female"];
+  pipelineBuildState.runtimeOptions.worldContextTags = [];
+  pipelineBuildState.runtimeOptions.occupationTags = [];
   pipelineBuildState.identity.species = "goblin";
   pipelineBuildState.identity.gender = "male";
   pipelineBuildState.axis.sourceMode = "preset";
@@ -149,6 +170,8 @@ export function resetPipelineBuildState() {
   pipelineBuildState.runtime.seed = null;
   pipelineBuildState.compile.requestBody = null;
   pipelineBuildState.compile.result = null;
+  pipelineBuildState.resolve.requestBody = null;
+  pipelineBuildState.resolve.result = null;
   pipelineBuildState.policyHash = null;
   pipelineBuildState.axisHash = null;
   pipelineBuildState.compilerInputHash = null;
