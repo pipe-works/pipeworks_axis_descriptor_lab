@@ -91,7 +91,10 @@ class TestIndexRoute:
         assert 'id="pipeline-world-source-hint"' in resp.text
         assert 'id="pipeline-axis-input-info-trigger"' in resp.text
         assert 'id="pipeline-axis-input-modal"' in resp.text
-        assert 'id="pipeline-policy-summary"' in resp.text
+        assert 'id="pipeline-policy-source-badge"' in resp.text
+        assert 'id="pipeline-policy-bundle-path"' in resp.text
+        assert 'id="pipeline-policy-view-file"' in resp.text
+        assert 'id="pipeline-policy-file-modal"' in resp.text
         assert 'id="pipeline-policy-source-hint"' in resp.text
         assert 'id="pipeline-axis-preset-source-hint"' in resp.text
         assert 'id="pipeline-species-input"' in resp.text

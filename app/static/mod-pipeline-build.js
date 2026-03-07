@@ -415,7 +415,12 @@ function renderStageStatuses() {
 function focusStageControl(stageKey) {
   const focusTargetMap = {
     session_world: () => dom.pipelineWorldSelect,
-    policy_bundle: () => dom.pipelinePolicyRefresh,
+    policy_bundle: () => {
+      if (dom.pipelinePolicyBundleDetails) {
+        dom.pipelinePolicyBundleDetails.open = true;
+      }
+      return dom.pipelinePolicyRefresh;
+    },
     identity: () => dom.pipelineSpeciesInput,
     axis_input: () => dom.pipelineAxisSourceMode,
     block_selection: () => dom.pipelineBlockSelectionSummary,
@@ -515,6 +520,37 @@ function setAxisInputInfoModalOpen(isOpen) {
   dom.pipelineAxisInputModal.classList.toggle("hidden", !isOpen);
 }
 
+function setPolicyBundleFileModalOpen(isOpen) {
+  if (!dom.pipelinePolicyFileModal) return;
+  dom.pipelinePolicyFileModal.classList.toggle("hidden", !isOpen);
+}
+
+function buildPolicyBundleFileDocument() {
+  const bundle = pipelineBuildState.policyBundle;
+  if (!bundle) return null;
+
+  return {
+    read_only: true,
+    generated_at: new Date().toISOString(),
+    source: pipelineBuildState.policySource || null,
+    policy_bundle: bundle,
+  };
+}
+
+function renderPolicyBundleFileModal() {
+  if (!dom.pipelinePolicyFileModalContent) return;
+
+  const bundle = pipelineBuildState.policyBundle;
+
+  if (!bundle) {
+    dom.pipelinePolicyFileModalContent.textContent = "{}";
+    return;
+  }
+
+  const payload = buildPolicyBundleFileDocument();
+  dom.pipelinePolicyFileModalContent.textContent = JSON.stringify(payload, null, 2);
+}
+
 function renderWorldConfig() {
   if (!dom.pipelineWorldConfig) return;
 
@@ -538,36 +574,293 @@ function renderWorldConfig() {
   ].join("\n");
 }
 
-function renderPolicyBundleSummary() {
-  if (!dom.pipelinePolicySummary) return;
+function resolvePolicySourceBadgeInfo(policySource) {
+  const modeKey = pipelineBuildState.session.modeKey;
+  const sourceKind =
+    policySource && typeof policySource.source_kind === "string"
+      ? policySource.source_kind
+      : null;
 
-  const bundle = pipelineBuildState.policyBundle;
-  if (!bundle) {
-    dom.pipelinePolicySummary.textContent =
-      "Policy bundle metadata will appear here.";
-    return;
+  if (sourceKind === "mud_server_canonical") {
+    if (modeKey === "configured") {
+      return { token: "remote-prod", className: "badge badge--info" };
+    }
+    if (modeKey === "development") {
+      return { token: "remote-local", className: "badge badge--active" };
+    }
+    return { token: "remote", className: "badge badge--info" };
   }
 
-  const composition = Array.isArray(bundle.composition_order)
-    ? bundle.composition_order.join(" -> ")
-    : "(none)";
-  const requiredInputs = Array.isArray(bundle.required_runtime_inputs)
-    ? bundle.required_runtime_inputs.join(", ")
-    : "(none)";
-  const missingComponents = Array.isArray(bundle.missing_components)
-    ? bundle.missing_components
+  if (sourceKind === "local_world") {
+    return { token: "local-world", className: "badge badge--active" };
+  }
+  if (sourceKind === "lab_only") {
+    return { token: "lab-only", className: "badge badge--active" };
+  }
+  if (sourceKind === "legacy") {
+    return { token: "legacy", className: "badge badge--muted" };
+  }
+  if (sourceKind === "offline" || modeKey === "standalone") {
+    return { token: "offline", className: "badge badge--muted" };
+  }
+  return { token: "unknown", className: "badge badge--muted" };
+}
+
+function formatPolicySourceReference(policySource, bundle) {
+  const modeKey = pipelineBuildState.session.modeKey;
+  if (!policySource) {
+    if (modeKey === "standalone") {
+      return "Policy source: Offline mode (no canonical policy endpoint).";
+    }
+    return "Policy source: (not loaded)";
+  }
+
+  const label = String(policySource.source_label || policySource.source_kind || "unknown");
+  const sourcePath =
+    typeof policySource.source_path === "string" && policySource.source_path.trim()
+      ? policySource.source_path.trim()
+      : null;
+  if (sourcePath) {
+    return `Policy source: ${label} · path: ${sourcePath}`;
+  }
+
+  const reference =
+    policySource.reference && typeof policySource.reference === "object"
+      ? policySource.reference
+      : null;
+  const parts = [];
+  if (reference) {
+    if (reference.world_id) parts.push(`world_id: ${reference.world_id}`);
+    if (reference.policy_bundle_id) parts.push(`bundle_id: ${reference.policy_bundle_id}`);
+    if (
+      reference.policy_bundle_version !== undefined &&
+      reference.policy_bundle_version !== null
+    ) {
+      parts.push(`bundle_version: ${reference.policy_bundle_version}`);
+    }
+    if (reference.policy_hash) parts.push(`policy_hash: ${reference.policy_hash}`);
+    if (reference.served_via) parts.push(`served_via: ${reference.served_via}`);
+  }
+
+  if (parts.length === 0 && bundle?.policy_hash) {
+    parts.push(`policy_hash: ${bundle.policy_hash}`);
+  }
+  if (parts.length === 0) {
+    return `Policy source: ${label}`;
+  }
+  return `Policy source: ${label} · ${parts.join(" · ")}`;
+}
+
+function joinServerUrlAndPath(serverUrl, path) {
+  const cleanPath = String(path || "").trim();
+  if (!cleanPath) return null;
+  if (/^https?:\/\//i.test(cleanPath)) {
+    return cleanPath;
+  }
+
+  const cleanServer = String(serverUrl || "").trim();
+  if (!cleanServer) return cleanPath;
+
+  const left = cleanServer.endsWith("/") ? cleanServer.slice(0, -1) : cleanServer;
+  const right = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
+  return `${left}${right}`;
+}
+
+function withWorldIdPath(pathTemplate, worldId) {
+  const template = String(pathTemplate || "").trim();
+  if (!template) return null;
+  const id = String(worldId || "").trim();
+  if (!id) return template;
+  return template.replace("{world_id}", id);
+}
+
+function buildPolicySourceReferenceRows(policySource, bundle) {
+  const modeKey = pipelineBuildState.session.modeKey;
+  const worlds = Array.isArray(pipelineBuildState.worlds) ? pipelineBuildState.worlds : [];
+  const worldConfig =
+    pipelineBuildState.worldConfig && typeof pipelineBuildState.worldConfig === "object"
+      ? pipelineBuildState.worldConfig
+      : null;
+  const reference =
+    policySource && policySource.reference && typeof policySource.reference === "object"
+      ? policySource.reference
+      : null;
+  const worldId =
+    String(
+      pipelineBuildState.selectedWorldId ||
+        worldConfig?.world_id ||
+        reference?.world_id ||
+        ""
+    ).trim() || null;
+  const worldRow =
+    worldId !== null
+      ? worlds.find((row) => String(row?.world_id || "").trim() === worldId) || null
+      : null;
+  const serverUrl = String(pipelineBuildState.session.serverUrl || "").trim() || null;
+  const worldName =
+    String(worldConfig?.name || worldRow?.name || "").trim() || (worldId ? String(worldId) : null);
+  const worldVersion =
+    worldConfig && worldConfig.version !== undefined && worldConfig.version !== null
+      ? String(worldConfig.version)
+      : null;
+  const activeAxes = Array.isArray(worldConfig?.active_axes)
+    ? worldConfig.active_axes.map((value) => String(value)).filter(Boolean)
+    : [];
+  const compositionOrder = Array.isArray(bundle?.composition_order)
+    ? bundle.composition_order.map((value) => String(value)).filter(Boolean)
+    : [];
+  const requiredRuntimeInputs = Array.isArray(bundle?.required_runtime_inputs)
+    ? bundle.required_runtime_inputs.map((value) => String(value)).filter(Boolean)
+    : [];
+  const missingComponents = Array.isArray(bundle?.missing_components)
+    ? bundle.missing_components.map((value) => String(value)).filter(Boolean)
     : [];
 
-  dom.pipelinePolicySummary.textContent = [
-    "Policy Bundle",
-    `policy_schema: ${bundle.policy_schema || "(unknown)"}`,
-    `policy_bundle_id: ${bundle.policy_bundle_id || "(unknown)"}`,
-    `policy_bundle_version: ${bundle.policy_bundle_version ?? "(unknown)"}`,
-    `policy_hash: ${bundle.policy_hash || "(unknown)"}`,
-    `composition_order: ${composition}`,
-    `required_runtime_inputs: ${requiredInputs}`,
-    `missing_components: ${missingComponents.length ? missingComponents.join(", ") : "none"}`,
-  ].join("\n");
+  const rows = [];
+  const seenKeys = new Set();
+  const addRow = (key, value) => {
+    const text = String(value ?? "").trim();
+    if (!text || seenKeys.has(key)) return;
+    rows.push({ key, value: text });
+    seenKeys.add(key);
+  };
+
+  const bootstrapPathTemplate = reference?.served_via || "/api/mud/pipeline-build/bootstrap/{world_id}";
+  const bootstrapPath = withWorldIdPath(bootstrapPathTemplate, worldId);
+  const bootstrapUrl = joinServerUrlAndPath(serverUrl, bootstrapPath);
+  const worldConfigPath = withWorldIdPath("/api/mud/world-config/{world_id}", worldId);
+  const worldConfigUrl = joinServerUrlAndPath(serverUrl, worldConfigPath);
+  const policyBundlePath = withWorldIdPath(
+    "/api/mud/world-image-policy-bundle/{world_id}",
+    worldId
+  );
+  const policyBundleUrl = joinServerUrlAndPath(serverUrl, policyBundlePath);
+
+  if (!policySource) {
+    if (modeKey === "standalone") {
+      addRow("policy_source", "Offline mode (no canonical policy endpoint).");
+      addRow("world_name", worldName);
+      addRow("world_id", worldId);
+      addRow("world_version", worldVersion || "(unknown)");
+      addRow("active_axes", activeAxes.length ? activeAxes.join(", ") : "(none)");
+      addRow("source_file_path", "(offline/local source path unavailable)");
+      return rows;
+    }
+    addRow("policy_source", "(not loaded)");
+    addRow("world_name", worldName);
+    addRow("world_id", worldId);
+    addRow("world_version", worldVersion || "(unknown)");
+    addRow("active_axes", activeAxes.length ? activeAxes.join(", ") : "(none)");
+    addRow("world_config_endpoint", worldConfigUrl || worldConfigPath);
+    addRow("bootstrap_endpoint", bootstrapUrl || bootstrapPath);
+    addRow("policy_bundle_endpoint", policyBundleUrl || policyBundlePath);
+    addRow("source_file_path", "(awaiting policy source details)");
+    return rows;
+  }
+
+  const label = String(policySource.source_label || policySource.source_kind || "unknown");
+  addRow("policy_source", label);
+  addRow("world_name", worldName);
+  addRow("world_id", worldId);
+  addRow("world_version", worldVersion || "(unknown)");
+  addRow("active_axes", activeAxes.length ? activeAxes.join(", ") : "(none)");
+
+  if (reference?.policy_bundle_id || bundle?.policy_bundle_id) {
+    addRow("policy_bundle_id", reference?.policy_bundle_id || bundle?.policy_bundle_id);
+  }
+  if (
+    (reference && reference.policy_bundle_version !== undefined && reference.policy_bundle_version !== null) ||
+    (bundle && bundle.policy_bundle_version !== undefined && bundle.policy_bundle_version !== null)
+  ) {
+    addRow(
+      "policy_bundle_version",
+      reference?.policy_bundle_version ?? bundle?.policy_bundle_version
+    );
+  }
+  if (reference?.policy_hash) {
+    addRow("policy_hash", reference.policy_hash);
+  } else if (bundle?.policy_hash) {
+    addRow("policy_hash", bundle.policy_hash);
+  }
+  addRow(
+    "composition_order",
+    compositionOrder.length ? compositionOrder.join(" -> ") : "(none)"
+  );
+  addRow(
+    "required_runtime_inputs",
+    requiredRuntimeInputs.length ? requiredRuntimeInputs.join(", ") : "(none)"
+  );
+  addRow(
+    "missing_components",
+    missingComponents.length ? missingComponents.join(", ") : "none"
+  );
+
+  addRow("source_server", serverUrl);
+  addRow("world_config_endpoint", worldConfigUrl || worldConfigPath);
+  addRow("bootstrap_endpoint", bootstrapUrl || bootstrapPath);
+  addRow("policy_bundle_endpoint", policyBundleUrl || policyBundlePath);
+
+  const sourcePath =
+    typeof policySource.source_path === "string" && policySource.source_path.trim()
+      ? policySource.source_path.trim()
+      : null;
+  if (sourcePath && sourcePath !== bootstrapPath && sourcePath !== bootstrapUrl) {
+    addRow("source_file_path", sourcePath);
+  } else if (sourcePath) {
+    addRow("source_file_path", sourcePath);
+  } else if (policySource.source_kind === "mud_server_canonical") {
+    addRow("source_file_path", "(remote canonical source; no local file path)");
+  } else {
+    addRow("source_file_path", "(source file path unavailable)");
+  }
+
+  return rows;
+}
+
+function renderPolicySourceReferenceTable(target, policySource, bundle) {
+  if (!target) return;
+
+  const rows = buildPolicySourceReferenceRows(policySource, bundle);
+  target.replaceChildren();
+
+  const table = document.createElement("table");
+  table.className = "pipeline-policy-source-table";
+  const body = document.createElement("tbody");
+
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.scope = "row";
+    th.textContent = row.key;
+    const td = document.createElement("td");
+    td.textContent = row.value;
+    tr.appendChild(th);
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
+
+  table.appendChild(body);
+  target.appendChild(table);
+}
+
+function renderPolicyBundleSummary() {
+  const bundle = pipelineBuildState.policyBundle;
+  const policySource = pipelineBuildState.policySource;
+
+  if (dom.pipelinePolicySourceBadge) {
+    const badge = resolvePolicySourceBadgeInfo(policySource);
+    dom.pipelinePolicySourceBadge.textContent = badge.token;
+    dom.pipelinePolicySourceBadge.className = badge.className;
+  }
+
+  if (dom.pipelinePolicyBundlePath) {
+    dom.pipelinePolicyBundlePath.textContent = formatPolicySourceReference(policySource, bundle);
+    renderPolicySourceReferenceTable(dom.pipelinePolicyBundlePath, policySource, bundle);
+  }
+  if (dom.pipelinePolicyViewFile) {
+    dom.pipelinePolicyViewFile.disabled = !bundle || pipelineBuildState.busy;
+  }
+  renderPolicyBundleFileModal();
 }
 
 function renderIdentityControls() {
@@ -986,6 +1279,7 @@ function applyUnauthenticatedState(errorMessage = null, { preserveEnteredState =
     pipelineBuildState.selectedWorldId = null;
     pipelineBuildState.worldConfig = null;
     pipelineBuildState.policyBundle = null;
+    pipelineBuildState.policySource = null;
     pipelineBuildState.policyHash = null;
     pipelineBuildState.axisHash = null;
     pipelineBuildState.compilerInputHash = null;
@@ -1067,6 +1361,7 @@ async function loadPolicyBundleForWorld(worldId, { quiet = false } = {}) {
 
   if (!worldId) {
     pipelineBuildState.policyBundle = null;
+    pipelineBuildState.policySource = null;
     pipelineBuildState.policyHash = null;
     setStageStatus("policy_bundle", PIPELINE_STAGE_STATUS.LOCKED);
     applyStageProgression();
@@ -1083,6 +1378,7 @@ async function loadPolicyBundleForWorld(worldId, { quiet = false } = {}) {
   const bundle = bootstrap.policy_bundle || null;
   pipelineBuildState.selectedWorldId = bootstrap.world_id || worldId;
   pipelineBuildState.policyBundle = bundle;
+  pipelineBuildState.policySource = bootstrap.policy_source || null;
   pipelineBuildState.policyHash = bundle?.policy_hash || null;
   pipelineBuildState.worldConfig = bootstrap.world_summary?.world_config || null;
   applyRuntimeOptions(bootstrap.runtime_options);
@@ -1126,6 +1422,7 @@ async function applyWorldSelection(worldId, { quiet = false } = {}) {
     pipelineBuildState.selectedWorldId = null;
     pipelineBuildState.worldConfig = null;
     pipelineBuildState.policyBundle = null;
+    pipelineBuildState.policySource = null;
     pipelineBuildState.policyHash = null;
     pipelineBuildState.compile.result = null;
     pipelineBuildState.resolve.result = null;
@@ -1200,6 +1497,7 @@ async function refreshSessionAndWorlds({ quiet = false } = {}) {
       pipelineBuildState.selectedWorldId = null;
       pipelineBuildState.worldConfig = null;
       pipelineBuildState.policyBundle = null;
+      pipelineBuildState.policySource = null;
       pipelineBuildState.policyHash = null;
       clearResolvePreview();
       pipelineBuildState.lastError = "No translation-enabled worlds returned by mud server.";
@@ -1650,6 +1948,20 @@ export function wirePipelineBuildEvents() {
     exportCompileResponseJson();
   });
 
+  dom.pipelinePolicyViewFile?.addEventListener("click", () => {
+    renderPolicyBundleFileModal();
+    setPolicyBundleFileModalOpen(true);
+  });
+  dom.pipelinePolicyFileModalBackdrop?.addEventListener("click", () => {
+    setPolicyBundleFileModalOpen(false);
+  });
+  dom.pipelinePolicyFileModalCloseX?.addEventListener("click", () => {
+    setPolicyBundleFileModalOpen(false);
+  });
+  dom.pipelinePolicyFileModalClose?.addEventListener("click", () => {
+    setPolicyBundleFileModalOpen(false);
+  });
+
   dom.pipelineAxisInputInfoTrigger?.addEventListener("click", () => {
     setAxisInputInfoModalOpen(true);
   });
@@ -1664,6 +1976,7 @@ export function wirePipelineBuildEvents() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    setPolicyBundleFileModalOpen(false);
     setAxisInputInfoModalOpen(false);
   });
 

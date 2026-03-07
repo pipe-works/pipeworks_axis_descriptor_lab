@@ -33,6 +33,8 @@ from app.schema import (
     MudModeRequest,
     MudModeResponse,
     MudPipelineBootstrapResponse,
+    MudPipelinePolicySource,
+    MudPipelinePolicySourceReference,
     MudPipelineResolveRequest,
     MudPipelineResolveResponse,
     MudPipelineRuntimeOptions,
@@ -352,6 +354,17 @@ def mud_pipeline_build_bootstrap(world_id: str) -> MudPipelineBootstrapResponse 
             world_id=world_id,
             world_summary=world_summary,
             policy_bundle=policy_bundle,
+            policy_source=MudPipelinePolicySource(
+                source_kind="mud_server_canonical",
+                source_label="Mud server canonical",
+                source_path=None,
+                reference=MudPipelinePolicySourceReference(
+                    world_id=world_id,
+                    policy_bundle_id=policy_bundle.policy_bundle_id,
+                    policy_bundle_version=policy_bundle.policy_bundle_version,
+                    policy_hash=policy_bundle.policy_hash,
+                ),
+            ),
             runtime_options=runtime_options,
             required_fields=list(policy_bundle.required_runtime_inputs),
         )

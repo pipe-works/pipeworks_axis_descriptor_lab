@@ -1038,22 +1038,37 @@
   </section>
 
   <section class="panel panel--centre pipeline-panel" aria-label="Pipeline Build Stage Editor">
-    <h2 class="panel__heading">Policy Bundle</h2>
-    <div class="control-row">
-      <label class="control-label" for="pipeline-policy-refresh">Bundle</label>
-      <button id="pipeline-policy-refresh" class="btn btn--secondary" type="button">Reload policy</button>
-    </div>
-    <div id="pipeline-world-config" class="artifact-meta" style="margin-top:0.75rem;">
-      World configuration metadata will appear here.
-    </div>
-    <div id="pipeline-policy-source-hint" class="control-path-hint">
-      Source: mud server canonical (`/api/mud/world-image-policy-bundle/{world_id}`).
-    </div>
-    <hr class="divider" />
-    <div id="pipeline-policy-summary" class="artifact-reference">
-      Policy bundle metadata will appear here.
-    </div>
-    <hr class="divider" />
+    <details id="pipeline-policy-bundle-details" class="collapsible" open>
+      <summary class="collapsible__summary">Policy Bundle</summary>
+      <div class="control-row">
+        <label class="control-label" for="pipeline-policy-refresh">Bundle</label>
+        <button id="pipeline-policy-refresh" class="btn btn--secondary" type="button">Reload policy</button>
+        <button
+          id="pipeline-policy-view-file"
+          class="btn btn--secondary btn--sm"
+          type="button"
+          disabled
+          data-tooltip="Open a read-only policy bundle document view with source metadata and canonical references."
+        >View file</button>
+        <span
+          id="pipeline-policy-source-badge"
+          class="badge badge--muted"
+          data-tooltip="Policy source environment badge: offline, remote-local, remote-prod, or local roots."
+        >offline</span>
+      </div>
+      <div
+        id="pipeline-policy-bundle-path"
+        class="artifact-note pipeline-policy-path"
+        data-tooltip="Truthful policy source reference. Shows canonical IDs and hashes for remote bundles, and filesystem paths only for local files."
+      >Policy source: (not loaded)</div>
+      <div id="pipeline-world-config" class="artifact-meta hidden" style="margin-top:0.75rem;">
+        World configuration metadata is shown in the policy source table.
+      </div>
+      <div id="pipeline-policy-source-hint" class="control-path-hint hidden">
+        Source: mud server canonical (`/api/mud/world-image-policy-bundle/{world_id}`).
+      </div>
+      <hr class="divider" />
+    </details>
 
     <h2 class="panel__heading">Character Identity</h2>
     <div class="control-row">
@@ -1180,6 +1195,27 @@
 
 </main>
 </div><!-- #page-pipeline-build -->
+
+<!-- Pipeline Build: Policy Bundle read-only file modal -->
+<div
+  id="pipeline-policy-file-modal"
+  class="modal hidden"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="pipeline-policy-file-modal-title"
+>
+  <div id="pipeline-policy-file-modal-backdrop" class="modal__backdrop"></div>
+  <section class="modal__card">
+    <div class="modal__header">
+      <h3 id="pipeline-policy-file-modal-title" class="panel__heading">Policy Bundle File (read-only)</h3>
+      <button id="pipeline-policy-file-modal-close-x" class="btn btn--secondary btn--sm" type="button">Close</button>
+    </div>
+    <pre id="pipeline-policy-file-modal-content" class="pipeline-policy-file-content">{}</pre>
+    <div class="modal__actions">
+      <button id="pipeline-policy-file-modal-close" class="btn btn--secondary" type="button">Close</button>
+    </div>
+  </section>
+</div>
 
 <!-- Pipeline Build: Axis Input info modal -->
 <div
