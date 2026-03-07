@@ -996,6 +996,82 @@
   white-space: pre-line;
 }
 
+.pipeline-policy-path {
+  margin-top: var(--sp-2);
+  min-width: 0;
+}
+
+#pipeline-policy-bundle-details {
+  border: 1px solid var(--col-border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+
+#pipeline-policy-bundle-details > .collapsible__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--col-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+#pipeline-policy-bundle-details > .collapsible__summary::before {
+  content: "▾";
+  color: var(--col-text-muted);
+  font-size: 0.75rem;
+}
+
+#pipeline-policy-bundle-details:not([open]) > .collapsible__summary::before {
+  content: "▸";
+}
+
+#pipeline-policy-bundle-details > .control-row {
+  margin-top: var(--sp-2);
+}
+
+.pipeline-policy-source-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--col-text-muted);
+}
+
+.pipeline-policy-source-table th,
+.pipeline-policy-source-table td {
+  padding: 2px 0;
+  vertical-align: top;
+}
+
+.pipeline-policy-source-table tr + tr th,
+.pipeline-policy-source-table tr + tr td {
+  border-top: 1px solid color-mix(in srgb, var(--col-border) 50%, transparent);
+}
+
+.pipeline-policy-source-table th {
+  width: 11.75rem;
+  padding-right: var(--sp-2);
+  text-align: left;
+  white-space: nowrap;
+  opacity: 0.72;
+  font-weight: 500;
+}
+
+.pipeline-policy-source-table td {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pipeline-policy-file-content {
+  max-height: 50vh;
+  overflow: auto;
+}
+
 .artifact-panel {
   overflow-y: auto;
 }

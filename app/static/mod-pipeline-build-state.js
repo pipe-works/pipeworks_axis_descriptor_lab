@@ -48,9 +48,10 @@ export const PIPELINE_STAGE_STATUS = {
  *   lastError: string|null,
  *   session: { authenticated: boolean, modeKey: string|null, serverUrl: string|null },
   *   worlds: Array<object>,
-  *   selectedWorldId: string|null,
+ *   selectedWorldId: string|null,
  *   worldConfig: object|null,
  *   policyBundle: object|null,
+ *   policySource: object|null,
  *   runtimeOptions: {
  *     species: Array<string>,
  *     gender: Array<string>,
@@ -96,6 +97,7 @@ export const pipelineBuildState = {
   selectedWorldId: null,
   worldConfig: null,
   policyBundle: null,
+  policySource: null,
   runtimeOptions: {
     species: [],
     gender: ["male", "female"],
@@ -152,6 +154,7 @@ export function resetPipelineBuildState() {
   pipelineBuildState.selectedWorldId = null;
   pipelineBuildState.worldConfig = null;
   pipelineBuildState.policyBundle = null;
+  pipelineBuildState.policySource = null;
   pipelineBuildState.runtimeOptions.species = [];
   pipelineBuildState.runtimeOptions.gender = ["male", "female"];
   pipelineBuildState.runtimeOptions.worldContextTags = [];

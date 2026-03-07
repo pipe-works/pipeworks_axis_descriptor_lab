@@ -576,6 +576,13 @@ class TestMudPipelineBuildBootstrap:
         assert data["world_id"] == "pipeworks_web"
         assert data["world_summary"]["world_row"]["world_id"] == "pipeworks_web"
         assert data["policy_bundle"]["policy_hash"] == "abc123"
+        assert data["policy_source"]["source_kind"] == "mud_server_canonical"
+        assert data["policy_source"]["source_label"] == "Mud server canonical"
+        assert data["policy_source"]["source_path"] is None
+        assert data["policy_source"]["reference"]["world_id"] == "pipeworks_web"
+        assert data["policy_source"]["reference"]["policy_bundle_id"] == "pipeworks_web_default"
+        assert data["policy_source"]["reference"]["policy_bundle_version"] == 1
+        assert data["policy_source"]["reference"]["policy_hash"] == "abc123"
         assert data["runtime_options"]["species"] == ["goblin", "orc"]
         assert data["runtime_options"]["world_context_tags"] == ["ledgerfall", "docks"]
         assert data["required_fields"] == [

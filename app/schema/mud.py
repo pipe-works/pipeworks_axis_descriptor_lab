@@ -10,7 +10,7 @@ editing environment files.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -208,6 +208,48 @@ class MudPipelineRuntimeOptions(BaseModel):
     )
 
 
+class MudPipelinePolicySourceReference(BaseModel):
+    """Canonical reference metadata for one resolved policy source.
+
+    This model deliberately avoids filesystem assumptions for remote policy
+    sources. It identifies the policy bundle by deterministic IDs and hashes
+    so UI surfaces can remain truthful across local vs remote environments.
+    """
+
+    world_id: str = Field(..., description="World identifier used for policy lookup.")
+    policy_bundle_id: str | None = Field(default=None, description="Resolved policy bundle id.")
+    policy_bundle_version: int | str | None = Field(
+        default=None, description="Resolved policy bundle version."
+    )
+    policy_hash: str = Field(..., description="Deterministic policy hash for the active bundle.")
+    served_via: str = Field(
+        default="/api/mud/pipeline-build/bootstrap/{world_id}",
+        description="Endpoint that served this policy source reference.",
+    )
+
+
+class MudPipelinePolicySource(BaseModel):
+    """Truthful source metadata for Policy Bundle display surfaces."""
+
+    source_kind: Literal[
+        "mud_server_canonical",
+        "local_world",
+        "lab_only",
+        "legacy",
+        "offline",
+        "unknown",
+    ] = Field(..., description="Resolved policy source kind token.")
+    source_label: str = Field(..., description="Human-readable label for the source kind.")
+    source_path: str | None = Field(
+        default=None,
+        description="Filesystem path when source is local; null for remote canonical sources.",
+    )
+    reference: MudPipelinePolicySourceReference | None = Field(
+        default=None,
+        description="Canonical policy reference fields for reproducibility and diagnostics.",
+    )
+
+
 class MudPipelineBootstrapResponse(BaseModel):
     """Response body for ``GET /api/mud/pipeline-build/bootstrap/{world_id}``.
 
@@ -223,6 +265,10 @@ class MudPipelineBootstrapResponse(BaseModel):
     policy_bundle: MudImagePolicyBundleResponse = Field(
         ...,
         description="Canonical image policy bundle metadata for the world.",
+    )
+    policy_source: MudPipelinePolicySource | None = Field(
+        default=None,
+        description="Truthful source metadata for policy bundle origin display.",
     )
     runtime_options: MudPipelineRuntimeOptions = Field(
         default_factory=MudPipelineRuntimeOptions,

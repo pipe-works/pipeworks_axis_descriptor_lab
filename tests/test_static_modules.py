@@ -572,8 +572,31 @@ class TestPipelineBuildContracts:
         assert "async function loadPolicyBundleForWorld" in content
         assert "const bootstrap = await fetchPipelineBuildBootstrap(worldId);" in content
         assert "pipelineBuildState.policyBundle = bundle;" in content
+        assert "pipelineBuildState.policySource = bootstrap.policy_source || null;" in content
         assert (
             "pipelineBuildState.worldConfig = bootstrap.world_summary?.world_config || null;"
+            in content
+        )
+
+    def test_policy_source_display_uses_truthful_source_metadata(self) -> None:
+        """Policy source row should use bootstrap policy_source metadata, not inferred local paths."""
+        content = _read_module("mod-pipeline-build.js")
+        assert "function resolvePolicySourceBadgeInfo(policySource)" in content
+        assert "function formatPolicySourceReference(policySource, bundle)" in content
+        assert "Policy source: Offline mode (no canonical policy endpoint)." in content
+        assert 'if (sourceKind === "mud_server_canonical")' in content
+        assert "served_via" in content
+
+    def test_policy_bundle_view_file_modal_is_wired_read_only(self) -> None:
+        """Policy Bundle row should expose a read-only file modal trigger + wiring."""
+        content = _read_module("mod-pipeline-build.js")
+        assert "function setPolicyBundleFileModalOpen(isOpen)" in content
+        assert "function buildPolicyBundleFileDocument()" in content
+        assert "function renderPolicyBundleFileModal()" in content
+        assert "read_only: true" in content
+        assert 'dom.pipelinePolicyViewFile?.addEventListener("click", () => {' in content
+        assert (
+            "dom.pipelinePolicyFileModalContent.textContent = JSON.stringify(payload, null, 2);"
             in content
         )
 
