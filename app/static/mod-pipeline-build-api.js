@@ -166,6 +166,24 @@ export async function resolvePipelineImageSelection(body) {
 }
 
 /**
+ * Generate canonical condition-axis payload for Stage 4.
+ *
+ * @param {object} body - Axis generation request body.
+ * @returns {Promise<object>}
+ */
+export async function generatePipelineConditionAxis(body) {
+  return requestJson(
+    "/api/mud/pipeline-build/generate-condition-axis",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    "pipeline condition-axis generate request failed"
+  );
+}
+
+/**
  * Fetch local axis payload preset listing.
  *
  * @returns {Promise<object>}

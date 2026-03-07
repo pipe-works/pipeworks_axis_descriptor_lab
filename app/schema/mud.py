@@ -168,6 +168,24 @@ class MudCompileImagePromptRequest(BaseModel):
     )
 
 
+class MudPipelineGenerateConditionAxisRequest(BaseModel):
+    """Request body for ``POST /api/mud/pipeline-build/generate-condition-axis``.
+
+    This contract is intentionally minimal for production canonical mode:
+    the mud server owns condition-axis generation and returns an AxisPayload.
+    ``seed`` may be omitted (or null) to request server-side random seeding.
+    """
+
+    world_id: str = Field(
+        ...,
+        description="Target world ID used for canonical condition-axis generation.",
+    )
+    seed: int | None = Field(
+        default=None,
+        description="Optional deterministic seed; null delegates to server random seed generation.",
+    )
+
+
 class MudImagePolicyBundleResponse(BaseModel):
     """Response body for ``GET /api/mud/world-image-policy-bundle/{world_id}``."""
 

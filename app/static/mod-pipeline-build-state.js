@@ -60,10 +60,8 @@ export const PIPELINE_STAGE_STATUS = {
  *   },
  *   identity: { species: string, gender: string },
  *   axis: {
- *     sourceMode: string,
- *     presets: Array<object>,
- *     selectedPresetName: string|null,
- *     selectedPresetMeta: object|null,
+ *     seedMode: string,
+ *     fixedSeed: number,
  *     payload: object|null
  *   },
  *   runtime: {
@@ -109,10 +107,8 @@ export const pipelineBuildState = {
     gender: "male",
   },
   axis: {
-    sourceMode: "preset",
-    presets: [],
-    selectedPresetName: null,
-    selectedPresetMeta: null,
+    seedMode: "random",
+    fixedSeed: 42,
     payload: null,
   },
   runtime: {
@@ -161,10 +157,8 @@ export function resetPipelineBuildState() {
   pipelineBuildState.runtimeOptions.occupationTags = [];
   pipelineBuildState.identity.species = "";
   pipelineBuildState.identity.gender = "male";
-  pipelineBuildState.axis.sourceMode = "preset";
-  pipelineBuildState.axis.presets = [];
-  pipelineBuildState.axis.selectedPresetName = null;
-  pipelineBuildState.axis.selectedPresetMeta = null;
+  pipelineBuildState.axis.seedMode = "random";
+  pipelineBuildState.axis.fixedSeed = 42;
   pipelineBuildState.axis.payload = null;
   pipelineBuildState.runtime.worldContext = [];
   pipelineBuildState.runtime.occupationSignals = [];

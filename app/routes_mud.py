@@ -23,12 +23,14 @@ from pipeworks_ipc import compute_payload_hash
 from app.config import WORLD_ROOT
 from app.mud_server_client import (
     MudServerConnectionError,
+    MudServerFeatureUnavailableError,
     MudServerSessionExpiredError,
     get_mud_mode_config,
     get_mud_client,
     set_mud_mode,
 )
 from app.schema import (
+    AxisPayload,
     MudCompileImagePromptRequest,
     MudImagePolicyBundleResponse,
     MudLoginRequest,
@@ -36,6 +38,7 @@ from app.schema import (
     MudModeRequest,
     MudModeResponse,
     MudPipelineBootstrapResponse,
+    MudPipelineGenerateConditionAxisRequest,
     MudPipelinePolicySource,
     MudPipelinePolicySourceReference,
     MudPipelineResolveRequest,
@@ -607,6 +610,75 @@ def mud_pipeline_build_resolve_image_selection(
             detail=f"Invalid upstream payload for pipeline resolve: {exc}",
             code="PIPELINE_UPSTREAM_INVALID",
             stage=stage,
+        )
+
+
+@router.post(
+    "/pipeline-build/generate-condition-axis",
+    response_model=AxisPayload,
+    summary="Generate canonical condition-axis payload for Pipeline Build stage 4",
+)
+def mud_pipeline_build_generate_condition_axis(
+    req: MudPipelineGenerateConditionAxisRequest,
+) -> AxisPayload | JSONResponse:
+    """Generate canonical condition-axis payload from mud-server policy rules.
+
+    The endpoint keeps Stage 4 canonical in production mode by delegating axis
+    generation to mud-server APIs rather than local preset/manual editing.
+    """
+
+    client = get_mud_client()
+    if client is None:
+        return _pipeline_error(
+            503,
+            detail="Standalone mode — no mud server configured.",
+            code="PIPELINE_MODE_UNAVAILABLE",
+            stage="session_world",
+        )
+
+    try:
+        payload = client.generate_condition_axis_payload(
+            world_id=req.world_id,
+            seed=req.seed,
+        )
+        return AxisPayload.model_validate(payload)
+    except MudServerSessionExpiredError:
+        return _pipeline_error(
+            401,
+            detail="Mud server session expired. Please log in again.",
+            code="PIPELINE_AUTH_REQUIRED",
+            stage="session_world",
+        )
+    except MudServerConnectionError:
+        return _pipeline_error(
+            502,
+            detail="Cannot connect to mud server.",
+            code="PIPELINE_UPSTREAM_UNAVAILABLE",
+            stage="axis_input",
+        )
+    except MudServerFeatureUnavailableError as exc:
+        return _pipeline_error(
+            501,
+            detail=(
+                "Active mud server does not expose canonical condition-axis generation "
+                f"for Pipeline Build Stage 4: {exc}"
+            ),
+            code="PIPELINE_UPSTREAM_UNSUPPORTED",
+            stage="axis_input",
+        )
+    except httpx.HTTPStatusError as exc:
+        return _pipeline_error(
+            exc.response.status_code,
+            detail=_extract_http_error_detail(exc),
+            code="PIPELINE_UPSTREAM_HTTP_ERROR",
+            stage="axis_input",
+        )
+    except ValueError as exc:
+        return _pipeline_error(
+            502,
+            detail=f"Invalid upstream payload for axis generation: {exc}",
+            code="PIPELINE_UPSTREAM_INVALID",
+            stage="axis_input",
         )
 
 
