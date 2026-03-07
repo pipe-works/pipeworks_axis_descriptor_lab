@@ -16,12 +16,14 @@ Test coverage:
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+import app.routes_mud as routes_mud
 from app.main import app
 from app.mud_server_client import MudServerConnectionError, MudServerSessionExpiredError
 
@@ -75,6 +77,136 @@ def _mode_config(
             },
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers (routes_mud)
+# ---------------------------------------------------------------------------
+
+
+class TestMudRuntimeOptionHelpers:
+    """Coverage for runtime-option helper branches used by pipeline bootstrap."""
+
+    def test_parse_inline_token_list_normalizes_values(self) -> None:
+        values = routes_mud._parse_inline_token_list(" [ goblin , 'human' , goblin ] ")
+        assert values == ["goblin", "human"]
+
+    def test_extract_species_registry_missing_manifest_returns_empty(self, tmp_path: Path) -> None:
+        species = routes_mud._extract_species_from_local_policy_registry(
+            "pipeworks_web", world_root=tmp_path
+        )
+        assert species == []
+
+    def test_extract_species_registry_missing_species_registry_key_returns_empty(
+        self, tmp_path: Path
+    ) -> None:
+        world_policies = tmp_path / "pipeworks_web" / "policies"
+        world_policies.mkdir(parents=True)
+        (world_policies / "manifest.yaml").write_text(
+            "\n".join(
+                [
+                    "image:",
+                    "  registries:",
+                    "    clothing: policies/image/registries/clothing_registry.yaml",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        species = routes_mud._extract_species_from_local_policy_registry(
+            "pipeworks_web", world_root=tmp_path
+        )
+        assert species == []
+
+    def test_extract_species_registry_missing_registry_file_returns_empty(
+        self, tmp_path: Path
+    ) -> None:
+        world_policies = tmp_path / "pipeworks_web" / "policies"
+        world_policies.mkdir(parents=True)
+        (world_policies / "manifest.yaml").write_text(
+            "\n".join(
+                [
+                    "image:",
+                    "  registries:",
+                    "    species: policies/image/registries/species_registry.yaml",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        species = routes_mud._extract_species_from_local_policy_registry(
+            "pipeworks_web", world_root=tmp_path
+        )
+        assert species == []
+
+    def test_extract_species_registry_manifest_read_error_returns_empty(
+        self, tmp_path: Path
+    ) -> None:
+        world_policies = tmp_path / "pipeworks_web" / "policies"
+        world_policies.mkdir(parents=True)
+        manifest_path = world_policies / "manifest.yaml"
+        manifest_path.write_text("image:\n  registries:\n", encoding="utf-8")
+
+        original_read_text = Path.read_text
+
+        def _raise_for_manifest(path_obj: Path, *args, **kwargs) -> str:
+            if path_obj == manifest_path:
+                raise OSError("manifest read failed")
+            return original_read_text(path_obj, *args, **kwargs)
+
+        with patch("pathlib.Path.read_text", autospec=True, side_effect=_raise_for_manifest):
+            species = routes_mud._extract_species_from_local_policy_registry(
+                "pipeworks_web", world_root=tmp_path
+            )
+        assert species == []
+
+    def test_extract_species_registry_registry_read_error_returns_empty(
+        self, tmp_path: Path
+    ) -> None:
+        world_policies = tmp_path / "pipeworks_web" / "policies"
+        registry_dir = world_policies / "image" / "registries"
+        registry_dir.mkdir(parents=True)
+        (world_policies / "manifest.yaml").write_text(
+            "\n".join(
+                [
+                    "image:",
+                    "  registries:",
+                    "    species: policies/image/registries/species_registry.yaml",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        registry_path = registry_dir / "species_registry.yaml"
+        registry_path.write_text(
+            "entries:\n- id: goblin_pipeworks_v1\n  compatible_species: [goblin]",
+            encoding="utf-8",
+        )
+
+        original_read_text = Path.read_text
+
+        def _raise_for_registry(path_obj: Path, *args, **kwargs) -> str:
+            if path_obj == registry_path:
+                raise OSError("registry read failed")
+            return original_read_text(path_obj, *args, **kwargs)
+
+        with patch("pathlib.Path.read_text", autospec=True, side_effect=_raise_for_registry):
+            species = routes_mud._extract_species_from_local_policy_registry(
+                "pipeworks_web", world_root=tmp_path
+            )
+        assert species == []
+
+    def test_extract_runtime_options_supports_top_level_runtime_options(
+        self, tmp_path: Path
+    ) -> None:
+        world_config = {
+            "runtime_options": {
+                "species": ["human", "goblin"],
+                "gender": ["female", "male"],
+            }
+        }
+        options = routes_mud._extract_runtime_options("pipeworks_web", world_config)
+        assert options.species == ["human", "goblin"]
+        assert options.gender == ["female", "male"]
 
 
 # ---------------------------------------------------------------------------
