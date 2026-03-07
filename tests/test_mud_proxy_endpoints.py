@@ -1296,6 +1296,27 @@ class TestMudPipelineBuildGenerateConditionAxis:
         assert data["code"] == "PIPELINE_MODE_UNAVAILABLE"
         assert data["stage"] == "session_world"
 
+    def test_generate_condition_axis_invalid_payload_returns_structured_502(
+        self, test_client: TestClient
+    ) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.generate_condition_axis_payload.side_effect = ValueError("missing axis fields")
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": None,
+                },
+            )
+
+        assert resp.status_code == 502
+        data = resp.json()
+        assert data["code"] == "PIPELINE_UPSTREAM_INVALID"
+        assert data["stage"] == "axis_input"
+        assert "Invalid upstream payload for axis generation" in data["detail"]
+
 
 # ---------------------------------------------------------------------------
 # POST /api/mud/compile-image-prompt

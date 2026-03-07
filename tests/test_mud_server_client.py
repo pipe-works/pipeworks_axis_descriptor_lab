@@ -554,6 +554,60 @@ class TestGenerateConditionAxisPayload:
         with pytest.raises(MudServerFeatureUnavailableError, match="does not expose"):
             client.generate_condition_axis_payload(world_id="pipeworks_web", seed=7)
 
+    def test_generate_condition_axis_payload_connect_error_raises_connection_error(
+        self, client: MudServerClient
+    ) -> None:
+        client._session_id = "abc-123"
+        client._client.post.side_effect = httpx.ConnectError("refused")
+
+        with pytest.raises(MudServerConnectionError, match="Cannot connect"):
+            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=7)
+
+    def test_generate_condition_axis_payload_401_clears_session_and_raises(
+        self, client: MudServerClient
+    ) -> None:
+        client._session_id = "abc-123"
+        client._role = "admin"
+        expired = MagicMock()
+        expired.status_code = 401
+        client._client.post.return_value = expired
+
+        with pytest.raises(MudServerSessionExpiredError, match="Session expired"):
+            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=7)
+
+        assert client._session_id is None
+        assert client._role is None
+
+    def test_generate_condition_axis_payload_non_404_http_error_raises(
+        self, client: MudServerClient
+    ) -> None:
+        client._session_id = "abc-123"
+        error_resp = MagicMock()
+        error_resp.status_code = 409
+        error_resp.text = "conflict"
+        error_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Conflict",
+            request=MagicMock(),
+            response=error_resp,
+        )
+        client._client.post.return_value = error_resp
+
+        with pytest.raises(httpx.HTTPStatusError):
+            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=7)
+
+    def test_generate_condition_axis_payload_invalid_json_raises_type_error(
+        self, client: MudServerClient
+    ) -> None:
+        client._session_id = "abc-123"
+        ok_response = MagicMock()
+        ok_response.status_code = 200
+        ok_response.raise_for_status = MagicMock()
+        ok_response.json.side_effect = ValueError("invalid json")
+        client._client.post.return_value = ok_response
+
+        with pytest.raises(TypeError, match="Invalid JSON response"):
+            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=7)
+
 
 # ---------------------------------------------------------------------------
 # Translate
