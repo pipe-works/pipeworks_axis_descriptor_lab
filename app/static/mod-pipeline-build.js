@@ -6,7 +6,7 @@
  * Phase D scope
  * ─────────────
  * Implements Stage 1 (Session + World), Stage 2 (Policy Bundle), Stage 3
- * (Character Identity), Stage 4 (Axis Input), and Stage 8 compile execution
+ * (Species Canon Inputs), Stage 4 (Axis Input), and Stage 8 compile execution
  * against the canonical mud-server compile endpoint.
  */
 
@@ -36,7 +36,7 @@ import { renderSourceHint } from "./mod-source-paths.js";
 const STAGE_LABEL = {
   session_world: "Session + World",
   policy_bundle: "Policy Bundle",
-  identity: "Character Identity",
+  identity: "Species Canon Inputs",
   axis_input: "Axis Input",
   block_selection: "Block Selection",
   descriptor_tone: "Descriptor + Tone",
@@ -421,7 +421,7 @@ function focusStageControl(stageKey) {
       }
       return dom.pipelinePolicyRefresh;
     },
-    identity: () => dom.pipelineSpeciesInput,
+    identity: () => dom.pipelineGenderSelect,
     axis_input: () => dom.pipelineAxisSourceMode,
     block_selection: () => dom.pipelineBlockSelectionSummary,
     descriptor_tone: () => dom.pipelineDescriptorToneSummary,
@@ -865,14 +865,57 @@ function renderPolicyBundleSummary() {
 
 function renderIdentityControls() {
   if (dom.pipelineSpeciesInput) {
-    dom.pipelineSpeciesInput.value = pipelineBuildState.identity.species;
+    const canonicalSpecies = Array.isArray(pipelineBuildState.runtimeOptions.species)
+      ? pipelineBuildState.runtimeOptions.species.map((value) => String(value).trim()).filter(Boolean)
+      : [];
+    const currentSpecies = String(pipelineBuildState.identity.species || "").trim();
+    const selectOptions = canonicalSpecies;
+
+    dom.pipelineSpeciesInput.innerHTML = "";
+    if (selectOptions.length === 0) {
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "(no canonical species options available)";
+      dom.pipelineSpeciesInput.appendChild(placeholder);
+      pipelineBuildState.identity.species = "";
+    } else {
+      for (const species of selectOptions) {
+        const option = document.createElement("option");
+        option.value = species;
+        option.textContent = species;
+        dom.pipelineSpeciesInput.appendChild(option);
+      }
+      if (selectOptions.includes(currentSpecies)) {
+        dom.pipelineSpeciesInput.value = currentSpecies;
+      } else {
+        dom.pipelineSpeciesInput.value = selectOptions[0];
+        pipelineBuildState.identity.species = selectOptions[0];
+      }
+    }
+
     dom.pipelineSpeciesInput.disabled =
-      pipelineBuildState.stageStatus.identity === PIPELINE_STAGE_STATUS.LOCKED;
+      pipelineBuildState.stageStatus.identity === PIPELINE_STAGE_STATUS.LOCKED ||
+      pipelineBuildState.busy ||
+      selectOptions.length === 0;
   }
   if (dom.pipelineGenderSelect) {
     dom.pipelineGenderSelect.value = pipelineBuildState.identity.gender;
     dom.pipelineGenderSelect.disabled =
-      pipelineBuildState.stageStatus.identity === PIPELINE_STAGE_STATUS.LOCKED;
+      pipelineBuildState.stageStatus.identity === PIPELINE_STAGE_STATUS.LOCKED ||
+      pipelineBuildState.busy;
+  }
+  if (dom.pipelineSpeciesSourceHint) {
+    const canonicalCount = Array.isArray(pipelineBuildState.runtimeOptions.species)
+      ? pipelineBuildState.runtimeOptions.species.length
+      : 0;
+    const sourceToken = resolvePolicySourceBadgeInfo(pipelineBuildState.policySource).token;
+    if (canonicalCount > 0) {
+      dom.pipelineSpeciesSourceHint.textContent =
+        `Source: runtime_options.species (${canonicalCount}) from bootstrap (${sourceToken}).`;
+    } else {
+      dom.pipelineSpeciesSourceHint.textContent =
+        "Source: no canonical runtime_options.species returned for this world.";
+    }
   }
 }
 
@@ -1221,13 +1264,13 @@ function renderStageEditorHint() {
 
   if (policyStatus !== PIPELINE_STAGE_STATUS.COMPLETE) {
     dom.pipelineStageEditor.textContent =
-      "Select world and load policy bundle metadata to unlock Character Identity.";
+      "Select world and load policy bundle metadata to unlock Species Canon Inputs.";
     return;
   }
 
   if (identityStatus !== PIPELINE_STAGE_STATUS.COMPLETE) {
     dom.pipelineStageEditor.textContent =
-      "Set species and gender to unlock Axis Input.";
+      "Set gender and species to unlock Axis Input.";
     return;
   }
 
@@ -1344,7 +1387,9 @@ function applyRuntimeOptions(runtimeOptions) {
   pipelineBuildState.runtimeOptions.worldContextTags = worldContextTags;
   pipelineBuildState.runtimeOptions.occupationTags = occupationTags;
 
-  if (species.length > 0 && !species.includes(pipelineBuildState.identity.species)) {
+  if (species.length === 0) {
+    pipelineBuildState.identity.species = "";
+  } else if (!species.includes(pipelineBuildState.identity.species)) {
     pipelineBuildState.identity.species = species[0];
   }
   if (
@@ -1889,7 +1934,7 @@ export function wirePipelineBuildEvents() {
     loadPolicyBundleForWorld(pipelineBuildState.selectedWorldId);
   });
 
-  dom.pipelineSpeciesInput?.addEventListener("input", () => {
+  dom.pipelineSpeciesInput?.addEventListener("change", () => {
     handleIdentityChange();
   });
 

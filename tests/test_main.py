@@ -98,6 +98,7 @@ class TestIndexRoute:
         assert 'id="pipeline-policy-source-hint"' in resp.text
         assert 'id="pipeline-axis-preset-source-hint"' in resp.text
         assert 'id="pipeline-species-input"' in resp.text
+        assert 'id="pipeline-species-source-hint"' in resp.text
         assert 'id="pipeline-axis-source-mode"' in resp.text
         assert 'id="pipeline-axis-json"' in resp.text
         assert 'id="pipeline-block-selection-summary"' in resp.text
