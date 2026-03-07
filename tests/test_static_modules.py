@@ -316,6 +316,12 @@ def _read_styles() -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _read_template() -> str:
+    """Read the main index template."""
+    path = Path(__file__).resolve().parent.parent / "app" / "templates" / "index.html"
+    return path.read_text(encoding="utf-8")
+
+
 # ── 1. Static file serving ──────────────────────────────────────────────────
 
 
@@ -503,6 +509,120 @@ class TestPipelineBuildContracts:
         assert "AXIS_HASH_INPUT_FIELDS" in content
         assert "COMPILER_INPUT_HASH_FIELDS" in content
         assert '"excluded_from_hashes: compiled_prompt"' in content
+
+    def test_hash_helpers_and_recompute_contract_exist(self) -> None:
+        """Hash helper module should define deterministic normalization + hashing."""
+        hash_content = _read_module("mod-pipeline-build-hash.js")
+        pipeline_content = _read_module("mod-pipeline-build.js")
+
+        assert "function stableStringify(value)" in hash_content
+        assert "Object.keys(node).sort()" in hash_content
+        assert 'crypto.subtle.digest("SHA-256", data)' in hash_content
+        assert "return sha256Hex(stableStringify(value));" in hash_content
+
+        assert "async function recomputeHashes()" in pipeline_content
+        assert "pipelineBuildState.axisHash" in pipeline_content
+        assert "pipelineBuildState.compilerInputHash" in pipeline_content
+        assert "await hashNormalizedPayload(axisPayload)" in pipeline_content
+        assert "await hashNormalizedPayload(compileRequest)" in pipeline_content
+
+    def test_request_body_builders_have_gating_and_expected_fields(self) -> None:
+        """Resolve/compile request builders should gate by stage validity and include expected fields."""
+        content = _read_module("mod-pipeline-build.js")
+
+        assert "function buildCompileRequest()" in content
+        assert "function buildResolveRequest()" in content
+        assert "if (!pipelineBuildState.selectedWorldId) return null;" in content
+        assert "if (!isIdentityValid()) return null;" in content
+        assert "if (!isAxisPayloadValid(pipelineBuildState.axis.payload)) return null;" in content
+        assert "if (!worldIdsMatch()) return null;" in content
+
+        assert "world_id: pipelineBuildState.selectedWorldId" in content
+        assert "species: pipelineBuildState.identity.species" in content
+        assert "gender: pipelineBuildState.identity.gender" in content
+        assert "axes: pipelineBuildState.axis.payload.axes" in content
+        assert "world_context: runtime.worldContext" in content
+        assert "occupation_signals: runtime.occupationSignals" in content
+
+    def test_stage_transition_rules_cover_auth_world_policy_identity_axis(self) -> None:
+        """Stage progression should explicitly gate downstream stages in canonical order."""
+        content = _read_module("mod-pipeline-build.js")
+
+        assert "function applyStageProgression()" in content
+        assert "if (!isAuthenticated)" in content
+        assert "if (!hasWorld)" in content
+        assert "if (policyStatus !== PIPELINE_STAGE_STATUS.COMPLETE)" in content
+        assert "if (!identityValid)" in content
+        assert "if (axisValid)" in content
+        assert "lockAfterAxis();" in content
+        assert 'pipelineBuildState.activeStage = "session_world";' in content
+        assert 'pipelineBuildState.activeStage = "identity";' in content
+        assert 'pipelineBuildState.activeStage = "axis_input";' in content
+
+    def test_session_world_policy_fetch_flow_is_wired(self) -> None:
+        """Session/world/policy bootstrap flow should call API helpers in sequence."""
+        content = _read_module("mod-pipeline-build.js")
+
+        assert "async function refreshSessionAndWorlds" in content
+        assert "const session = await fetchMudSession();" in content
+        assert "const worldsPayload = await fetchMudWorlds();" in content
+        assert "const preferredWorld = derivePreferredWorld(session, worlds);" in content
+        assert "await applyWorldSelection(preferredWorld, { quiet: true });" in content
+
+        assert "async function loadPolicyBundleForWorld" in content
+        assert "const bootstrap = await fetchPipelineBuildBootstrap(worldId);" in content
+        assert "pipelineBuildState.policyBundle = bundle;" in content
+        assert (
+            "pipelineBuildState.worldConfig = bootstrap.world_summary?.world_config || null;"
+            in content
+        )
+
+    def test_compile_request_contract_flow_is_wired(self) -> None:
+        """Compile action should build request payload then post to compile endpoint."""
+        content = _read_module("mod-pipeline-build.js")
+
+        assert "async function handleCompileRequest()" in content
+        assert "const requestBody = buildCompileRequest();" in content
+        assert "const result = await compileImagePrompt(requestBody);" in content
+        assert "pipelineBuildState.compile.result = result;" in content
+        assert "pipelineBuildState.policyHash = String(result.policy_hash);" in content
+        assert "pipelineBuildState.axisHash = String(result.axis_hash);" in content
+
+    def test_401_paths_call_unauthenticated_state_and_relock(self) -> None:
+        """Pipeline fetch/resolve/compile flows should handle 401 via re-auth relock helper."""
+        content = _read_module("mod-pipeline-build.js")
+
+        assert (
+            "function applyUnauthenticatedState(errorMessage = null, { preserveEnteredState = true } = {})"
+            in content
+        )
+        assert 'setStageStatus("policy_bundle", PIPELINE_STAGE_STATUS.LOCKED);' in content
+        assert 'setStageStatus("identity", PIPELINE_STAGE_STATUS.LOCKED);' in content
+        assert 'setStageStatus("axis_input", PIPELINE_STAGE_STATUS.LOCKED);' in content
+        assert "lockAfterAxis();" in content
+
+        # 401 handling exists across world/session/resolve/compile flows.
+        assert "if (err instanceof PipelineApiError && err.status === 401)" in content
+        assert "applyUnauthenticatedState(detail);" in content
+        assert "mud session expired. Please reconnect." in content
+
+    def test_source_hints_present_for_world_policy_and_axis_selectors(self) -> None:
+        """Pipeline UI should surface source hints for world, policy bundle, and axis presets."""
+        template = _read_template()
+        content = _read_module("mod-pipeline-build.js")
+
+        assert 'id="pipeline-world-source-hint"' in template
+        assert 'id="pipeline-policy-source-hint"' in template
+        assert 'id="pipeline-axis-preset-source-hint"' in template
+        assert "dom.pipelineAxisPresetSourceHint" in content
+
+    def test_pipeline_api_error_parser_supports_code_and_stage_fields(self) -> None:
+        """Pipeline API helper should preserve structured error code/stage metadata."""
+        content = _read_module("mod-pipeline-build-api.js")
+        assert "this.code = code;" in content
+        assert "this.stage = stage;" in content
+        assert 'if (typeof body.code === "string") code = body.code;' in content
+        assert 'if (typeof body.stage === "string") stage = body.stage;' in content
 
     def test_stage_list_keyboard_navigation_is_wired(self) -> None:
         """Stage list should support arrow navigation and Enter/Space activation."""

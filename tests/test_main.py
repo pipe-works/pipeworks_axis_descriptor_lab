@@ -92,6 +92,7 @@ class TestIndexRoute:
         assert 'id="pipeline-world-source-hint"' in resp.text
         assert 'id="pipeline-policy-summary"' in resp.text
         assert 'id="pipeline-policy-source-hint"' in resp.text
+        assert 'id="pipeline-axis-preset-source-hint"' in resp.text
         assert 'id="pipeline-species-input"' in resp.text
         assert 'id="pipeline-axis-source-mode"' in resp.text
         assert 'id="pipeline-axis-json"' in resp.text
@@ -104,6 +105,29 @@ class TestIndexRoute:
         assert 'id="pipeline-export-response-json"' in resp.text
         assert 'id="pipeline-provenance-panel"' in resp.text
         assert 'id="pipeline-action-log"' in resp.text
+
+    def test_root_route_keeps_character_description_as_default_active_page(
+        self, client: TestClient
+    ) -> None:
+        """Regression guard: default `/` route should continue to open Character Description."""
+        with patch("app.main.ChatRenderer.list_models", return_value=["gemma2:2b"]):
+            resp = client.get("/")
+
+        assert resp.status_code == 200
+        assert re.search(r'id="nav-char-desc"[^>]*is-active', resp.text)
+        assert re.search(r'id="page-chat-translation"[^>]*class="hidden"', resp.text)
+        assert re.search(r'id="page-artifact-editor"[^>]*class="hidden"', resp.text)
+        assert re.search(r'id="page-pipeline-build"[^>]*class="hidden"', resp.text)
+
+    def test_pipeline_route_hides_non_pipeline_pages(self, client: TestClient) -> None:
+        """Regression guard: `/pipeline-build` should not alter other page shell sections."""
+        with patch("app.main.ChatRenderer.list_models", return_value=["gemma2:2b"]):
+            resp = client.get("/pipeline-build")
+
+        assert resp.status_code == 200
+        assert re.search(r'id="page-char-description"[^>]*class="hidden"', resp.text)
+        assert re.search(r'id="page-chat-translation"[^>]*class="hidden"', resp.text)
+        assert re.search(r'id="page-artifact-editor"[^>]*class="hidden"', resp.text)
 
 
 class TestListExamples:
