@@ -523,6 +523,277 @@ class TestMudWorldImagePolicyBundle:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/mud/pipeline-build/bootstrap/{world_id}
+# ---------------------------------------------------------------------------
+
+
+class TestMudPipelineBuildBootstrap:
+    """Pipeline bootstrap aggregation endpoint tests."""
+
+    def test_pipeline_bootstrap_success(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.list_worlds.return_value = [
+            {
+                "world_id": "pipeworks_web",
+                "name": "Pipeworks Web",
+                "description": "Canonical web world.",
+                "translation_enabled": True,
+            }
+        ]
+        mock.world_config.return_value = {
+            "world_id": "pipeworks_web",
+            "name": "Pipeworks Web",
+            "image_generation": {
+                "runtime_options": {
+                    "species": ["goblin", "orc"],
+                    "gender": ["male", "female"],
+                    "world_context_tags": ["ledgerfall", "docks"],
+                    "occupation_signals": ["trader", "scribe"],
+                }
+            },
+        }
+        mock.world_image_policy_bundle.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_schema": "pipeworks_policy_v1",
+            "policy_bundle_id": "pipeworks_web_default",
+            "policy_bundle_version": 1,
+            "policy_hash": "abc123",
+            "composition_order": [
+                "species_canon_block",
+                "clothing_block",
+                "descriptor_layer",
+                "tone_profile",
+            ],
+            "required_runtime_inputs": ["entity.identity.gender", "entity.species", "entity.axes"],
+            "missing_components": [],
+        }
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/pipeline-build/bootstrap/pipeworks_web")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["world_id"] == "pipeworks_web"
+        assert data["world_summary"]["world_row"]["world_id"] == "pipeworks_web"
+        assert data["policy_bundle"]["policy_hash"] == "abc123"
+        assert data["runtime_options"]["species"] == ["goblin", "orc"]
+        assert data["runtime_options"]["world_context_tags"] == ["ledgerfall", "docks"]
+        assert data["required_fields"] == [
+            "entity.identity.gender",
+            "entity.species",
+            "entity.axes",
+        ]
+
+    def test_pipeline_bootstrap_world_not_found(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.list_worlds.return_value = [{"world_id": "other_world", "name": "Other"}]
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/pipeline-build/bootstrap/pipeworks_web")
+
+        assert resp.status_code == 404
+        data = resp.json()
+        assert data["code"] == "PIPELINE_WORLD_NOT_FOUND"
+        assert data["stage"] == "session_world"
+
+    def test_pipeline_bootstrap_auth_expired(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.list_worlds.side_effect = MudServerSessionExpiredError("expired")
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/pipeline-build/bootstrap/pipeworks_web")
+
+        assert resp.status_code == 401
+        data = resp.json()
+        assert data["code"] == "PIPELINE_AUTH_REQUIRED"
+        assert data["stage"] == "session_world"
+
+    def test_pipeline_bootstrap_connection_error(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.list_worlds.side_effect = MudServerConnectionError("down")
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/pipeline-build/bootstrap/pipeworks_web")
+
+        assert resp.status_code == 502
+        data = resp.json()
+        assert data["code"] == "PIPELINE_UPSTREAM_UNAVAILABLE"
+        assert data["stage"] == "session_world"
+
+    def test_pipeline_bootstrap_standalone_503(self, test_client: TestClient) -> None:
+        with patch("app.routes_mud.get_mud_client", return_value=None):
+            resp = test_client.get("/api/mud/pipeline-build/bootstrap/pipeworks_web")
+
+        assert resp.status_code == 503
+        data = resp.json()
+        assert data["code"] == "PIPELINE_MODE_UNAVAILABLE"
+        assert data["stage"] == "session_world"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/mud/pipeline-build/resolve-image-selection
+# ---------------------------------------------------------------------------
+
+
+class TestMudPipelineBuildResolveImageSelection:
+    """Pipeline resolve preview endpoint tests."""
+
+    def test_pipeline_resolve_success(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.world_image_policy_bundle.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_schema": "pipeworks_policy_v1",
+            "policy_bundle_id": "pipeworks_web_default",
+            "policy_bundle_version": 1,
+            "policy_hash": "bundle_hash",
+            "composition_order": [
+                "species_canon_block",
+                "clothing_block",
+                "descriptor_layer",
+                "tone_profile",
+            ],
+            "required_runtime_inputs": ["entity.identity.gender", "entity.species", "entity.axes"],
+            "missing_components": [],
+        }
+        mock.compile_image_prompt.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_hash": "policy_hash_resolved",
+            "axis_hash": "axis_hash_resolved",
+            "selected_species_block_id": "goblin_v1",
+            "selected_descriptor_layer_id": "portrait_surface_v2",
+            "selected_tone_profile_id": "archival_neutral_v1",
+            "selected_clothing_slot_ids": {
+                "environment": "urban_trader_01",
+                "activity": "ledger_work_02",
+                "wealth": "modest_03",
+            },
+        }
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/resolve-image-selection",
+                json={
+                    "world_id": "pipeworks_web",
+                    "species": "goblin",
+                    "gender": "male",
+                    "axes": {"demeanor": {"label": "proud", "score": 0.81}},
+                    "world_context": ["ledgerfall"],
+                    "occupation_signals": ["trader"],
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["selected_blocks"]["species_canon_block"] == "goblin_v1"
+        assert data["selected_blocks"]["clothing_block"]["wealth"] == "modest_03"
+        assert data["descriptor_layer"] == "portrait_surface_v2"
+        assert data["tone_profile"] == "archival_neutral_v1"
+        assert data["policy_hash"] == "policy_hash_resolved"
+        assert data["axis_hash"] == "axis_hash_resolved"
+        assert isinstance(data["compiler_input_hash"], str)
+        assert len(data["compiler_input_hash"]) == 64
+        call_kwargs = mock.compile_image_prompt.call_args.kwargs
+        assert call_kwargs["world_id"] == "pipeworks_web"
+        assert call_kwargs["species"] == "goblin"
+        assert call_kwargs["gender"] == "male"
+        assert call_kwargs["world_context"] == ["ledgerfall"]
+        assert call_kwargs["occupation_signals"] == ["trader"]
+
+    def test_pipeline_resolve_missing_axis_hash_returns_502(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.world_image_policy_bundle.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_schema": "pipeworks_policy_v1",
+            "policy_bundle_id": "pipeworks_web_default",
+            "policy_bundle_version": 1,
+            "policy_hash": "bundle_hash",
+            "composition_order": ["species_canon_block"],
+            "required_runtime_inputs": ["entity.identity.gender", "entity.species", "entity.axes"],
+            "missing_components": [],
+        }
+        mock.compile_image_prompt.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_hash": "policy_hash_resolved",
+            "selected_species_block_id": "goblin_v1",
+            "selected_clothing_slot_ids": {},
+        }
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/resolve-image-selection",
+                json={
+                    "world_id": "pipeworks_web",
+                    "species": "goblin",
+                    "gender": "male",
+                    "axes": {"demeanor": {"label": "proud", "score": 0.81}},
+                },
+            )
+
+        assert resp.status_code == 502
+        data = resp.json()
+        assert data["code"] == "PIPELINE_UPSTREAM_INVALID"
+        assert data["stage"] == "compile_output"
+
+    def test_pipeline_resolve_upstream_http_error(self, test_client: TestClient) -> None:
+        mock = _mock_mud_client(authenticated=True)
+        mock.world_image_policy_bundle.return_value = {
+            "world_id": "pipeworks_web",
+            "policy_schema": "pipeworks_policy_v1",
+            "policy_bundle_id": "pipeworks_web_default",
+            "policy_bundle_version": 1,
+            "policy_hash": "bundle_hash",
+            "composition_order": ["species_canon_block"],
+            "required_runtime_inputs": ["entity.identity.gender", "entity.species", "entity.axes"],
+            "missing_components": [],
+        }
+        response = MagicMock()
+        response.status_code = 409
+        response.json.return_value = {
+            "detail": "Missing required runtime inputs for compile: entity.axes"
+        }
+        response.text = "Missing required runtime inputs for compile: entity.axes"
+        mock.compile_image_prompt.side_effect = httpx.HTTPStatusError(
+            "Conflict",
+            request=MagicMock(),
+            response=response,
+        )
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/resolve-image-selection",
+                json={
+                    "world_id": "pipeworks_web",
+                    "species": "goblin",
+                    "gender": "male",
+                    "axes": {},
+                },
+            )
+
+        assert resp.status_code == 409
+        data = resp.json()
+        assert data["code"] == "PIPELINE_UPSTREAM_HTTP_ERROR"
+        assert data["stage"] == "compile_output"
+        assert "Missing required runtime inputs" in data["detail"]
+
+    def test_pipeline_resolve_standalone_503(self, test_client: TestClient) -> None:
+        with patch("app.routes_mud.get_mud_client", return_value=None):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/resolve-image-selection",
+                json={
+                    "world_id": "pipeworks_web",
+                    "species": "goblin",
+                    "gender": "male",
+                    "axes": {"demeanor": {"label": "proud", "score": 0.81}},
+                },
+            )
+
+        assert resp.status_code == 503
+        data = resp.json()
+        assert data["code"] == "PIPELINE_MODE_UNAVAILABLE"
+        assert data["stage"] == "session_world"
+
+
+# ---------------------------------------------------------------------------
 # POST /api/mud/compile-image-prompt
 # ---------------------------------------------------------------------------
 

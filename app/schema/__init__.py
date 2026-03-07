@@ -81,6 +81,7 @@ from app.schema.chat import (
 )
 from app.schema.generate import GenerateRequest, GenerateResponse, LogEntry
 from app.schema.mud import (
+    MudPipelineBootstrapResponse,
     MudCompileImagePromptRequest,
     MudImagePolicyBundleResponse,
     MudLoginRequest,
@@ -88,6 +89,10 @@ from app.schema.mud import (
     MudModeOption,
     MudModeRequest,
     MudModeResponse,
+    MudPipelineResolveRequest,
+    MudPipelineResolveResponse,
+    MudPipelineRuntimeOptions,
+    MudPipelineSelectedBlocks,
     MudSelectWorldRequest,
     MudSessionResponse,
 )
@@ -141,6 +146,11 @@ __all__ = [
     "MudModeOption",
     "MudModeRequest",
     "MudModeResponse",
+    "MudPipelineBootstrapResponse",
+    "MudPipelineResolveRequest",
+    "MudPipelineResolveResponse",
+    "MudPipelineRuntimeOptions",
+    "MudPipelineSelectedBlocks",
     "MudSelectWorldRequest",
     "MudSessionResponse",
     "PolicyBundleArtifactDocument",
