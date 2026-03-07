@@ -316,6 +316,11 @@ export const dom = {
   pipelineProvenancePanel:   $("pipeline-provenance-panel"),
   pipelineActionLog:         $("pipeline-action-log"),
   pipelineSessionSummary:    $("pipeline-session-summary"),
+  pipelineAxisInputInfoTrigger: $("pipeline-axis-input-info-trigger"),
+  pipelineAxisInputModal:    $("pipeline-axis-input-modal"),
+  pipelineAxisInputModalBackdrop: $("pipeline-axis-input-modal-backdrop"),
+  pipelineAxisInputModalCloseX: $("pipeline-axis-input-modal-close-x"),
+  pipelineAxisInputModalClose: $("pipeline-axis-input-modal-close"),
   pipelineStageEditor:       $("pipeline-stage-editor"),
   pipelineBuildSummary:      $("pipeline-build-summary"),
 

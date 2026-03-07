@@ -869,6 +869,14 @@ class TestRuntimeModeConfig:
         assert config["translation_mode"] == "server-prod"
         assert config["active_server_url"] == "https://api.pipe-works.org"
 
+    def test_default_mode_is_standalone_even_when_server_urls_exist(self) -> None:
+        """Startup should remain local/offline to avoid immediate login prompts."""
+        with (
+            patch.object(mud_client_module, "_ENV_MUD_SERVER_URL", "https://api.pipe-works.org"),
+            patch.object(mud_client_module, "_RUNTIME_DEV_SERVER_URL", "http://localhost:8000"),
+        ):
+            assert mud_client_module._default_mode_key() == "standalone"
+
     def test_set_mode_rejects_unknown_mode(self) -> None:
         with pytest.raises(ValueError, match="Unknown mud mode"):
             set_mud_mode("does-not-exist")

@@ -989,6 +989,13 @@
 .pipeline-build-grid .panel--centre { background: var(--col-surface); }
 .pipeline-build-grid .panel--right  { background: var(--col-surface-2); }
 
+/* Pipeline Build hints should align with section body text, not form-label columns. */
+.pipeline-panel .control-path-hint {
+  padding-left: 0;
+  text-align: left;
+  white-space: pre-line;
+}
+
 .artifact-panel {
   overflow-y: auto;
 }
