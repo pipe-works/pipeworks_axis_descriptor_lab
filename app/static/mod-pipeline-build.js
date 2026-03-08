@@ -1558,8 +1558,6 @@ async function handleGenerateConditionAxis() {
     return;
   }
 
-  // TODO(pipeline-phase-next): Add equivalent canonical generation UX for
-  // offline/development paths after production contract hardening is complete.
   pipelineBuildState.busy = true;
   appendActionLog(
     requestBody.seed === null
@@ -1600,9 +1598,7 @@ async function handleGenerateConditionAxis() {
       await recomputeHashes();
       pipelineBuildState.lastError = detail;
       renderPipelinePanels({ syncAxisJsonEditor: false });
-      setStatus(
-        "Pipeline Build — production server does not yet expose canonical condition-axis generation."
-      );
+      setStatus(`Pipeline Build — condition axis generation unsupported: ${detail}`);
       appendActionLog(`Condition axis generation unsupported: ${detail}`, "warn");
       return;
     }

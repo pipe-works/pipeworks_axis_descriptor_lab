@@ -492,6 +492,12 @@ class TestPipelineBuildContracts:
         assert "export async function generatePipelineConditionAxis(body)" in api_content
         assert '"/api/mud/pipeline-build/generate-condition-axis"' in api_content
 
+    def test_condition_axis_unsupported_error_surfaces_structured_detail(self) -> None:
+        """Stage 4 unsupported-path errors should surface structured upstream detail text."""
+        content = _read_module("mod-pipeline-build.js")
+        assert 'err.code === "PIPELINE_UPSTREAM_UNSUPPORTED"' in content
+        assert "Pipeline Build — condition axis generation unsupported: ${detail}" in content
+
     def test_stage_progression_can_mark_downstream_stages_complete(self) -> None:
         """Resolve/compile results should promote downstream stage statuses."""
         content = _read_module("mod-pipeline-build.js")
