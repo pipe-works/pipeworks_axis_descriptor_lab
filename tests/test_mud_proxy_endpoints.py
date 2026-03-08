@@ -1162,6 +1162,23 @@ class TestMudPipelineBuildResolveImageSelection:
 class TestMudPipelineBuildGenerateConditionAxis:
     """Pipeline stage-4 canonical axis generation endpoint tests."""
 
+    def test_generate_condition_axis_missing_inputs_returns_422(
+        self, test_client: TestClient
+    ) -> None:
+        mock = _mock_mud_client(authenticated=True)
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": 42,
+                },
+            )
+
+        assert resp.status_code == 422
+        mock.generate_condition_axis_payload.assert_not_called()
+
     def test_generate_condition_axis_success(self, test_client: TestClient) -> None:
         mock = _mock_mud_client(authenticated=True)
         mock.generate_condition_axis_payload.return_value = {
@@ -1177,6 +1194,12 @@ class TestMudPipelineBuildGenerateConditionAxis:
                 json={
                     "world_id": "pipeworks_web",
                     "seed": 42,
+                    "inputs": {
+                        "entity": {
+                            "species": "goblin",
+                            "identity": {"gender": "male"},
+                        }
+                    },
                 },
             )
 
@@ -1188,6 +1211,8 @@ class TestMudPipelineBuildGenerateConditionAxis:
         mock.generate_condition_axis_payload.assert_called_once_with(
             world_id="pipeworks_web",
             seed=42,
+            species="goblin",
+            gender="male",
         )
 
     def test_generate_condition_axis_auth_expired_returns_structured_401(
@@ -1202,6 +1227,12 @@ class TestMudPipelineBuildGenerateConditionAxis:
                 json={
                     "world_id": "pipeworks_web",
                     "seed": None,
+                    "inputs": {
+                        "entity": {
+                            "species": "goblin",
+                            "identity": {"gender": "male"},
+                        }
+                    },
                 },
             )
 
@@ -1220,6 +1251,12 @@ class TestMudPipelineBuildGenerateConditionAxis:
                 json={
                     "world_id": "pipeworks_web",
                     "seed": None,
+                    "inputs": {
+                        "entity": {
+                            "species": "goblin",
+                            "identity": {"gender": "male"},
+                        }
+                    },
                 },
             )
 
@@ -1248,6 +1285,12 @@ class TestMudPipelineBuildGenerateConditionAxis:
                 json={
                     "world_id": "pipeworks_web",
                     "seed": 99,
+                    "inputs": {
+                        "entity": {
+                            "species": "goblin",
+                            "identity": {"gender": "male"},
+                        }
+                    },
                 },
             )
 
@@ -1272,6 +1315,12 @@ class TestMudPipelineBuildGenerateConditionAxis:
                 json={
                     "world_id": "pipeworks_web",
                     "seed": None,
+                    "inputs": {
+                        "entity": {
+                            "species": "goblin",
+                            "identity": {"gender": "male"},
+                        }
+                    },
                 },
             )
 
@@ -1288,6 +1337,12 @@ class TestMudPipelineBuildGenerateConditionAxis:
                 json={
                     "world_id": "pipeworks_web",
                     "seed": None,
+                    "inputs": {
+                        "entity": {
+                            "species": "goblin",
+                            "identity": {"gender": "male"},
+                        }
+                    },
                 },
             )
 
@@ -1308,6 +1363,12 @@ class TestMudPipelineBuildGenerateConditionAxis:
                 json={
                     "world_id": "pipeworks_web",
                     "seed": None,
+                    "inputs": {
+                        "entity": {
+                            "species": "goblin",
+                            "identity": {"gender": "male"},
+                        }
+                    },
                 },
             )
 

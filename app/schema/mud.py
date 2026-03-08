@@ -168,11 +168,43 @@ class MudCompileImagePromptRequest(BaseModel):
     )
 
 
+class MudPipelineGenerateConditionAxisIdentityInputs(BaseModel):
+    """Identity input block for canonical condition-axis generation."""
+
+    gender: str = Field(
+        ...,
+        description="Identity gender required by canonical condition-axis validation.",
+    )
+
+
+class MudPipelineGenerateConditionAxisEntityInputs(BaseModel):
+    """Entity input block for canonical condition-axis generation."""
+
+    species: str = Field(
+        ...,
+        description="Species token required by canonical condition-axis validation.",
+    )
+    identity: MudPipelineGenerateConditionAxisIdentityInputs = Field(
+        ...,
+        description="Nested identity metadata required by canonical condition-axis validation.",
+    )
+
+
+class MudPipelineGenerateConditionAxisInputs(BaseModel):
+    """Runtime inputs wrapper for canonical condition-axis generation."""
+
+    entity: MudPipelineGenerateConditionAxisEntityInputs = Field(
+        ...,
+        description="Entity runtime inputs consumed by canonical condition-axis service.",
+    )
+
+
 class MudPipelineGenerateConditionAxisRequest(BaseModel):
     """Request body for ``POST /api/mud/pipeline-build/generate-condition-axis``.
 
-    This contract is intentionally minimal for production canonical mode:
-    the mud server owns condition-axis generation and returns an AxisPayload.
+    This contract mirrors the mud server canonical route and includes strict
+    runtime identity inputs used by policy validation.
+
     ``seed`` may be omitted (or null) to request server-side random seeding.
     """
 
@@ -183,6 +215,10 @@ class MudPipelineGenerateConditionAxisRequest(BaseModel):
     seed: int | None = Field(
         default=None,
         description="Optional deterministic seed; null delegates to server random seed generation.",
+    )
+    inputs: MudPipelineGenerateConditionAxisInputs = Field(
+        ...,
+        description=("Canonical runtime inputs forwarded to mud server condition-axis generation."),
     )
 
 

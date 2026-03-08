@@ -318,8 +318,13 @@ class MudServerClient:
         *,
         world_id: str,
         seed: int | None = None,
+        species: str,
+        gender: str,
     ) -> dict:
         """POST canonical condition-axis generation endpoint and return AxisPayload.
+
+        The canonical mud-server route requires ``session_id`` in query params
+        plus strict runtime inputs in the JSON body under ``inputs.entity``.
 
         Raises:
             MudServerSessionExpiredError: Session invalid/expired.
@@ -328,21 +333,53 @@ class MudServerClient:
             httpx.HTTPStatusError: Non-404 upstream HTTP errors.
         """
 
+        if not self._session_id:
+            raise MudServerSessionExpiredError("Not authenticated")
+
         body = {
-            "session_id": self._session_id,
             "world_id": world_id,
             "seed": seed,
+            "inputs": {
+                "entity": {
+                    "species": species,
+                    "identity": {"gender": gender},
+                }
+            },
         }
         endpoint_path = "/api/pipeline/condition-axis/generate"
         try:
-            return self._post(endpoint_path, body)
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
-                raise MudServerFeatureUnavailableError(
-                    "Mud server does not expose canonical condition-axis generation endpoint "
-                    "(/api/pipeline/condition-axis/generate)."
-                ) from exc
-            raise
+            resp = self._client.post(
+                f"{self._base_url}{endpoint_path}",
+                params={"session_id": self._session_id},
+                json=body,
+            )
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise MudServerConnectionError(
+                f"Cannot connect to mud server at {self._base_url}"
+            ) from exc
+
+        if resp.status_code == 401:
+            self._session_id = None
+            self._role = None
+            raise MudServerSessionExpiredError("Session expired or invalid")
+
+        if resp.status_code == 404:
+            raise MudServerFeatureUnavailableError(
+                "Mud server does not expose canonical condition-axis generation endpoint "
+                "(/api/pipeline/condition-axis/generate)."
+            )
+
+        if resp.status_code >= 400:
+            logger.warning(
+                "MudServerClient.generate_condition_axis_payload %s → HTTP %d: %s",
+                endpoint_path,
+                resp.status_code,
+                resp.text[:500],
+            )
+            resp.raise_for_status()
+
+        try:
+            return resp.json()
         except ValueError as exc:
             raise TypeError("Invalid JSON response from mud server.") from exc
 

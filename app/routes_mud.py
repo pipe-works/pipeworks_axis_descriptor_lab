@@ -640,6 +640,8 @@ def mud_pipeline_build_generate_condition_axis(
         payload = client.generate_condition_axis_payload(
             world_id=req.world_id,
             seed=req.seed,
+            species=req.inputs.entity.species,
+            gender=req.inputs.entity.identity.gender,
         )
         return AxisPayload.model_validate(payload)
     except MudServerSessionExpiredError:

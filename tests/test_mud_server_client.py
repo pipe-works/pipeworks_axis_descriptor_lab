@@ -487,15 +487,22 @@ class TestGenerateConditionAxisPayload:
         mock_resp.raise_for_status = MagicMock()
         client._client.post.return_value = mock_resp
 
-        result = client.generate_condition_axis_payload(world_id="pipeworks_web", seed=42)
+        result = client.generate_condition_axis_payload(
+            world_id="pipeworks_web",
+            seed=42,
+            species="goblin",
+            gender="male",
+        )
 
         assert result["world_id"] == "pipeworks_web"
         call_args = client._client.post.call_args
         assert call_args[0][0].endswith("/api/pipeline/condition-axis/generate")
+        assert call_args[1]["params"]["session_id"] == "abc-123"
         body = call_args[1]["json"]
-        assert body["session_id"] == "abc-123"
         assert body["world_id"] == "pipeworks_web"
         assert body["seed"] == 42
+        assert body["inputs"]["entity"]["species"] == "goblin"
+        assert body["inputs"]["entity"]["identity"]["gender"] == "male"
 
     def test_generate_condition_axis_payload_404_raises_unavailable(
         self, client: MudServerClient
@@ -513,16 +520,27 @@ class TestGenerateConditionAxisPayload:
         client._client.post.return_value = resp
 
         with pytest.raises(MudServerFeatureUnavailableError, match="canonical condition-axis"):
-            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=None)
+            client.generate_condition_axis_payload(
+                world_id="pipeworks_web",
+                seed=None,
+                species="goblin",
+                gender="male",
+            )
 
         call_args = client._client.post.call_args
         assert call_args[0][0].endswith("/api/pipeline/condition-axis/generate")
+        assert call_args[1]["params"]["session_id"] == "abc-123"
 
     def test_generate_condition_axis_payload_not_authenticated_raises(
         self, client: MudServerClient
     ) -> None:
         with pytest.raises(MudServerSessionExpiredError):
-            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=None)
+            client.generate_condition_axis_payload(
+                world_id="pipeworks_web",
+                seed=None,
+                species="goblin",
+                gender="male",
+            )
 
     def test_generate_condition_axis_payload_connect_error_raises_connection_error(
         self, client: MudServerClient
@@ -531,7 +549,12 @@ class TestGenerateConditionAxisPayload:
         client._client.post.side_effect = httpx.ConnectError("refused")
 
         with pytest.raises(MudServerConnectionError, match="Cannot connect"):
-            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=7)
+            client.generate_condition_axis_payload(
+                world_id="pipeworks_web",
+                seed=7,
+                species="goblin",
+                gender="male",
+            )
 
     def test_generate_condition_axis_payload_401_clears_session_and_raises(
         self, client: MudServerClient
@@ -543,7 +566,12 @@ class TestGenerateConditionAxisPayload:
         client._client.post.return_value = expired
 
         with pytest.raises(MudServerSessionExpiredError, match="Session expired"):
-            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=7)
+            client.generate_condition_axis_payload(
+                world_id="pipeworks_web",
+                seed=7,
+                species="goblin",
+                gender="male",
+            )
 
         assert client._session_id is None
         assert client._role is None
@@ -563,7 +591,12 @@ class TestGenerateConditionAxisPayload:
         client._client.post.return_value = error_resp
 
         with pytest.raises(httpx.HTTPStatusError):
-            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=7)
+            client.generate_condition_axis_payload(
+                world_id="pipeworks_web",
+                seed=7,
+                species="goblin",
+                gender="male",
+            )
 
     def test_generate_condition_axis_payload_invalid_json_raises_type_error(
         self, client: MudServerClient
@@ -576,7 +609,12 @@ class TestGenerateConditionAxisPayload:
         client._client.post.return_value = ok_response
 
         with pytest.raises(TypeError, match="Invalid JSON response"):
-            client.generate_condition_axis_payload(world_id="pipeworks_web", seed=7)
+            client.generate_condition_axis_payload(
+                world_id="pipeworks_web",
+                seed=7,
+                species="goblin",
+                gender="male",
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -485,6 +485,9 @@ class TestPipelineBuildContracts:
 
         assert "function buildConditionAxisGenerationRequest()" in content
         assert 'pipelineBuildState.axis.seedMode === "fixed"' in content
+        assert "inputs: {" in content
+        assert "species: pipelineBuildState.identity.species" in content
+        assert "gender: pipelineBuildState.identity.gender" in content
         assert "async function handleGenerateConditionAxis()" in content
         assert "const payload = await generatePipelineConditionAxis(requestBody);" in content
         assert 'dom.pipelineAxisGenerate?.addEventListener("click", () => {' in content
