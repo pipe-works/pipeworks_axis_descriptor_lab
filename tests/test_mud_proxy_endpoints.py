@@ -1215,6 +1215,46 @@ class TestMudPipelineBuildGenerateConditionAxis:
             gender="male",
         )
 
+    def test_generate_condition_axis_accepts_numeric_scalar_axes(
+        self, test_client: TestClient
+    ) -> None:
+        """Canonical scalar axis responses should be normalized to AxisValue objects."""
+        mock = _mock_mud_client(authenticated=True)
+        mock.generate_condition_axis_payload.return_value = {
+            "axes": {
+                "demeanor": 0.81,
+                "wealth": 0.25,
+                "visibility": 0.0,
+            },
+            "policy_hash": "policy_hash_value",
+            "seed": 42,
+            "world_id": "pipeworks_web",
+        }
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": 42,
+                    "inputs": {
+                        "entity": {
+                            "species": "goblin",
+                            "identity": {"gender": "male"},
+                        }
+                    },
+                },
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["axes"]["demeanor"]["score"] == pytest.approx(0.81)
+        assert data["axes"]["demeanor"]["label"] == "proud"
+        assert data["axes"]["wealth"]["score"] == pytest.approx(0.25)
+        assert data["axes"]["wealth"]["label"] == "modest"
+        assert data["axes"]["visibility"]["score"] == pytest.approx(0.0)
+        assert data["axes"]["visibility"]["label"] == "hidden"
+
     def test_generate_condition_axis_auth_expired_returns_structured_401(
         self, test_client: TestClient
     ) -> None:
@@ -1299,6 +1339,46 @@ class TestMudPipelineBuildGenerateConditionAxis:
         assert data["code"] == "PIPELINE_UPSTREAM_HTTP_ERROR"
         assert data["stage"] == "axis_input"
         assert "Condition-axis generation unavailable" in data["detail"]
+
+    def test_generate_condition_axis_upstream_http_error_passes_structured_contract_code(
+        self, test_client: TestClient
+    ) -> None:
+        """Stage 4 should preserve canonical mud-server condition-axis error codes."""
+        mock = _mock_mud_client(authenticated=True)
+        response = MagicMock()
+        response.status_code = 502
+        response.json.return_value = {
+            "detail": "Upstream condition-axis payload is missing required policy axes: wealth.",
+            "code": "CONDITION_AXIS_UPSTREAM_INCOMPLETE",
+            "stage": "axis_input",
+        }
+        response.text = "Upstream condition-axis payload is missing required policy axes: wealth."
+        mock.generate_condition_axis_payload.side_effect = httpx.HTTPStatusError(
+            "Bad Gateway",
+            request=MagicMock(),
+            response=response,
+        )
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": 99,
+                    "inputs": {
+                        "entity": {
+                            "species": "goblin",
+                            "identity": {"gender": "male"},
+                        }
+                    },
+                },
+            )
+
+        assert resp.status_code == 502
+        data = resp.json()
+        assert data["code"] == "CONDITION_AXIS_UPSTREAM_INCOMPLETE"
+        assert data["stage"] == "axis_input"
+        assert "missing required policy axes" in data["detail"]
 
     def test_generate_condition_axis_unsupported_by_upstream_returns_501(
         self, test_client: TestClient

@@ -29,6 +29,7 @@ from app.mud_server_client import (
     get_mud_client,
     set_mud_mode,
 )
+from app.relabel_policy import resolve_axis_label
 from app.schema import (
     AxisPayload,
     MudCompileImagePromptRequest,
@@ -78,6 +79,74 @@ def _pipeline_error(status_code: int, *, detail: str, code: str, stage: str) -> 
     )
 
 
+def _normalize_condition_axis_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize canonical mud-server axis payload shape for lab validation.
+
+    Mud-server canonical condition-axis responses now return numeric scalar
+    values for each axis (``axis_name -> float``). Lab internals still use
+    ``AxisPayload`` with ``AxisValue`` objects (``{label, score}``) because
+    downstream stage-5/6 requests require labels.
+
+    This helper accepts both legacy object axes and canonical numeric axes,
+    deriving labels from the mirrored relabel policy table when needed.
+
+    Args:
+        payload: Raw upstream mud-server response payload.
+
+    Returns:
+        Payload with normalized ``axes`` entries in ``{label, score}`` shape.
+
+    Raises:
+        ValueError: When axis payload shape or scores are invalid.
+    """
+    axes_payload = payload.get("axes")
+    if not isinstance(axes_payload, dict):
+        raise ValueError("Field 'axes' must be an object.")
+
+    normalized_axes: dict[str, dict[str, Any]] = {}
+    for axis_name, axis_value in axes_payload.items():
+        axis_token = str(axis_name).strip()
+        if not axis_token:
+            raise ValueError("Axis name must be a non-empty string.")
+
+        if isinstance(axis_value, (int, float)):
+            score = float(axis_value)
+            if score < 0.0 or score > 1.0:
+                raise ValueError(f"Axis '{axis_token}' score must be in [0, 1].")
+            normalized_axes[axis_token] = {
+                "label": resolve_axis_label(axis_token, score, axis_token),
+                "score": score,
+            }
+            continue
+
+        if isinstance(axis_value, dict):
+            score_value = axis_value.get("score")
+            if not isinstance(score_value, (int, float)):
+                raise ValueError(f"Axis '{axis_token}' object value must include numeric 'score'.")
+            score = float(score_value)
+            if score < 0.0 or score > 1.0:
+                raise ValueError(f"Axis '{axis_token}' score must be in [0, 1].")
+
+            label_value = axis_value.get("label")
+            if isinstance(label_value, str) and label_value.strip():
+                label = label_value.strip()
+            else:
+                label = resolve_axis_label(axis_token, score, axis_token)
+
+            normalized_axes[axis_token] = {
+                "label": label,
+                "score": score,
+            }
+            continue
+
+        raise ValueError(f"Axis '{axis_token}' must be numeric or an object with numeric 'score'.")
+
+    return {
+        **payload,
+        "axes": normalized_axes,
+    }
+
+
 def _extract_http_error_detail(exc: httpx.HTTPStatusError) -> str:
     """Return the most useful upstream HTTP error detail string."""
 
@@ -98,6 +167,24 @@ def _extract_http_error_detail(exc: httpx.HTTPStatusError) -> str:
     if text:
         return text[:500]
     return f"Upstream mud server returned HTTP {response.status_code}."
+
+
+def _extract_http_error_code_stage(exc: httpx.HTTPStatusError) -> tuple[str | None, str | None]:
+    """Extract structured upstream ``code``/``stage`` fields when available."""
+
+    try:
+        payload = exc.response.json()
+    except ValueError:
+        return None, None
+
+    if not isinstance(payload, dict):
+        return None, None
+
+    code = payload.get("code")
+    stage = payload.get("stage")
+    normalized_code = code.strip() if isinstance(code, str) and code.strip() else None
+    normalized_stage = stage.strip() if isinstance(stage, str) and stage.strip() else None
+    return normalized_code, normalized_stage
 
 
 def _as_string_list(value: object) -> list[str]:
@@ -643,7 +730,8 @@ def mud_pipeline_build_generate_condition_axis(
             species=req.inputs.entity.species,
             gender=req.inputs.entity.identity.gender,
         )
-        return AxisPayload.model_validate(payload)
+        normalized_payload = _normalize_condition_axis_payload(payload)
+        return AxisPayload.model_validate(normalized_payload)
     except MudServerSessionExpiredError:
         return _pipeline_error(
             401,
@@ -669,6 +757,14 @@ def mud_pipeline_build_generate_condition_axis(
             stage="axis_input",
         )
     except httpx.HTTPStatusError as exc:
+        upstream_code, upstream_stage = _extract_http_error_code_stage(exc)
+        if isinstance(upstream_code, str) and upstream_code.startswith("CONDITION_AXIS_"):
+            return _pipeline_error(
+                exc.response.status_code,
+                detail=_extract_http_error_detail(exc),
+                code=upstream_code,
+                stage=upstream_stage or "axis_input",
+            )
         return _pipeline_error(
             exc.response.status_code,
             detail=_extract_http_error_detail(exc),
