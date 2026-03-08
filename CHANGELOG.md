@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.2](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.10.1...axis-descriptor-lab-v0.10.2) (2026-03-08)
+
+
+### Bug Fixes
+
+* surface incomplete canonical axis payload errors in stage 4 ([d3e4441](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/d3e444173bea3dcbb4d19283e33ef0b5818d5185))
+* surface incomplete canonical axis payload errors in stage 4 ([196d543](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/196d543e51228ae4354ba87e3c74ebc8948e126d))
+
 ## [0.10.1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.10.0...axis-descriptor-lab-v0.10.1) (2026-03-08)
 
 
