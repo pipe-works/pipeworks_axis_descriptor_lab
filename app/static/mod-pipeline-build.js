@@ -1521,6 +1521,14 @@ function buildConditionAxisGenerationRequest() {
   return {
     world_id: pipelineBuildState.selectedWorldId,
     seed: pipelineBuildState.axis.seedMode === "fixed" ? pipelineBuildState.axis.fixedSeed : null,
+    inputs: {
+      entity: {
+        species: pipelineBuildState.identity.species,
+        identity: {
+          gender: pipelineBuildState.identity.gender,
+        },
+      },
+    },
   };
 }
 
