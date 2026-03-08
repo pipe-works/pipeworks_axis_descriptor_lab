@@ -1262,8 +1262,8 @@ class TestMudPipelineBuildGenerateConditionAxis:
     ) -> None:
         mock = _mock_mud_client(authenticated=True)
         mock.generate_condition_axis_payload.side_effect = MudServerFeatureUnavailableError(
-            "Mud server does not expose condition-axis generation endpoints "
-            "(/api/lab/generate-condition-axis, /api/lab/generate-axis-payload)."
+            "Mud server does not expose canonical condition-axis generation endpoint "
+            "(/api/pipeline/condition-axis/generate)."
         )
 
         with patch("app.routes_mud.get_mud_client", return_value=mock):
