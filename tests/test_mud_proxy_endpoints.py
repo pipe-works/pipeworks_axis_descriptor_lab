@@ -212,6 +212,74 @@ class TestMudRuntimeOptionHelpers:
         assert options.species == ["human", "goblin"]
         assert options.gender == ["female", "male"]
 
+    def test_normalize_condition_axis_payload_rejects_non_object_axes(self) -> None:
+        with pytest.raises(ValueError, match="Field 'axes' must be an object"):
+            routes_mud._normalize_condition_axis_payload({"axes": []})
+
+    def test_normalize_condition_axis_payload_rejects_invalid_axis_shapes(self) -> None:
+        with pytest.raises(ValueError, match="Axis name must be a non-empty string"):
+            routes_mud._normalize_condition_axis_payload({"axes": {"   ": 0.2}})
+
+        with pytest.raises(ValueError, match="score must be in \\[0, 1\\]"):
+            routes_mud._normalize_condition_axis_payload({"axes": {"wealth": 1.5}})
+
+        with pytest.raises(ValueError, match="must include numeric 'score'"):
+            routes_mud._normalize_condition_axis_payload({"axes": {"wealth": {"label": "modest"}}})
+
+        with pytest.raises(ValueError, match="score must be in \\[0, 1\\]"):
+            routes_mud._normalize_condition_axis_payload({"axes": {"wealth": {"score": -0.1}}})
+
+        with pytest.raises(ValueError, match="must be numeric or an object"):
+            routes_mud._normalize_condition_axis_payload({"axes": {"wealth": "modest"}})
+
+    def test_normalize_condition_axis_payload_derives_label_when_missing(self) -> None:
+        payload = routes_mud._normalize_condition_axis_payload(
+            {"axes": {"wealth": {"score": 0.25}}, "seed": 42, "world_id": "pipeworks_web"}
+        )
+        assert payload["axes"]["wealth"]["score"] == pytest.approx(0.25)
+        assert payload["axes"]["wealth"]["label"] == "modest"
+
+    def test_extract_http_error_code_stage_handles_invalid_json_shapes(self) -> None:
+        value_error_response = MagicMock()
+        value_error_response.json.side_effect = ValueError("bad json")
+        value_error_response.status_code = 502
+        value_error_response.text = "bad json"
+        value_error_exc = httpx.HTTPStatusError(
+            "Bad Gateway",
+            request=MagicMock(),
+            response=value_error_response,
+        )
+        assert routes_mud._extract_http_error_code_stage(value_error_exc) == (None, None)
+
+        list_response = MagicMock()
+        list_response.json.return_value = ["not", "a", "dict"]
+        list_response.status_code = 502
+        list_response.text = "list payload"
+        list_exc = httpx.HTTPStatusError(
+            "Bad Gateway",
+            request=MagicMock(),
+            response=list_response,
+        )
+        assert routes_mud._extract_http_error_code_stage(list_exc) == (None, None)
+
+    def test_extract_http_error_code_stage_normalizes_strings(self) -> None:
+        response = MagicMock()
+        response.json.return_value = {
+            "code": " CONDITION_AXIS_UPSTREAM_INCOMPLETE ",
+            "stage": " axis_input ",
+        }
+        response.status_code = 502
+        response.text = "structured"
+        exc = httpx.HTTPStatusError(
+            "Bad Gateway",
+            request=MagicMock(),
+            response=response,
+        )
+        assert routes_mud._extract_http_error_code_stage(exc) == (
+            "CONDITION_AXIS_UPSTREAM_INCOMPLETE",
+            "axis_input",
+        )
+
 
 # ---------------------------------------------------------------------------
 # GET/POST /api/mud/mode
@@ -1379,6 +1447,44 @@ class TestMudPipelineBuildGenerateConditionAxis:
         assert data["code"] == "CONDITION_AXIS_UPSTREAM_INCOMPLETE"
         assert data["stage"] == "axis_input"
         assert "missing required policy axes" in data["detail"]
+
+    def test_generate_condition_axis_upstream_http_error_defaults_stage_when_missing(
+        self, test_client: TestClient
+    ) -> None:
+        """Structured condition-axis errors should default stage to axis_input when omitted."""
+        mock = _mock_mud_client(authenticated=True)
+        response = MagicMock()
+        response.status_code = 502
+        response.json.return_value = {
+            "detail": "Upstream condition-axis payload is missing required policy axes: wealth.",
+            "code": "CONDITION_AXIS_UPSTREAM_INCOMPLETE",
+        }
+        response.text = "Upstream condition-axis payload is missing required policy axes: wealth."
+        mock.generate_condition_axis_payload.side_effect = httpx.HTTPStatusError(
+            "Bad Gateway",
+            request=MagicMock(),
+            response=response,
+        )
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.post(
+                "/api/mud/pipeline-build/generate-condition-axis",
+                json={
+                    "world_id": "pipeworks_web",
+                    "seed": 99,
+                    "inputs": {
+                        "entity": {
+                            "species": "goblin",
+                            "identity": {"gender": "male"},
+                        }
+                    },
+                },
+            )
+
+        assert resp.status_code == 502
+        data = resp.json()
+        assert data["code"] == "CONDITION_AXIS_UPSTREAM_INCOMPLETE"
+        assert data["stage"] == "axis_input"
 
     def test_generate_condition_axis_unsupported_by_upstream_returns_501(
         self, test_client: TestClient
