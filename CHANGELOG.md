@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.10.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.9.0...axis-descriptor-lab-v0.10.0) (2026-03-08)
+
+
+### Features
+
+* **mud:** add canonical image compile proxy flow ([f4d653e](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/f4d653e6855dcee22b0c6c95264278617003b17e))
+* **mud:** add canonical image compile proxy flow ([58f4f2e](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/58f4f2e627e468283f26b63aedc19588d25538c7))
+* **pipeline:** implement section 6 phase-2 bootstrap and resolve flow ([6c24a5d](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/6c24a5dcf49d8750a4ea70bcd69c848ebea00ccc))
+* **pipeline:** implement section-6 bootstrap and resolve preview flow ([aa86766](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/aa867669daba399535a9415aaa9c57b0c6fed89a))
+* **ui:** add pipeline stage summaries and response actions ([6a3917b](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/6a3917b5820029925781baf6ad84f1049001cabd))
+* **ui:** add pipeline stage summaries and response actions ([e148a10](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/e148a10c037621f7a209e80949d85d17f0d689ad))
+* **ui:** close pipeline section 1-5 accessibility and validation gaps ([4279a04](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/4279a0402ab270d28a2825f99409932627b71458))
+* **ui:** close pipeline section 1-5 accessibility and validation gaps ([11a8ad4](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/11a8ad495023b858f3b5982aeb35064c0c50304c))
+* **ui:** scaffold pipeline build screen and canonical compile flow ([9ae24f7](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/9ae24f789e824b4f2ccea30c95ff196b64425423))
+* **ui:** scaffold pipeline build screen and canonical compile flow ([1fec9e6](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/1fec9e65f45bac7f2d081abef528a901dc0a9e9a))
+* **ui:** show artifact source paths in lab dropdowns ([05adb01](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/05adb015555722c6ad505ef0c0792dbfdf5d38be))
+* **ui:** show artifact source paths in lab dropdowns ([4c913b4](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/4c913b41e386d4996d84cd5f1a62cd6abbad7a00))
+
+
+### Bug Fixes
+
+* align stage 4 condition-axis client with canonical mud-server route ([b7c4556](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/b7c4556796fdb032481d1d41fd88f030df2abe2e))
+* align stage4 condition-axis client to canonical route ([17dab4b](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/17dab4b8510c54be3ca73380d514147fda67d0c8))
+* derive canonical species options for pipeline bootstrap ([aa7afe9](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/aa7afe9673da1aa38ae61c59599682535d21de44))
+* derive canonical species options from policy bootstrap ([5ad4670](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/5ad467057e7f01f386be443a8d4da0c05e554abe))
+* handle unsupported upstream condition-axis generation ([68693e3](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/68693e3556e2c43e18a8585be52771ce320c05c1))
+* handle unsupported upstream condition-axis generation ([8950005](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/8950005d66759a04d7b542f3166ec82ae2d95d89))
+* improve pipeline policy bundle metadata display and UX ([fd682bb](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/fd682bb55fcd3e0dad00cb8c97d49f4ddefad8fe))
+* improve pipeline policy bundle metadata UX and source clarity ([a2ebe85](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/a2ebe85d7364e8f734b3ded5fd43e52d9077a17c))
+* **ui:** move mud auth controls to global shell and center login overlay ([10f38da](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/10f38da47c1ba6e8797e36350b4e2f7a03a00577))
+* **ui:** preserve pipeline state across re-auth and sanitise action log ([ad8e25d](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/ad8e25dc28e78aa7954ed697cf87109b2d379762))
+* **ui:** preserve pipeline state across re-auth and sanitise action log ([017acd2](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/017acd22e7c3c1931358f6a1a33490d724835fe6))
+* **ui:** promote mud auth to global shell and center login overlay ([309da51](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/309da51dcf4758b443468c32f26c04e1770581fd))
+* **ui:** refine Pipeline Build session/world UX and guidance ([99bc6d0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/99bc6d04912737213de607c0166da0fd655ccda6))
+* **ui:** refine pipeline session-world guidance and defaults ([f033878](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/f03387870d02207049a809e6c272a3243b640665))
+
+
+### Documentation
+
+* refresh artifact editor docs ([35ac499](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/35ac499d229b551f075084e445696a93e0f9eeaa))
+* refresh artifact editor documentation ([7a17d15](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/7a17d15e2d2f45c7035b882ff5d90802a94d456e))
+
 ## [0.9.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.8.5...axis-descriptor-lab-v0.9.0) (2026-03-04)
 
 
