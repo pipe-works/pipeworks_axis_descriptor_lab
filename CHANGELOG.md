@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.10.0...axis-descriptor-lab-v0.10.1) (2026-03-08)
+
+
+### Bug Fixes
+
+* align stage 4 condition-axis request with canonical mud contract ([1d6b2a8](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/1d6b2a82008625cd72bbaa5e33352ca52e5de5b2))
+* align stage4 condition-axis request with canonical mud contract ([6d3d646](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/6d3d646638151202bc2cbffa5adbad44b1945b94))
+
 ## [0.10.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.9.0...axis-descriptor-lab-v0.10.0) (2026-03-08)
 
 
