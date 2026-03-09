@@ -1,5 +1,22 @@
 # AGENTS.md
 
+## Foundation Must-Dos (Org-Wide)
+
+Read and apply these before repo-specific instructions:
+
+- Local workspace path: `../.github/.github/docs/AGENT_FOUNDATION.md`
+- Local workspace path: `../.github/.github/docs/TEST_TAGGING_AND_GITHUB_CHECKLIST.md`
+- Canonical URL: `https://github.com/pipe-works/.github/blob/main/.github/docs/AGENT_FOUNDATION.md`
+- Canonical URL: `https://github.com/pipe-works/.github/blob/main/.github/docs/TEST_TAGGING_AND_GITHUB_CHECKLIST.md`
+
+Mandatory requirements:
+
+1. Run the GitHub preflight checklist before any `gh` interaction, CI edits, or
+   test-tag changes.
+2. Preserve required checks (`All Checks Passed`, `Secret Scan (Gitleaks)`).
+3. Do not weaken test-tag semantics to reduce runtime.
+4. Keep CI optimization changes evidence-based (run IDs, timings, check states).
+
 ## Purpose
 
 This repository is the **Axis Descriptor Lab**, a FastAPI + vanilla JavaScript web tool for testing how small LLMs produce **non-authoritative** descriptive text from deterministic axis payloads in the Pipe-Works ecosystem.
