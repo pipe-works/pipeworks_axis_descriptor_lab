@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   ci:
-    uses: pipe-works/.github/.github/workflows/reusable-python-ci.yml@codex/ci-phase1-layered-gitleaks
+    uses: pipe-works/.github/.github/workflows/reusable-python-ci.yml@main
     with:
       python-version: '3.12'
       python-versions: '["3.12", "3.13"]'
