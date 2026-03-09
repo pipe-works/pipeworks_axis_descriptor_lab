@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   ci:
-    uses: pipe-works/.github/.github/workflows/reusable-python-ci.yml@main
+    uses: pipe-works/.github/.github/workflows/reusable-python-ci.yml@codex/ci-phase2-content-validation
     with:
       python-version: '3.12'
       python-versions: '["3.12", "3.13"]'
@@ -25,4 +25,12 @@ jobs:
       requires-models: false
       coverage-on-matrix: false
       pytest-matrix-markers: not slow and not requires_model
+      run-content-validation: true
+      skip-full-ci-on-content-only-pr: true
+      content-paths: |
+        app/worlds/**
+        app/lab_only/**
+        docs/**
+        *.md
+      content-validation-command: pytest --override-ini addopts= -q tests/test_path_resolver.py tests/test_file_loaders.py
     secrets: inherit
