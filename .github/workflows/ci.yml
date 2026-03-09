@@ -21,5 +21,8 @@ jobs:
       coverage-threshold: 50
       run-security: true
       run-docs: true
+      run-gitleaks: true
       requires-models: false
+      coverage-on-matrix: false
+      pytest-matrix-markers: not slow and not requires_model
     secrets: inherit
