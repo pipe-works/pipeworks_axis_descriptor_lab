@@ -47,6 +47,12 @@ Agents working in this repository must preserve that distinction in code, tests,
 
 Run the smallest relevant test subset during iteration, then run the broader affected suite before finishing.
 
+## CI Fast Lane
+
+- CI uses the shared pipe-works reusable workflow with stable required checks (`All Checks Passed`, `Secret Scan (Gitleaks)`).
+- Content-only pull requests can take the fast path: `Change Classification` + `Content Validation` instead of the full Python matrix.
+- Current content-path scope in this repo: `app/worlds/**`, `app/lab_only/**`, `docs/**`, and `*.md`.
+
 ## Documentation Standard
 
 Detailed documentation is mandatory in this repository.
