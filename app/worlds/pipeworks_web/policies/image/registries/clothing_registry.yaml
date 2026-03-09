@@ -15,16 +15,82 @@ defaults:
 
 slots:
   environment:
+  - id: clothing_environment_maritime_v2
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 96
+    fragment_path: policies/image/blocks/clothing/environment/maritime_v2.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        world_context_any: [maritime, open_water, sea]
+
   - id: clothing_environment_coastal_v1
     version: 1
     block_type: clothing_fragment
     status: active
-    render_priority: 90
+    render_priority: 95
     fragment_path: policies/image/blocks/clothing/environment/coastal_v1.txt
     compatible_genders: [male, female]
     selection_rules:
       when:
         world_context_any: [coastal, harbor]
+
+  - id: clothing_environment_urban_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 94
+    fragment_path: policies/image/blocks/clothing/environment/urban_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        world_context_any: [urban, city, market_district]
+
+  - id: clothing_environment_industrial_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 93
+    fragment_path: policies/image/blocks/clothing/environment/industrial_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        world_context_any: [industrial, foundry, workshop_district]
+
+  - id: clothing_environment_cold_weather_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 92
+    fragment_path: policies/image/blocks/clothing/environment/cold_weather_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        world_context_any: [cold, winter, alpine, tundra]
+
+  - id: clothing_environment_wet_weather_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 91
+    fragment_path: policies/image/blocks/clothing/environment/wet_weather_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        world_context_any: [wet, rainy, monsoon, marsh]
+
+  - id: clothing_environment_rural_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 90
+    fragment_path: policies/image/blocks/clothing/environment/rural_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        world_context_any: [rural, farmland, village, hinterland]
 
   - id: clothing_environment_neutral_v1
     version: 1
@@ -38,6 +104,72 @@ slots:
         fallback: true
 
   activity:
+  - id: clothing_activity_dockwork_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 95
+    fragment_path: policies/image/blocks/clothing/activity/dockwork_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        occupation_signal_any: [dock_work, cargo_handling, longshore, port_labour]
+
+  - id: clothing_activity_street_trade_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 94
+    fragment_path: policies/image/blocks/clothing/activity/street_trade_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        occupation_signal_any: [street_trade, market_trade, peddler]
+
+  - id: clothing_activity_craft_workshop_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 93
+    fragment_path: policies/image/blocks/clothing/activity/craft_workshop_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        occupation_signal_any: [craft_workshop, artisan, workshop]
+
+  - id: clothing_activity_transport_work_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 92
+    fragment_path: policies/image/blocks/clothing/activity/transport_work_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        occupation_signal_any: [transport, carting, courier, logistics, cargo]
+
+  - id: clothing_activity_clerical_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 91
+    fragment_path: policies/image/blocks/clothing/activity/clerical_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        occupation_signal_any: [clerical, scribe, administrative]
+
+  - id: clothing_activity_guard_duty_v1
+    version: 1
+    block_type: clothing_fragment
+    status: active
+    render_priority: 90
+    fragment_path: policies/image/blocks/clothing/activity/guard_duty_v1.txt
+    compatible_genders: [male, female]
+    selection_rules:
+      when:
+        occupation_signal_any: [guard, watch, security, patrol]
+
   - id: clothing_activity_general_labour_v1
     version: 1
     block_type: clothing_fragment
