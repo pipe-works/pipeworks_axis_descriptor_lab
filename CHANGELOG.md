@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.11.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.10.2...axis-descriptor-lab-v0.11.0) (2026-03-09)
+
+
+### Features
+
+* **ci:** add content-only fast validation lane ([#117](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/117)) ([5e380f9](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/5e380f9c8dd7c2bfb589e918223fc791d2334472))
+* **policies:** add goblin canon clothing block expansions ([#121](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/121)) ([6fd498a](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/6fd498a173205ac297e43802e26a0a314941c2f5))
+
+
+### Documentation
+
+* **ci:** document content-only fast lane behavior ([#119](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues/119)) ([ba3f785](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/ba3f785d05128a91ffffbc1c9a32d32859dab8bf))
+
 ## [0.10.2](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.10.1...axis-descriptor-lab-v0.10.2) (2026-03-08)
 
 
