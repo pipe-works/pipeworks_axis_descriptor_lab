@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.2](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.11.1...axis-descriptor-lab-v0.11.2) (2026-03-10)
+
+
+### Bug Fixes
+
+* **deps:** bump pipeworks-ipc pin to v0.1.2 ([f73a3f0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/f73a3f0471d19e227579da4478f9fe038d0b4c95))
+* **deps:** bump pipeworks-ipc pin to v0.1.2 ([474d6a2](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/474d6a2e37a22f24f80bbf3f226ee0cdc65c2e1d))
+
 ## [0.11.1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.11.0...axis-descriptor-lab-v0.11.1) (2026-03-10)
 
 
