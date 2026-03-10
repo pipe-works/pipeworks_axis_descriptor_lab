@@ -155,6 +155,33 @@ from app.transformation_map import compute_transformation_map
 
 load_dotenv()
 
+SERVICE_LOG_LABEL = "axis-lab"
+
+
+def _prefix_uvicorn_handlers(service_label: str = SERVICE_LOG_LABEL) -> None:
+    """Prefix already-configured Uvicorn handlers when running via CLI import string."""
+    formatter_defaults = {
+        "uvicorn": "%(levelprefix)s %(message)s",
+        "uvicorn.error": "%(levelprefix)s %(message)s",
+        "uvicorn.access": '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',
+    }
+    for logger_name, fallback_fmt in formatter_defaults.items():
+        uvicorn_logger = logging.getLogger(logger_name)
+        for handler in uvicorn_logger.handlers:
+            formatter = handler.formatter
+            if formatter is None:
+                continue
+            current_fmt = getattr(formatter, "_fmt", "") or fallback_fmt
+            if current_fmt.startswith(f"{service_label} "):
+                continue
+            if "%(levelprefix)s" in current_fmt:
+                formatter._fmt = f"{service_label} {current_fmt}"
+            else:
+                formatter._fmt = f"{service_label} {fallback_fmt}"
+
+
+_prefix_uvicorn_handlers()
+
 logger = logging.getLogger(__name__)
 
 _TEMPLATES_DIR = _HERE / "templates"
@@ -181,6 +208,11 @@ app = FastAPI(
 )
 
 
+def _refresh_uvicorn_log_prefix() -> None:
+    """Reapply Uvicorn handler prefixes after server startup initialization."""
+    _prefix_uvicorn_handlers()
+
+
 def close_runtime_clients() -> None:
     """Close all shared HTTP clients created by the application runtime."""
     close_all_clients()
@@ -188,6 +220,7 @@ def close_runtime_clients() -> None:
 
 
 # Close shared HTTP client pools on shutdown to release connections cleanly.
+app.add_event_handler("startup", _refresh_uvicorn_log_prefix)
 app.add_event_handler("shutdown", close_runtime_clients)
 
 app.include_router(chat_router)
