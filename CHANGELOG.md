@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.1](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.11.0...axis-descriptor-lab-v0.11.1) (2026-03-10)
+
+
+### Bug Fixes
+
+* **logging:** prefix axis lab server output ([5720d1d](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/5720d1d0f48a4e11e06eaddd8b021125174001ad))
+* **logging:** prefix axis lab server output ([3c9203e](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/3c9203ebc2e212ed81262903938b207b91900179))
+
 ## [0.11.0](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.10.2...axis-descriptor-lab-v0.11.0) (2026-03-09)
 
 
