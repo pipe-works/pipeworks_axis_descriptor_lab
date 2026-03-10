@@ -9,7 +9,7 @@ description = "Tiny web tool for testing how small LLMs produce non-authoritativ
 requires-python = ">=3.12"
 dependencies = [
     # IPC normalisation and hash utilities (authoritative shared library)
-    "pipeworks-ipc @ git+https://github.com/pipe-works/pipeworks_ipc.git@pipeworks-ipc-v0.1.1",
+    "pipeworks-ipc @ git+https://github.com/pipe-works/pipeworks_ipc.git@pipeworks-ipc-v0.1.2",
     # Web framework – async-capable, auto-generates OpenAPI docs
     "fastapi>=0.111.0",
     # ASGI server to run FastAPI
