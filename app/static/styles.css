@@ -942,14 +942,12 @@
 /* Page wrappers — page containers are children of <body>; hidden class from base CSS. */
 #page-char-description,
 #page-chat-translation,
-#page-artifact-editor,
 #page-pipeline-build {
   display: contents; /* transparent wrappers — grid children render normally */
 }
 
 #page-chat-translation.hidden,
 #page-char-description.hidden,
-#page-artifact-editor.hidden,
 #page-pipeline-build.hidden {
   display: none;
 }
@@ -957,7 +955,6 @@
 /* Push grids below header + nav bar */
 .app-grid,
 .chat-grid,
-.artifact-grid,
 .pipeline-build-grid {
   top: calc(var(--header-h) + var(--nav-h, 2.5rem) + var(--mud-shell-h, 3.05rem));
 }
@@ -978,13 +975,6 @@
   overflow: hidden;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   ARTIFACT EDITOR
-════════════════════════════════════════════════════════════════════════════ */
-
-.artifact-grid .panel--left  { background: var(--col-bg); }
-.artifact-grid .panel--centre { background: var(--col-surface); }
-.artifact-grid .panel--right  { background: var(--col-surface-2); }
 .pipeline-build-grid .panel--left  { background: var(--col-bg); }
 .pipeline-build-grid .panel--centre { background: var(--col-surface); }
 .pipeline-build-grid .panel--right  { background: var(--col-surface-2); }
@@ -1072,9 +1062,6 @@
   overflow: auto;
 }
 
-.artifact-panel {
-  overflow-y: auto;
-}
 .pipeline-panel {
   overflow-y: auto;
 }
@@ -1095,11 +1082,6 @@
 .pipeline-build-grid #pipeline-stage-list li:focus-visible {
   box-shadow: inset 0 0 0 1px var(--col-accent);
   border-radius: var(--radius-sm);
-}
-
-.artifact-editor__textarea {
-  min-height: 24rem;
-  flex: 1 1 auto;
 }
 
 .artifact-note {

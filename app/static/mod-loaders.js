@@ -24,26 +24,29 @@ import { setStatus } from "./mod-status.js";
 import { syncJsonTextarea, buildSlidersFromJson, setJsonBadge, updateSystemPromptBadge } from "./mod-sync.js";
 import { renderSourceHint } from "./mod-source-paths.js";
 
-const exampleMetaByName = new Map();
-const promptMetaByName = new Map();
-
 function updateExampleSourceHint() {
+  const selected = dom.exampleSelect.value;
   renderSourceHint(
     dom.exampleSourceHint,
-    exampleMetaByName.get(dom.exampleSelect.value) || null,
+    null,
     "axis_payload",
     "",
-    "Source: select an example to view path."
+    selected
+      ? "Source: path metadata unavailable in this view."
+      : "Source: select an example to view path."
   );
 }
 
 function updatePromptSourceHint() {
+  const selected = dom.promptSelect.value;
   renderSourceHint(
     dom.promptSourceHint,
-    promptMetaByName.get(dom.promptSelect.value) || null,
+    null,
     "prompt_template",
     "character_description",
-    "Source: select a prompt to view path."
+    selected
+      ? "Source: path metadata unavailable in this view."
+      : "Source: select a prompt to view path."
   );
 }
 
@@ -56,16 +59,14 @@ function updatePromptSourceHint() {
  */
 export async function loadExampleList() {
   try {
-    const res = await fetch("/api/artifacts/local/axis-payloads");
+    const res = await fetch("/api/examples");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const payload = await res.json();
-    const list = Array.isArray(payload.payloads) ? payload.payloads : [];
+    const list = Array.isArray(payload) ? payload : [];
 
-    exampleMetaByName.clear();
     const defaultOpt = new Option("\u2014 choose \u2014", "");
-    const opts = list.map((row) => {
-      exampleMetaByName.set(row.name, row);
-      return new Option(row.name, row.name);
+    const opts = list.map((name) => {
+      return new Option(name, name);
     });
     dom.exampleSelect.replaceChildren(defaultOpt, ...opts);
     updateExampleSourceHint();
@@ -119,16 +120,14 @@ export async function loadExample(name) {
  */
 export async function loadPromptList() {
   try {
-    const res = await fetch("/api/artifacts/local/chat-prompts?purpose=character_description");
+    const res = await fetch("/api/prompts?purpose=character_description");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const payload = await res.json();
-    const list = Array.isArray(payload.prompts) ? payload.prompts : [];
+    const list = Array.isArray(payload) ? payload : [];
 
-    promptMetaByName.clear();
     const defaultOpt = new Option("\u2014 choose \u2014", "");
-    const opts = list.map((row) => {
-      promptMetaByName.set(row.name, row);
-      return new Option(row.name, row.name);
+    const opts = list.map((name) => {
+      return new Option(name, name);
     });
     dom.promptSelect.replaceChildren(defaultOpt, ...opts);
     updatePromptSourceHint();

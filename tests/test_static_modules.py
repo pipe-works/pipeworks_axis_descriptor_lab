@@ -88,8 +88,6 @@ MODULE_MANIFEST: dict[str, dict] = {
             "fetchPipelineBuildBootstrap",
             "resolvePipelineImageSelection",
             "generatePipelineConditionAxis",
-            "fetchLocalAxisPayloads",
-            "fetchLocalAxisPayload",
             "relabelAxisPayload",
             "compileImagePrompt",
         ],
@@ -190,10 +188,6 @@ MODULE_MANIFEST: dict[str, dict] = {
         "exports": ["wireNavigationEvents"],
         "imports_from": ["mod-state.js"],
     },
-    "mod-artifact-editor.js": {
-        "exports": ["initArtifactEditor", "wireArtifactEditorEvents"],
-        "imports_from": ["mod-state.js", "mod-status.js", "mod-source-paths.js"],
-    },
     "mod-chat-state.js": {
         "exports": ["chatState", "charDom"],
         "imports_from": ["mod-state.js"],
@@ -278,7 +272,6 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-indicator-modal.js",
             "mod-navigation.js",
             "mod-chat-translation.js",
-            "mod-artifact-editor.js",
             "mod-pipeline-build.js",
         ],
     },
@@ -292,7 +285,6 @@ MODULE_MANIFEST: dict[str, dict] = {
             "mod-events.js",
             "mod-loaders.js",
             "mod-chat-translation.js",
-            "mod-artifact-editor.js",
             "mod-pipeline-build.js",
         ],
     },
@@ -326,7 +318,7 @@ def _read_template() -> str:
 
 
 class TestModuleServing:
-    """All 21 mod-*.js files are served via /static/ with correct content type."""
+    """All mod-*.js files are served via /static/ with correct content type."""
 
     @pytest.mark.parametrize("module_name", ALL_MODULE_NAMES)
     def test_module_served_with_200(self, client: TestClient, module_name: str) -> None:

@@ -5,7 +5,7 @@
  * server-prompt management shared across the full app shell.
  *
  * The auth/session controls are global and reused by Character Description
- * canonical generation, Chat Translation, and Artifact Editor server flows.
+ * canonical generation, Chat Translation, and Pipeline Build server flows.
  * Chat-specific prompt behaviour still lives here to keep related mud-session
  * concerns in one module.
  *

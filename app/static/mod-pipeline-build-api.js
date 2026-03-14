@@ -1,7 +1,7 @@
 /**
  * mod-pipeline-build-api.js
  * -----------------------------------------------------------------------------
- * Thin fetch helpers for Pipeline Build mud-server and local artifact requests.
+ * Thin fetch helpers for Pipeline Build mud-server requests.
  *
  * The helpers return parsed JSON and throw on non-2xx responses so callers can
  * apply consistent stage-level error handling.
@@ -180,33 +180,6 @@ export async function generatePipelineConditionAxis(body) {
       body: JSON.stringify(body),
     },
     "pipeline condition-axis generate request failed"
-  );
-}
-
-/**
- * Fetch local axis payload preset listing.
- *
- * @returns {Promise<object>}
- */
-export async function fetchLocalAxisPayloads() {
-  return requestJson(
-    "/api/artifacts/local/axis-payloads",
-    undefined,
-    "axis preset list request failed"
-  );
-}
-
-/**
- * Fetch one local axis payload preset document.
- *
- * @param {string} name - Axis preset stem.
- * @returns {Promise<object>}
- */
-export async function fetchLocalAxisPayload(name) {
-  return requestJson(
-    `/api/artifacts/local/axis-payloads/${encodeURIComponent(name)}`,
-    undefined,
-    "axis preset load request failed"
   );
 }
 

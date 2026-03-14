@@ -21,7 +21,7 @@ class TestIndexRoute:
             resp = client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
-        assert 'id="nav-artifact-editor"' in resp.text
+        assert 'id="nav-chat-trans"' in resp.text
         assert 'id="nav-pipeline-build"' in resp.text
 
     def test_character_description_layout_matches_three_column_structure(
@@ -51,19 +51,6 @@ class TestIndexRoute:
         )
         assert system_prompt_details is not None
         assert "open" in system_prompt_details.group(1)
-
-    def test_artifact_editor_page_shell_is_present(self, client: TestClient) -> None:
-        """The Artifact Editor page shell must render with its core controls."""
-        with patch("app.main.ChatRenderer.list_models", return_value=["gemma2:2b"]):
-            resp = client.get("/")
-
-        assert 'id="page-artifact-editor"' in resp.text
-        assert 'id="artifact-type"' in resp.text
-        assert 'id="artifact-source"' in resp.text
-        assert 'id="artifact-purpose"' in resp.text
-        assert 'id="artifact-editor"' in resp.text
-        assert '<option value="policy_bundle">Policy Bundle JSON</option>' in resp.text
-        assert '<option value="lexicon_json">Lexicon JSON</option>' in resp.text
 
     def test_chat_translation_page_shell_is_present(self, client: TestClient) -> None:
         """The Chat Translation page shell must preserve its core controls."""
@@ -122,7 +109,6 @@ class TestIndexRoute:
         assert resp.status_code == 200
         assert re.search(r'id="nav-char-desc"[^>]*is-active', resp.text)
         assert re.search(r'id="page-chat-translation"[^>]*class="hidden"', resp.text)
-        assert re.search(r'id="page-artifact-editor"[^>]*class="hidden"', resp.text)
         assert re.search(r'id="page-pipeline-build"[^>]*class="hidden"', resp.text)
 
     def test_pipeline_route_hides_non_pipeline_pages(self, client: TestClient) -> None:
@@ -133,7 +119,6 @@ class TestIndexRoute:
         assert resp.status_code == 200
         assert re.search(r'id="page-char-description"[^>]*class="hidden"', resp.text)
         assert re.search(r'id="page-chat-translation"[^>]*class="hidden"', resp.text)
-        assert re.search(r'id="page-artifact-editor"[^>]*class="hidden"', resp.text)
 
 
 class TestListExamples:

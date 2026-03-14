@@ -52,29 +52,33 @@ import { renderSourceHint } from "./mod-source-paths.js";
  * @type {number}
  */
 const TRANSLATE_TIMEOUT_MS = 120_000;
-const chatExampleMetaByName = new Map();
-const chatPromptMetaByName = new Map();
 
 function updateChatExampleSourceHint(ch) {
   const hintElement =
     ch === "a" ? dom.chatAExampleSourceHint : dom.chatBExampleSourceHint;
   const select = charDom(ch).exampleSelect;
+  const selected = select.value;
   renderSourceHint(
     hintElement,
-    chatExampleMetaByName.get(select.value) || null,
+    null,
     "axis_payload",
     "",
-    `Source: select Character ${ch.toUpperCase()} example to view path.`
+    selected
+      ? "Source: path metadata unavailable in this view."
+      : `Source: select Character ${ch.toUpperCase()} example to view path.`
   );
 }
 
 function updateChatPromptSourceHint() {
+  const selected = dom.chatPromptSelect.value;
   renderSourceHint(
     dom.chatPromptSourceHint,
-    chatPromptMetaByName.get(dom.chatPromptSelect.value) || null,
+    null,
     "prompt_template",
     "chat_translation",
-    "Source: select an IC prompt to view path."
+    selected
+      ? "Source: path metadata unavailable in this view."
+      : "Source: select an IC prompt to view path."
   );
 }
 
@@ -136,21 +140,19 @@ function snapshotActiveAxes(ch) {
  */
 async function loadChatExampleList() {
   try {
-    const res = await fetch("/api/artifacts/local/axis-payloads");
+    const res = await fetch("/api/examples");
     if (!res.ok) return;
 
     const payload = await res.json();
-    const rows = Array.isArray(payload.payloads) ? payload.payloads : [];
-    chatExampleMetaByName.clear();
+    const rows = Array.isArray(payload) ? payload : [];
     for (const ch of ["a", "b"]) {
       const select = charDom(ch).exampleSelect;
       while (select.options.length > 1) select.remove(1);
 
-      for (const row of rows) {
-        chatExampleMetaByName.set(row.name, row);
+      for (const name of rows) {
         const option = document.createElement("option");
-        option.value = row.name;
-        option.textContent = row.name;
+        option.value = name;
+        option.textContent = name;
         select.appendChild(option);
       }
       updateChatExampleSourceHint(ch);
@@ -239,19 +241,17 @@ async function randomiseChatChar(ch) {
  */
 async function loadChatIcPromptList() {
   try {
-    const res = await fetch("/api/artifacts/local/chat-prompts?purpose=chat_translation");
+    const res = await fetch("/api/prompts?purpose=chat_translation");
     if (!res.ok) return;
 
     const payload = await res.json();
-    const rows = Array.isArray(payload.prompts) ? payload.prompts : [];
-    chatPromptMetaByName.clear();
+    const rows = Array.isArray(payload) ? payload : [];
     while (dom.chatPromptSelect.options.length > 1) dom.chatPromptSelect.remove(1);
 
-    for (const row of rows) {
-      chatPromptMetaByName.set(row.name, row);
+    for (const name of rows) {
       const option = document.createElement("option");
-      option.value = row.name;
-      option.textContent = row.name;
+      option.value = name;
+      option.textContent = name;
       dom.chatPromptSelect.appendChild(option);
     }
     updateChatPromptSourceHint();
