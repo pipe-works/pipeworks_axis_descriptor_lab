@@ -432,6 +432,11 @@ def mud_world_config(world_id: str) -> dict:
             status_code=401,
             detail="Mud server session expired. Please log in again.",
         )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=_extract_http_error_detail(exc),
+        ) from exc
     except MudServerConnectionError:
         raise HTTPException(status_code=502, detail="Cannot connect to mud server.")
 
@@ -449,6 +454,11 @@ def mud_world_prompts(world_id: str) -> dict:
             status_code=401,
             detail="Mud server session expired. Please log in again.",
         )
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=_extract_http_error_detail(exc),
+        ) from exc
     except MudServerConnectionError:
         raise HTTPException(status_code=502, detail="Cannot connect to mud server.")
 

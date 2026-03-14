@@ -39,6 +39,7 @@ import os
 import threading
 from dataclasses import dataclass
 from typing import TypedDict
+from urllib.parse import quote
 
 import httpx
 from dotenv import load_dotenv
@@ -249,16 +250,153 @@ class MudServerClient:
         return result
 
     def world_prompts(self, world_id: str) -> dict:
-        """GET /api/lab/world-prompts/{world_id} → return prompts list.
+        """Return world prompt templates for one world.
+
+        The preferred source remains ``GET /api/lab/world-prompts/{world_id}``.
+        Newer mud-server builds may intentionally remove that legacy endpoint.
+        In that case, this method falls back to canonical policy APIs and
+        synthesises a single active prompt entry for compatibility with the
+        existing lab prompt UI.
 
         Raises:
             MudServerSessionExpiredError: Session invalid/expired.
             MudServerConnectionError: Server unreachable or timed out.
         """
-        result = self._get(f"/api/lab/world-prompts/{world_id}")
+        try:
+            result = self._get(f"/api/lab/world-prompts/{world_id}")
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 404:
+                raise
+            logger.info(
+                "MudServerClient.world_prompts: legacy lab endpoint missing for world %r; "
+                "falling back to canonical policy APIs.",
+                world_id,
+            )
+            return self._world_prompts_from_policy_api(world_id)
+
         if not isinstance(result, dict):  # pragma: no cover
             raise TypeError(f"Expected dict from world-prompts, got {type(result).__name__}")
         return result
+
+    def _world_prompts_from_policy_api(self, world_id: str) -> dict:
+        """Resolve one active prompt using canonical policy endpoints.
+
+        Returns:
+            Prompt payload compatible with the legacy ``world-prompts`` shape.
+            If prompt resolution is unavailable, returns an empty prompts list
+            instead of raising, so startup flows remain resilient.
+        """
+
+        empty_payload = {"world_id": world_id, "prompts": []}
+        try:
+            activation_payload = self._get_with_params(
+                "/api/policy-activations",
+                {
+                    "scope": world_id,
+                    "effective": "true",
+                },
+            )
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "MudServerClient.world_prompts fallback: policy activations lookup failed "
+                "for world %r with HTTP %d.",
+                world_id,
+                exc.response.status_code,
+            )
+            return empty_payload
+
+        prompt_activation = self._extract_effective_prompt_activation(activation_payload)
+        if prompt_activation is None:
+            logger.warning(
+                "MudServerClient.world_prompts fallback: no effective prompt activation found "
+                "for world %r.",
+                world_id,
+            )
+            return empty_payload
+
+        policy_id = str(prompt_activation.get("policy_id") or "").strip()
+        variant = str(prompt_activation.get("variant") or "").strip()
+        if not policy_id or not variant:
+            logger.warning(
+                "MudServerClient.world_prompts fallback: invalid prompt activation payload for "
+                "world %r: %r",
+                world_id,
+                prompt_activation,
+            )
+            return empty_payload
+
+        encoded_policy_id = quote(policy_id, safe=":")
+        try:
+            policy_payload = self._get_with_params(
+                f"/api/policies/{encoded_policy_id}",
+                {"variant": variant},
+            )
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "MudServerClient.world_prompts fallback: policy lookup failed for %s:%s with "
+                "HTTP %d.",
+                policy_id,
+                variant,
+                exc.response.status_code,
+            )
+            return empty_payload
+
+        if not isinstance(policy_payload, dict):
+            logger.warning(
+                "MudServerClient.world_prompts fallback: expected dict policy payload, got %s.",
+                type(policy_payload).__name__,
+            )
+            return empty_payload
+
+        content = policy_payload.get("content")
+        prompt_text = content.get("text") if isinstance(content, dict) else None
+        if not isinstance(prompt_text, str):
+            logger.warning(
+                "MudServerClient.world_prompts fallback: policy payload missing content.text for "
+                "%s:%s.",
+                policy_id,
+                variant,
+            )
+            return empty_payload
+
+        prompt_key = str(policy_payload.get("policy_key") or "").strip() or "active_prompt"
+        return {
+            "world_id": world_id,
+            "prompts": [
+                {
+                    "filename": f"{prompt_key}.txt",
+                    "content": prompt_text,
+                    "is_active": True,
+                }
+            ],
+        }
+
+    def _extract_effective_prompt_activation(self, payload: object) -> dict | None:
+        """Return the preferred effective prompt activation row, if available."""
+
+        if not isinstance(payload, dict):
+            return None
+        items = payload.get("items")
+        if not isinstance(items, list):
+            return None
+
+        prompt_rows = [
+            row
+            for row in items
+            if isinstance(row, dict) and str(row.get("policy_id") or "").startswith("prompt:")
+        ]
+        if not prompt_rows:
+            return None
+
+        preferred = next(
+            (
+                row
+                for row in prompt_rows
+                if str(row.get("policy_id") or "").startswith("prompt:translation.prompts.ic:")
+            ),
+            None,
+        )
+        return preferred or prompt_rows[0]
 
     def world_image_policy_bundle(self, world_id: str) -> dict:
         """GET /api/lab/world-image-policy-bundle/{world_id} → image policy bundle.
@@ -529,12 +667,18 @@ class MudServerClient:
 
     def _get(self, path: str) -> dict | list:
         """Perform an authenticated GET request with session_id as query param."""
+        return self._get_with_params(path, {})
+
+    def _get_with_params(self, path: str, params: dict[str, str]) -> dict | list:
+        """Perform an authenticated GET request with session_id + extra query params."""
         if not self._session_id:
             raise MudServerSessionExpiredError("Not authenticated")
+        request_params: dict[str, str] = {"session_id": self._session_id}
+        request_params.update(params)
         try:
             resp = self._client.get(
                 f"{self._base_url}{path}",
-                params={"session_id": self._session_id},
+                params=request_params,
             )
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise MudServerConnectionError(

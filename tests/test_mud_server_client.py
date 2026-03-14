@@ -811,6 +811,92 @@ class TestWorldPrompts:
         with pytest.raises(MudServerSessionExpiredError):
             client.world_prompts("pipeworks_web")
 
+    def test_world_prompts_falls_back_to_policy_api_when_legacy_route_missing(
+        self, client: MudServerClient
+    ) -> None:
+        """Legacy 404 should resolve the active prompt from canonical policy endpoints."""
+
+        client._session_id = "abc-123"
+
+        legacy_req = httpx.Request(
+            "GET",
+            "http://fake-server:8000/api/lab/world-prompts/pipeworks_web",
+        )
+        legacy_resp = MagicMock()
+        legacy_resp.status_code = 404
+        legacy_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "missing",
+            request=legacy_req,
+            response=legacy_resp,
+        )
+
+        activations_resp = MagicMock()
+        activations_resp.status_code = 200
+        activations_resp.raise_for_status = MagicMock()
+        activations_resp.json.return_value = {
+            "items": [
+                {
+                    "policy_id": "prompt:translation.prompts.ic:default",
+                    "variant": "v1",
+                }
+            ]
+        }
+
+        policy_resp = MagicMock()
+        policy_resp.status_code = 200
+        policy_resp.raise_for_status = MagicMock()
+        policy_resp.json.return_value = {
+            "policy_key": "default",
+            "content": {"text": "Canonical prompt {{profile_summary}}"},
+        }
+
+        client._client.get.side_effect = [legacy_resp, activations_resp, policy_resp]
+
+        result = client.world_prompts("pipeworks_web")
+
+        assert result["world_id"] == "pipeworks_web"
+        assert len(result["prompts"]) == 1
+        assert result["prompts"][0]["filename"] == "default.txt"
+        assert result["prompts"][0]["is_active"] is True
+        assert "Canonical prompt" in result["prompts"][0]["content"]
+
+    def test_world_prompts_fallback_returns_empty_when_policy_lookup_unavailable(
+        self, client: MudServerClient
+    ) -> None:
+        """When both old and fallback routes are unavailable, return empty prompts."""
+
+        client._session_id = "abc-123"
+
+        legacy_req = httpx.Request(
+            "GET",
+            "http://fake-server:8000/api/lab/world-prompts/pipeworks_web",
+        )
+        legacy_resp = MagicMock()
+        legacy_resp.status_code = 404
+        legacy_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "missing",
+            request=legacy_req,
+            response=legacy_resp,
+        )
+
+        activation_req = httpx.Request(
+            "GET",
+            "http://fake-server:8000/api/policy-activations",
+        )
+        activation_resp = MagicMock()
+        activation_resp.status_code = 404
+        activation_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "missing",
+            request=activation_req,
+            response=activation_resp,
+        )
+
+        client._client.get.side_effect = [legacy_resp, activation_resp]
+
+        result = client.world_prompts("pipeworks_web")
+
+        assert result == {"world_id": "pipeworks_web", "prompts": []}
+
 
 class TestWorldPromptDrafts:
     """Prompt-draft mud-server helpers round-trip the expected payloads."""
