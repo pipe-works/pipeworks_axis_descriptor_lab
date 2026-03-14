@@ -671,6 +671,30 @@ class TestMudWorldPrompts:
 
         assert resp.status_code == 503
 
+    def test_world_prompts_http_status_error_is_mapped(self, test_client: TestClient) -> None:
+        """Upstream HTTP errors should propagate as stable API responses."""
+        mock = _mock_mud_client(authenticated=True)
+        request = httpx.Request(
+            "GET",
+            "http://example.test/api/lab/world-prompts/pipeworks_web",
+        )
+        response = httpx.Response(
+            status_code=404,
+            request=request,
+            json={"detail": "Legacy world-prompts endpoint removed."},
+        )
+        mock.world_prompts.side_effect = httpx.HTTPStatusError(
+            "missing",
+            request=request,
+            response=response,
+        )
+
+        with patch("app.routes_mud.get_mud_client", return_value=mock):
+            resp = test_client.get("/api/mud/world-prompts/pipeworks_web")
+
+        assert resp.status_code == 404
+        assert "removed" in resp.json()["detail"].lower()
+
 
 # ---------------------------------------------------------------------------
 # GET /api/mud/world-image-policy-bundle/{world_id}
