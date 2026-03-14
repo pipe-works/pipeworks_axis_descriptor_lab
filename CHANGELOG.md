@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.3](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.11.2...axis-descriptor-lab-v0.11.3) (2026-03-14)
+
+
+### Bug Fixes
+
+* **mud-proxy:** support refactored mud prompt APIs ([f7d9d93](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/f7d9d935b77b7eadd18ec4311556667c48715ae3))
+* **mud-proxy:** support refactored mud prompt APIs ([11f85ee](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/11f85ee86b92eb46ab11a36eaa55629dbe50c362))
+
 ## [0.11.2](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.11.1...axis-descriptor-lab-v0.11.2) (2026-03-10)
 
 
