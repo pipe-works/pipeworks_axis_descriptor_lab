@@ -39,7 +39,6 @@ import { wireTooltipToggle } from "./mod-tooltip.js";
 import { wireEvents } from "./mod-events.js";
 import { loadExampleList, loadPromptList, loadExample } from "./mod-loaders.js";
 import { initChatTranslation } from "./mod-chat-translation.js";
-import { initArtifactEditor } from "./mod-artifact-editor.js";
 import { initPipelineBuild } from "./mod-pipeline-build.js";
 
 /**
@@ -65,7 +64,6 @@ async function init() {
   await loadExampleList();
   await loadPromptList();
   await initChatTranslation();
-  await initArtifactEditor();
   await initPipelineBuild();
 
   // Phase 4: Auto-load the first example if any exist

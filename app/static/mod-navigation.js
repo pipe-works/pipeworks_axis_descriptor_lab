@@ -1,8 +1,8 @@
 /**
  * mod-navigation.js
  * ─────────────────────────────────────────────────────────────────────────────
- * Page switching between Character Description, Chat Translation, and the
- * Artifact Editor, and Pipeline Build.
+ * Page switching between Character Description, Chat Translation, and
+ * Pipeline Build.
  *
  * Layout model
  * ────────────
@@ -11,7 +11,6 @@
  *
  *   <div id="page-char-description">   ← Character Description page
  *   <div id="page-chat-translation">   ← Chat Translation page
- *   <div id="page-artifact-editor">    ← Artifact Editor page
  *   <div id="page-pipeline-build">     ← Pipeline Build page
  *
  * Only one page is visible at a time.  Switching is done by toggling the
@@ -43,13 +42,11 @@ function switchPage(activeKey) {
   const pages = {
     char: dom.pageCharDescription,
     chat: dom.pageChatTranslation,
-    artifact: dom.pageArtifactEditor,
     pipeline: dom.pagePipelineBuild,
   };
   const buttons = {
     char: dom.navCharDesc,
     chat: dom.navChatTrans,
-    artifact: dom.navArtifactEditor,
     pipeline: dom.navPipelineBuild,
   };
 
@@ -70,10 +67,9 @@ function switchPage(activeKey) {
 /**
  * Wire the navigation bar button event listeners.
  *
- * Attaches "click" handlers to the three nav buttons:
+ * Attaches "click" handlers to the nav buttons:
  *   - "Character Description" (#nav-char-desc) → shows #page-char-description
  *   - "Chat Translation"      (#nav-chat-trans) → shows #page-chat-translation
- *   - "Artifact Editor"       (#nav-artifact-editor) → shows #page-artifact-editor
  *   - "Pipeline Build"        (#nav-pipeline-build) → shows #page-pipeline-build
  *
  * Called once during startup by the mod-events coordinator
@@ -93,12 +89,6 @@ export function wireNavigationEvents() {
     // Notify the chat translation module so it can re-check session state
     // (prevents stale auth after returning from the Character Description page).
     document.dispatchEvent(new CustomEvent("chat-translation-activated"));
-  });
-
-  // ── Artifact Editor nav button ───────────────────────────────────────── //
-  dom.navArtifactEditor.addEventListener("click", () => {
-    switchPage("artifact");
-    document.dispatchEvent(new CustomEvent("artifact-editor-activated"));
   });
 
   // ── Pipeline Build nav button ───────────────────────────────────────── //

@@ -184,11 +184,9 @@ export const dom = {
   // ── Page navigation ───────────────────────────────────────────────── //
   navCharDesc:          $("nav-char-desc"),
   navChatTrans:         $("nav-chat-trans"),
-  navArtifactEditor:    $("nav-artifact-editor"),
   navPipelineBuild:     $("nav-pipeline-build"),
   pageCharDescription:  $("page-char-description"),
   pageChatTranslation:  $("page-chat-translation"),
-  pageArtifactEditor:   $("page-artifact-editor"),
   pagePipelineBuild:    $("page-pipeline-build"),
 
   // ── Chat Translation — Character A ───────────────────────────────── //
@@ -258,27 +256,6 @@ export const dom = {
   chatSystemPrompt:     $("chat-system-prompt"),
   chatPromptBadge:      $("chat-prompt-badge"),
   btnTranslate:         $("btn-translate"),
-
-  // ── Artifact Editor ─────────────────────────────────────────────────── //
-  artifactSource:            $("artifact-source"),
-  artifactType:              $("artifact-type"),
-  artifactPurpose:           $("artifact-purpose"),
-  artifactWorld:             $("artifact-world"),
-  artifactRefreshWorlds:     $("artifact-refresh-worlds"),
-  artifactSelect:            $("artifact-select"),
-  artifactSelectSourceHint:  $("artifact-select-source-hint"),
-  artifactBtnLoad:           $("artifact-btn-load"),
-  artifactCurrentName:       $("artifact-current-name"),
-  artifactDraftNameLabel:    $("artifact-draft-name-label"),
-  artifactDraftName:         $("artifact-draft-name"),
-  artifactEditor:            $("artifact-editor"),
-  artifactEditorBadge:       $("artifact-editor-badge"),
-  artifactSaveDraft:         $("artifact-save-draft"),
-  artifactPromoteDraft:      $("artifact-promote-draft"),
-  artifactSaveHint:          $("artifact-save-hint"),
-  artifactMeta:              $("artifact-meta"),
-  artifactReference:         $("artifact-reference"),
-  artifactPreview:           $("artifact-preview"),
 
   // ── Pipeline Build ───────────────────────────────────────────────────── //
   pipelineStageList:         $("pipeline-stage-list"),

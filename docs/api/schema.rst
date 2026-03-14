@@ -11,7 +11,6 @@ The models themselves are organized by domain submodule:
 - ``app.schema.generate`` — character-description generation and logging
 - ``app.schema.save`` — save/export/import request and response models
 - ``app.schema.analysis`` — signal-isolation and transformation-map models
-- ``app.schema.artifact`` — Artifact Editor prompt, JSON artifact, and draft models
 - ``app.schema.chat`` — chat translation and chat save/import models
 - ``app.schema.mud`` — mud-server proxy request and response models
 

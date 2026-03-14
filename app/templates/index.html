@@ -59,7 +59,6 @@
 <nav class="app-nav" aria-label="Page navigation">
   <button id="nav-char-desc" class="btn btn--nav {% if initial_page == 'char' %}is-active{% endif %}" type="button">Character Description</button>
   <button id="nav-chat-trans" class="btn btn--nav {% if initial_page == 'chat' %}is-active{% endif %}" type="button">Chat Translation</button>
-  <button id="nav-artifact-editor" class="btn btn--nav {% if initial_page == 'artifact' %}is-active{% endif %}" type="button">Artifact Editor</button>
   <button id="nav-pipeline-build" class="btn btn--nav {% if initial_page == 'pipeline' %}is-active{% endif %}" type="button">Pipeline Build</button>
 </nav>
 
@@ -831,118 +830,6 @@
 
 </main>
 </div><!-- #page-chat-translation -->
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PAGE: ARTIFACT EDITOR
-════════════════════════════════════════════════════════════════════════════ -->
-<div id="page-artifact-editor"{% if initial_page != 'artifact' %} class="hidden"{% endif %}>
-<main class="app-grid artifact-grid">
-
-  <section class="panel panel--left artifact-panel" aria-label="Artifact Editor Controls">
-    <h2 class="panel__heading">Source</h2>
-
-    <div class="control-row">
-      <label for="artifact-type" class="control-label">Type</label>
-      <select id="artifact-type" class="select">
-        <option value="prompt_template">Prompt Template</option>
-        <option value="axis_payload">Axis Payload JSON</option>
-        <option value="policy_bundle">Policy Bundle JSON</option>
-        <option value="lexicon_json">Lexicon JSON</option>
-      </select>
-    </div>
-
-    <div class="control-row" style="margin-top:0.5rem;">
-      <label for="artifact-source" class="control-label">Mode</label>
-      <select id="artifact-source" class="select">
-        <option value="local">Local drafts</option>
-        <option value="server">Mud server canonical</option>
-      </select>
-    </div>
-
-    <div class="control-row" style="margin-top:0.5rem;">
-      <label for="artifact-purpose" class="control-label">Family</label>
-      <select id="artifact-purpose" class="select">
-        <option value="chat_translation">Chat Translation</option>
-        <option value="character_description">Character Description</option>
-      </select>
-    </div>
-
-    <div class="control-row" style="margin-top:0.5rem;">
-      <label for="artifact-world" class="control-label">World</label>
-      <select id="artifact-world" class="select">
-        <option value="">— server world —</option>
-      </select>
-      <button id="artifact-refresh-worlds" class="btn btn--secondary" type="button">Refresh</button>
-    </div>
-
-    <hr class="divider" />
-
-    <h2 class="panel__heading">Artifact</h2>
-
-    <div class="control-row">
-      <label for="artifact-select" class="control-label">Artifact</label>
-      <select id="artifact-select" class="select">
-        <option value="">— choose —</option>
-      </select>
-      <button id="artifact-btn-load" class="btn btn--secondary" type="button">Load</button>
-    </div>
-    <div id="artifact-select-source-hint" class="control-path-hint">
-      Source: select an item to view path.
-    </div>
-
-    <div class="artifact-note" id="artifact-save-hint" style="margin-top:0.75rem;">
-      Create-only drafts are supported. Canonical files are read-only.
-    </div>
-
-    <label for="artifact-current-name" class="control-label" style="margin-top:0.75rem;">Loaded artifact</label>
-    <input id="artifact-current-name" class="input" type="text" readonly placeholder="(none loaded)" />
-
-    <label id="artifact-draft-name-label" for="artifact-draft-name" class="control-label" style="margin-top:0.75rem;">New draft name</label>
-    <input
-      id="artifact-draft-name"
-      class="input"
-      type="text"
-      placeholder="example_new_artifact"
-      spellcheck="false"
-    />
-
-    <button id="artifact-save-draft" class="btn btn--primary btn--full" type="button" style="margin-top:0.75rem;">
-      Save draft
-    </button>
-    <button id="artifact-promote-draft" class="btn btn--secondary btn--full hidden" type="button" style="margin-top:0.5rem;">
-      Promote draft
-    </button>
-  </section>
-
-  <section class="panel panel--centre artifact-panel" aria-label="Artifact Editor Text">
-    <div class="output-header">
-      <h2 class="panel__heading">Editor</h2>
-      <span id="artifact-editor-badge" class="badge badge--muted">ready</span>
-    </div>
-    <textarea
-      id="artifact-editor"
-      class="code-editor artifact-editor__textarea"
-      spellcheck="false"
-      placeholder="Load an artifact to edit its raw text here."
-    ></textarea>
-    <div id="artifact-preview" class="artifact-preview">
-      <span class="placeholder-text">Preview and validation details appear as you edit.</span>
-    </div>
-  </section>
-
-  <section class="panel panel--right artifact-panel" aria-label="Artifact Editor Reference">
-    <h2 class="panel__heading">Reference</h2>
-    <div id="artifact-meta" class="artifact-meta">
-      <span class="placeholder-text">Load an artifact to inspect its origin and safety rules.</span>
-    </div>
-    <hr class="divider" />
-    <div id="artifact-reference" class="artifact-reference">
-      <span class="placeholder-text">Placeholder and contract notes will appear here.</span>
-    </div>
-  </section>
-
-</main>
-</div><!-- #page-artifact-editor -->
 
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PAGE: PIPELINE BUILD
