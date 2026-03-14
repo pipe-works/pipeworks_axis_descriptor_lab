@@ -53,24 +53,6 @@ GET  /api/mud/world-config/{id}→ proxy world config from mud server
 GET  /api/mud/world-prompts/{id} → proxy world prompt templates from mud server
 GET  /api/mud/world-image-policy-bundle/{id} → proxy canonical image policy bundle metadata
 POST /api/mud/compile-image-prompt → proxy canonical image prompt compilation
-GET  /api/artifacts/local/chat-prompts          → list local prompt artifacts
-GET  /api/artifacts/local/chat-prompts/{name}   → load one local prompt artifact
-POST /api/artifacts/local/chat-prompts/drafts   → create a new local prompt draft
-GET  /api/artifacts/local/axis-payloads         → list local AxisPayload JSON artifacts
-GET  /api/artifacts/local/axis-payloads/{name}  → load one local AxisPayload JSON artifact
-POST /api/artifacts/local/axis-payloads/drafts  → create a new local AxisPayload JSON draft
-GET  /api/artifacts/local/policy-bundles        → list local normalized policy bundle artifacts
-GET  /api/artifacts/local/policy-bundles/{name} → load one local normalized policy bundle artifact
-POST /api/artifacts/local/policy-bundles/drafts → create a new local normalized policy bundle draft
-GET  /api/artifacts/server/chat-prompts/{id}    → server-backed canonical prompt manifest
-GET  /api/artifacts/server/chat-prompts/{id}/drafts → list mud-server prompt drafts
-GET  /api/artifacts/server/chat-prompts/{id}/drafts/{name} → load one mud-server prompt draft
-POST /api/artifacts/server/chat-prompts/{id}/drafts → create a new mud-server prompt draft
-POST /api/artifacts/server/chat-prompts/{id}/drafts/{name}/promote → promote one mud-server prompt draft
-GET  /api/artifacts/server/policy-bundles/{id}  → server-backed canonical policy bundle artifact
-GET  /api/artifacts/server/policy-bundles/{id}/drafts → list mud-server policy bundle drafts
-GET  /api/artifacts/server/policy-bundles/{id}/drafts/{name} → load one mud-server policy bundle draft
-POST /api/artifacts/server/policy-bundles/{id}/drafts → create a new mud-server policy bundle draft
 POST /api/mud/select-world     → store selected world_id
 
 Architecture notes
@@ -142,7 +124,6 @@ from app.schema import (
 )
 from app.micro_indicators import IndicatorConfig as _IndicatorConfig
 from app.routes_chat import router as chat_router
-from app.routes_artifact_editor import router as artifact_editor_router
 from app.routes_mud import router as mud_router
 from app.routes_save import router as save_router
 from app.micro_indicators import classify_rows
@@ -224,7 +205,6 @@ app.add_event_handler("startup", _refresh_uvicorn_log_prefix)
 app.add_event_handler("shutdown", close_runtime_clients)
 
 app.include_router(chat_router)
-app.include_router(artifact_editor_router)
 app.include_router(mud_router, prefix="/api/mud")
 app.include_router(save_router)
 
