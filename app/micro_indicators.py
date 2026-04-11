@@ -53,63 +53,24 @@ lookups for O(1) membership testing.
 NLTK data requirements
 ----------------------
 Reuses the same NLTK data packages as ``signal_isolation.py`` (punkt_tab,
-stopwords, wordnet) which are ensured at import time via the side-effect
-import of ``app.signal_isolation``.
+stopwords, wordnet). Those resources are validated explicitly at call time
+rather than being downloaded during module import.
 
 Additionally requires ``averaged_perceptron_tagger_eng`` for the modality
-shift indicator (POS tagging).  This is downloaded automatically via
-``_ensure_pos_tagger_data()`` at module load time.
+shift indicator (POS tagging). Environment preparation should bootstrap all
+required NLTK data up front via ``python tools/bootstrap_nltk.py``.
 """
 
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 import nltk
-from nltk.corpus import stopwords
 from nltk.tokenize import sent_tokenize, word_tokenize
 
-# Side-effect import: ensures punkt_tab, stopwords, and wordnet are
-# available before this module tries to use them.
-import app.signal_isolation  # noqa: F401
-
-logger = logging.getLogger(__name__)
-
-
-# -----------------------------------------------------------------------------
-# NLTK data bootstrap (POS tagger)
-# -----------------------------------------------------------------------------
-
-# The modality shift indicator requires POS tagging.  This data package
-# is not needed by signal_isolation.py, so we download it separately.
-_REQUIRED_EXTRA_NLTK: tuple[tuple[str, str], ...] = (
-    ("averaged_perceptron_tagger_eng", "taggers/averaged_perceptron_tagger_eng"),
-)
-
-
-def _ensure_pos_tagger_data() -> None:
-    """Ensure the POS tagger data is available for modality shift detection."""
-    for pkg_name, find_path in _REQUIRED_EXTRA_NLTK:
-        try:
-            nltk.data.find(find_path)
-        except LookupError:
-            logger.info("Downloading NLTK data package: %s", pkg_name)
-            try:
-                nltk.download(pkg_name, quiet=True)
-            except Exception as exc:  # noqa: BLE001 – intentionally broad
-                logger.warning(
-                    "Failed to download NLTK '%s': %s: %s",
-                    pkg_name,
-                    type(exc).__name__,
-                    exc,
-                )
-
-
-# Run once at module import time.
-_ensure_pos_tagger_data()
+from app.nltk_support import ensure_nltk_data, english_stopwords
 
 
 # -----------------------------------------------------------------------------
@@ -147,9 +108,6 @@ for _scale_name, _scale_words in _INTENSITY_DATA["scales"].items():
     for _idx, _word in enumerate(_scale_words):
         _key = _word.lower()
         _INTENSITY_INDEX.setdefault(_key, []).append((_scale_name, _idx))
-
-# English stopwords for lexical pivot detection.
-_ENGLISH_STOPWORDS: frozenset[str] = frozenset(stopwords.words("english"))
 
 # Union of all known lexicon words — used to identify "rare" words for
 # the lexical pivot indicator.
@@ -244,6 +202,7 @@ def _tokenize_lower(text: str) -> list[str]:
     list[str]
         Lowercase alpha-containing tokens, in order.
     """
+    ensure_nltk_data()
     return [t.lower() for t in word_tokenize(text) if any(c.isalpha() for c in t)]
 
 
@@ -373,6 +332,7 @@ def _check_consolidation(removed: str, added: str) -> str | None:
     Operates on raw strings (not pre-tokenized) because sentence
     splitting requires the original punctuation context.
     """
+    ensure_nltk_data()
     sents_r = sent_tokenize(removed)
     sents_a = sent_tokenize(added)
     if len(sents_r) > 1 and len(sents_a) < len(sents_r):
@@ -387,6 +347,7 @@ def _check_fragmentation(removed: str, added: str) -> str | None:
     Returns ``"fragmentation"`` if the added text contains more sentences
     than the removed text (and the added text has at least 2 sentences).
     """
+    ensure_nltk_data()
     sents_r = sent_tokenize(removed)
     sents_a = sent_tokenize(added)
     if len(sents_a) > 1 and len(sents_a) > len(sents_r):
@@ -413,6 +374,7 @@ def _check_modality_shift(
         return None
 
     try:
+        ensure_nltk_data(require_pos_tagger=True)
         pos_r = nltk.pos_tag(removed_tokens)
         pos_a = nltk.pos_tag(added_tokens)
     except Exception:  # noqa: BLE001 – graceful degradation
@@ -449,10 +411,14 @@ def _check_lexical_pivot(
     fit the other categories.
     """
     rare_removed = [
-        t for t in removed_tokens if t not in _ENGLISH_STOPWORDS and t not in _ALL_KNOWN_LEXICON
+        t
+        for t in removed_tokens
+        if t not in english_stopwords() and t not in _ALL_KNOWN_LEXICON
     ]
     rare_added = [
-        t for t in added_tokens if t not in _ENGLISH_STOPWORDS and t not in _ALL_KNOWN_LEXICON
+        t
+        for t in added_tokens
+        if t not in english_stopwords() and t not in _ALL_KNOWN_LEXICON
     ]
     if rare_removed and rare_added:
         return "lexical pivot"

@@ -46,76 +46,22 @@ This module requires three NLTK data packages:
 - ``stopwords``  — English stopword list (179 words)
 - ``wordnet``    — lemmatiser database (WordNet 3.0)
 
-These are downloaded automatically at module load time via
-``_ensure_nltk_data()`` with graceful error handling and logging.
-Subsequent imports are near-instant because NLTK caches downloaded data
-in ``~/nltk_data``.
+These resources are validated explicitly at call time rather than being
+downloaded during module import. Environment preparation should bootstrap
+them up front via ``python tools/bootstrap_nltk.py``.
 """
 
 from __future__ import annotations
 
-import logging
-
-import nltk
-from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 
-logger = logging.getLogger(__name__)
-
-
-# -----------------------------------------------------------------------------
-# NLTK data bootstrap
-# -----------------------------------------------------------------------------
-
-# The three NLTK data packages required by this module.  Each entry is a
-# tuple of (package_name, nltk.data.find path prefix) so that the bootstrap
-# function can locate the correct sub-directory for each package type.
-_REQUIRED_NLTK_DATA: tuple[tuple[str, str], ...] = (
-    ("punkt_tab", "tokenizers/punkt_tab"),
-    ("stopwords", "corpora/stopwords"),
-    ("wordnet", "corpora/wordnet"),
-)
-
-
-def _ensure_nltk_data() -> None:
-    """
-    Ensure required NLTK data packages are available locally.
-
-    Downloads any missing packages on first run.  Subsequent imports are
-    near-instant because NLTK caches downloaded data in ``~/nltk_data``.
-
-    Logs a warning (not an error) if a download fails so the server can
-    still start — the affected functions will raise clear ``LookupError``
-    exceptions at call time rather than crashing at import.
-    """
-    for pkg_name, find_path in _REQUIRED_NLTK_DATA:
-        try:
-            nltk.data.find(find_path)
-        except LookupError:
-            logger.info("Downloading NLTK data package: %s", pkg_name)
-            try:
-                nltk.download(pkg_name, quiet=True)
-            except Exception as exc:  # noqa: BLE001 – intentionally broad
-                logger.warning(
-                    "Failed to download NLTK '%s': %s: %s",
-                    pkg_name,
-                    type(exc).__name__,
-                    exc,
-                )
-
-
-# Run once at module import time.
-_ensure_nltk_data()
+from app.nltk_support import ensure_nltk_data, english_stopwords
 
 
 # -----------------------------------------------------------------------------
 # Constants
 # -----------------------------------------------------------------------------
-
-# Frozen set of English stopwords for O(1) membership testing.
-# Loaded once at module level after NLTK data is ensured.
-_ENGLISH_STOPWORDS: frozenset[str] = frozenset(stopwords.words("english"))
 
 # Shared lemmatiser instance.  WordNetLemmatizer is stateless and
 # thread-safe, so a single instance can be reused across all requests.
@@ -147,6 +93,8 @@ def _tokenise(text: str) -> list[str]:
         Lowercase word tokens, each containing at least one letter.
         Empty list if the input is empty or contains no alphabetic tokens.
     """
+    ensure_nltk_data()
+
     # word_tokenize handles sentence boundaries, contractions, and
     # punctuation splitting according to Penn Treebank conventions.
     raw_tokens = word_tokenize(text)
@@ -187,6 +135,8 @@ def _lemmatise(tokens: list[str]) -> list[str]:
         Lemmatised tokens in the same order and of the same length as
         the input.
     """
+    ensure_nltk_data()
+
     result: list[str] = []
     for token in tokens:
         # Pass 1: try verb lemmatisation (catches inflected verbs).
@@ -221,7 +171,8 @@ def _filter_stopwords(tokens: list[str]) -> list[str]:
     list[str]
         Tokens with all stopwords removed.  Order is preserved.
     """
-    return [t for t in tokens if t not in _ENGLISH_STOPWORDS]
+    stopword_set = english_stopwords()
+    return [t for t in tokens if t not in stopword_set]
 
 
 # -----------------------------------------------------------------------------

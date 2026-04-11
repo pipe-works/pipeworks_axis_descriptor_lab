@@ -109,6 +109,7 @@ from app.save_package import (
     MAX_UPLOAD_SIZE,
 )
 from app.mud_server_client import close_all_mud_clients, compute_translation_mode
+from app.nltk_support import NltkResourceError
 from app.schema import (
     AxisPayload,
     ChatImportResponse,
@@ -179,15 +180,6 @@ _LOG_FILE = _LOGS_DIR / "run_log.jsonl"
 # FastAPI app + middleware
 # -----------------------------------------------------------------------------
 
-app = FastAPI(
-    title="Axis Descriptor Lab",
-    description=(
-        "Tiny web tool for testing how small LLMs (via Ollama) produce "
-        "non-authoritative descriptive text from a deterministic axis payload."
-    ),
-    version=_APP_VERSION,
-)
-
 
 def _refresh_uvicorn_log_prefix() -> None:
     """Reapply Uvicorn handler prefixes after server startup initialization."""
@@ -199,10 +191,26 @@ def close_runtime_clients() -> None:
     close_all_clients()
     close_all_mud_clients()
 
+app = FastAPI(
+    title="Axis Descriptor Lab",
+    description=(
+        "Tiny web tool for testing how small LLMs (via Ollama) produce "
+        "non-authoritative descriptive text from a deterministic axis payload."
+    ),
+    version=_APP_VERSION,
+)
 
-# Close shared HTTP client pools on shutdown to release connections cleanly.
-app.add_event_handler("startup", _refresh_uvicorn_log_prefix)
-app.add_event_handler("shutdown", close_runtime_clients)
+
+@app.on_event("startup")
+def _startup() -> None:
+    """Reapply prefixed Uvicorn logging once the app starts."""
+    _refresh_uvicorn_log_prefix()
+
+
+@app.on_event("shutdown")
+def _shutdown() -> None:
+    """Close shared runtime clients during app shutdown."""
+    close_runtime_clients()
 
 app.include_router(chat_router)
 app.include_router(mud_router, prefix="/api/mud")
@@ -586,7 +594,10 @@ def analyze_delta(req: DeltaRequest) -> DeltaResponse:
         Alphabetically sorted ``removed`` and ``added`` content-lemma
         lists.
     """
-    removed, added = compute_delta(req.baseline_text, req.current_text)
+    try:
+        removed, added = compute_delta(req.baseline_text, req.current_text)
+    except NltkResourceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     return DeltaResponse(removed=removed, added=added)
 
 
@@ -629,9 +640,12 @@ def transformation_map(req: TransformationMapRequest) -> TransformationMapRespon
         Ordered list of ``TransformationMapRow`` replacement pairs,
         each annotated with zero or more micro-indicator labels.
     """
-    rows = compute_transformation_map(
-        req.baseline_text, req.current_text, include_all=req.include_all
-    )
+    try:
+        rows = compute_transformation_map(
+            req.baseline_text, req.current_text, include_all=req.include_all
+        )
+    except NltkResourceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     # Convert the Pydantic IndicatorConfig to the module's dataclass.
     config = None
@@ -648,7 +662,10 @@ def transformation_map(req: TransformationMapRequest) -> TransformationMapRespon
             ),
         )
 
-    indicators = classify_rows(rows, config=config)
+    try:
+        indicators = classify_rows(rows, config=config)
+    except NltkResourceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return TransformationMapResponse(
         rows=[
