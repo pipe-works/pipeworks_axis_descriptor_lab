@@ -1290,7 +1290,10 @@ class TestTransformationMapEndpoint:
         self, client: TestClient
     ) -> None:
         """Indicator classification should fail clearly when NLTK data is missing."""
-        with patch("app.main.compute_transformation_map", return_value=[{"removed": "old", "added": "young"}]):
+        with patch(
+            "app.main.compute_transformation_map",
+            return_value=[{"removed": "old", "added": "young"}],
+        ):
             with patch(
                 "app.main.classify_rows",
                 side_effect=NltkResourceError("missing nltk data"),

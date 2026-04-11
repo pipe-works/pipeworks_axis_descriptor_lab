@@ -72,7 +72,6 @@ from nltk.tokenize import sent_tokenize, word_tokenize
 
 from app.nltk_support import ensure_nltk_data, english_stopwords
 
-
 # -----------------------------------------------------------------------------
 # Lexicon data loading
 # -----------------------------------------------------------------------------
@@ -411,14 +410,10 @@ def _check_lexical_pivot(
     fit the other categories.
     """
     rare_removed = [
-        t
-        for t in removed_tokens
-        if t not in english_stopwords() and t not in _ALL_KNOWN_LEXICON
+        t for t in removed_tokens if t not in english_stopwords() and t not in _ALL_KNOWN_LEXICON
     ]
     rare_added = [
-        t
-        for t in added_tokens
-        if t not in english_stopwords() and t not in _ALL_KNOWN_LEXICON
+        t for t in added_tokens if t not in english_stopwords() and t not in _ALL_KNOWN_LEXICON
     ]
     if rare_removed and rare_added:
         return "lexical pivot"

@@ -191,6 +191,7 @@ def close_runtime_clients() -> None:
     close_all_clients()
     close_all_mud_clients()
 
+
 app = FastAPI(
     title="Axis Descriptor Lab",
     description=(
@@ -211,6 +212,7 @@ def _startup() -> None:
 def _shutdown() -> None:
     """Close shared runtime clients during app shutdown."""
     close_runtime_clients()
+
 
 app.include_router(chat_router)
 app.include_router(mud_router, prefix="/api/mud")

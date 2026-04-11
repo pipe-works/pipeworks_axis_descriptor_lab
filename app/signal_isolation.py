@@ -58,7 +58,6 @@ from nltk.tokenize import word_tokenize
 
 from app.nltk_support import ensure_nltk_data, english_stopwords
 
-
 # -----------------------------------------------------------------------------
 # Constants
 # -----------------------------------------------------------------------------
