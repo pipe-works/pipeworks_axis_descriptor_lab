@@ -27,6 +27,7 @@ def _path_from_env(env_var: str, host_default: Path, local_default: Path) -> Pat
         return host_default
     return local_default
 
+
 DATA_DIR = _path_from_env("AXIS_LAB_DATA_DIR", _HOST_RUNTIME_ROOT, HERE.parent / "data")
 LOGS_DIR = _path_from_env("AXIS_LAB_LOGS_DIR", _HOST_LOG_ROOT, HERE.parent / "logs")
 WORLD_ROOT = HERE / "worlds"
