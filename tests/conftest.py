@@ -6,7 +6,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.nltk_support import bootstrap_nltk_data
 from app.schema import AxisPayload, AxisValue
+
+
+@pytest.fixture(scope="session", autouse=True)
+def ensure_test_nltk_data() -> None:
+    """Prepare required NLTK resources once for the test session."""
+    bootstrap_nltk_data(require_pos_tagger=True, quiet=True)
 
 
 @pytest.fixture()
