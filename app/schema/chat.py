@@ -316,7 +316,8 @@ class ChatSaveRequest(BaseModel):
     Request body for POST /api/save_chat.
 
     Saves a complete in-game chat log session to a timestamped folder under
-    ``data/``, including optional character payloads and the system prompt.
+    the configured writable save root, including optional character payloads
+    and the system prompt.
     """
 
     entries: list[ChatLogEntry] = Field(
@@ -387,7 +388,10 @@ class ChatSaveResponse(BaseModel):
 
     folder_name: str = Field(
         ...,
-        description="Save folder name under data/ (e.g. '20260227_103022_abc1def2').",
+        description=(
+            "Timestamped save folder name under the configured writable save root "
+            "(e.g. '20260227_103022_abc1def2')."
+        ),
     )
     files: list[str] = Field(
         ...,

@@ -1,19 +1,15 @@
 """
-Deterministic multi-root path resolution for local Axis Lab artifacts.
+Deterministic path resolution for supported Axis Lab local artifacts.
 
-The world-layout migration introduces world-scoped and lab-only roots while
-keeping compatibility with legacy/transitional layouts. This module
-centralises read-path resolution so every caller applies the same precedence
-rules and provenance metadata contract.
+Axis Lab now supports only two local asset tiers:
+
+1. world-scoped roots
+2. explicitly lab-only roots
 
 High-level precedence remains:
 
 1. world-scoped roots (canonical and draft)
 2. lab-only roots
-3. legacy roots
-
-Within the lab-only tier, target migration paths are preferred over older
-transitional lab-only paths so the project can migrate without breaking reads.
 """
 
 from __future__ import annotations
@@ -25,14 +21,10 @@ from typing import Literal
 from app.config import (
     DEFAULT_WORLD_ID,
     LAB_ONLY_ROOT,
-    LEGACY_EXAMPLES_DIR,
-    LEGACY_LEXICONS_DIR,
-    LEGACY_POLICY_BUNDLES_DIR,
-    LEGACY_PROMPTS_DIR,
     WORLD_ROOT,
 )
 
-type ArtifactSourceKind = Literal["world_canonical", "world_draft", "lab_only", "legacy"]
+type ArtifactSourceKind = Literal["world_canonical", "world_draft", "lab_only"]
 type PromptPurpose = Literal["character_description", "chat_translation"]
 
 
@@ -138,9 +130,8 @@ def resolve_prompt_paths(
     world_id: str = DEFAULT_WORLD_ID,
     world_root: Path = WORLD_ROOT,
     lab_only_root: Path = LAB_ONLY_ROOT,
-    legacy_prompts_root: Path = LEGACY_PROMPTS_DIR,
 ) -> dict[str, ResolvedArtifactPath]:
-    """Resolve prompt files by stem with deterministic world/lab/legacy precedence."""
+    """Resolve prompt files by stem with deterministic world/lab precedence."""
 
     candidates: list[ResolvedArtifactPath] = []
 
@@ -171,7 +162,6 @@ def resolve_prompt_paths(
                 source_prefix="policies/drafts/translation/prompts/ic",
             )
         )
-        # Preferred migration target for lab-only chat translation prompts.
         candidates.extend(
             _scan_files(
                 root=lab_only_root / "prompts" / "chat_translation",
@@ -180,49 +170,14 @@ def resolve_prompt_paths(
                 priority=2,
             )
         )
-        # Transitional lab-only path used by early migration work.
-        candidates.extend(
-            _scan_files(
-                root=lab_only_root / "chat_translation" / "prompts",
-                pattern="*.txt",
-                source_kind="lab_only",
-                priority=3,
-            )
-        )
-        candidates.extend(
-            _scan_files(
-                root=legacy_prompts_root / "chat_translation",
-                pattern="*.txt",
-                source_kind="legacy",
-                priority=4,
-            )
-        )
         return _build_stem_index(candidates, context="chat prompt")
 
-    # Preferred migration target for lab-only character prompts.
     candidates.extend(
         _scan_files(
             root=lab_only_root / "prompts" / "character_description",
             pattern="*.txt",
             source_kind="lab_only",
             priority=0,
-        )
-    )
-    # Transitional lab-only path used by early migration work.
-    candidates.extend(
-        _scan_files(
-            root=lab_only_root / "character_description" / "prompts",
-            pattern="*.txt",
-            source_kind="lab_only",
-            priority=1,
-        )
-    )
-    candidates.extend(
-        _scan_files(
-            root=legacy_prompts_root / "character_description",
-            pattern="*.txt",
-            source_kind="legacy",
-            priority=2,
         )
     )
     return _build_stem_index(candidates, context="character prompt")
@@ -233,7 +188,6 @@ def resolve_axis_payload_paths(
     world_id: str = DEFAULT_WORLD_ID,
     world_root: Path = WORLD_ROOT,
     lab_only_root: Path = LAB_ONLY_ROOT,
-    legacy_examples_root: Path = LEGACY_EXAMPLES_DIR,
 ) -> dict[str, ResolvedArtifactPath]:
     """Resolve AxisPayload examples by stem with deterministic precedence."""
 
@@ -260,7 +214,6 @@ def resolve_axis_payload_paths(
             source_prefix="policies/drafts/axis/examples",
         )
     )
-    # Preferred migration target for lab-only payload examples.
     candidates.extend(
         _scan_files(
             root=lab_only_root / "axis" / "examples",
@@ -269,58 +222,22 @@ def resolve_axis_payload_paths(
             priority=2,
         )
     )
-    # Transitional lab-only path used by early migration work.
-    candidates.extend(
-        _scan_files(
-            root=lab_only_root / "examples",
-            pattern="*.json",
-            source_kind="lab_only",
-            priority=3,
-        )
-    )
-    candidates.extend(
-        _scan_files(
-            root=legacy_examples_root,
-            pattern="*.json",
-            source_kind="legacy",
-            priority=4,
-        )
-    )
     return _build_stem_index(candidates, context="axis payload")
 
 
 def resolve_lexicon_paths(
     *,
     lab_only_root: Path = LAB_ONLY_ROOT,
-    legacy_lexicons_root: Path = LEGACY_LEXICONS_DIR,
 ) -> dict[str, ResolvedArtifactPath]:
-    """Resolve deterministic lexicon JSON files by stem with deterministic precedence."""
+    """Resolve deterministic lexicon JSON files by stem with lab-only precedence."""
 
     candidates: list[ResolvedArtifactPath] = []
-    # Preferred migration target for lab-only lexicon files.
     candidates.extend(
         _scan_files(
             root=lab_only_root / "axis" / "lexicons",
             pattern="*.json",
             source_kind="lab_only",
             priority=0,
-        )
-    )
-    # Transitional lab-only path used by early migration work.
-    candidates.extend(
-        _scan_files(
-            root=lab_only_root / "lexicons",
-            pattern="*.json",
-            source_kind="lab_only",
-            priority=1,
-        )
-    )
-    candidates.extend(
-        _scan_files(
-            root=legacy_lexicons_root,
-            pattern="*.json",
-            source_kind="legacy",
-            priority=2,
         )
     )
     return _build_stem_index(candidates, context="lexicon")
@@ -331,7 +248,6 @@ def resolve_policy_bundle_paths(
     world_id: str = DEFAULT_WORLD_ID,
     world_root: Path = WORLD_ROOT,
     lab_only_root: Path = LAB_ONLY_ROOT,
-    legacy_policy_bundle_root: Path = LEGACY_POLICY_BUNDLES_DIR,
 ) -> dict[str, ResolvedArtifactPath]:
     """Resolve normalized policy bundle JSON files with deterministic precedence."""
 
@@ -347,30 +263,12 @@ def resolve_policy_bundle_paths(
             source_prefix="policies/drafts/policy_bundles",
         )
     )
-    # Preferred migration target for lab-only policy bundle previews.
     candidates.extend(
         _scan_files(
             root=lab_only_root / "policy_bundles",
             pattern="*.json",
             source_kind="lab_only",
             priority=1,
-        )
-    )
-    # Transitional lab-only path used by early migration work.
-    candidates.extend(
-        _scan_files(
-            root=lab_only_root / "policy_bundle_previews",
-            pattern="*.json",
-            source_kind="lab_only",
-            priority=2,
-        )
-    )
-    candidates.extend(
-        _scan_files(
-            root=legacy_policy_bundle_root,
-            pattern="*.json",
-            source_kind="legacy",
-            priority=3,
         )
     )
     return _build_stem_index(candidates, context="policy bundle")

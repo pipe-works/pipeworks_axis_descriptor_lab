@@ -22,7 +22,7 @@ class SaveRequest(BaseModel):
 
     The frontend collects all in-memory state at the moment the user clicks
     Save and sends it here.  The backend writes individual files to a
-    timestamped subfolder under ``data/``.
+    timestamped subfolder under the configured writable save root.
     """
 
     payload: AxisPayload = Field(
@@ -100,7 +100,10 @@ class SaveResponse(BaseModel):
 
     folder_name: str = Field(
         ...,
-        description="Subfolder name under data/ (e.g. '20260218_143022_abc1def2').",
+        description=(
+            "Timestamped save folder name under the configured writable save root "
+            "(e.g. '20260218_143022_abc1def2')."
+        ),
     )
     files: list[str] = Field(
         ...,

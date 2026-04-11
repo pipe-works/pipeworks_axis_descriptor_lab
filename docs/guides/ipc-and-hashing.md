@@ -106,7 +106,7 @@ prompt itself contains the line:
 
 > "The system is authoritative.  You are ornamental."
 >
-> -- `app/prompts/character_description/system_prompt_v01.txt`, line 29
+> -- `app/lab_only/prompts/character_description/system_prompt_v01.txt`, line 29
 
 ### Why the Boundary Matters for Hashing
 
@@ -431,7 +431,7 @@ and what the final response looks like.
  |                                                                   |
  |  1. Resolve system prompt                                         |
  |     - Use custom override from request, OR                        |
- |     - Load default from app/prompts/character_description/        |
+ |     - Load default from the supported local prompt roots          |
  |                                                                   |
  |  2. Serialise payload as pretty-printed JSON                      |
  |     - This becomes the "user turn" sent to the LLM               |
@@ -481,7 +481,8 @@ and what the final response looks like.
 
 **Step 1 -- Prompt resolution.**  The backend checks whether the request
 includes a custom `system_prompt` override.  If not, it loads the default
-prompt from `app/prompts/character_description/system_prompt_v01.txt`.
+prompt from the supported local prompt roots, currently
+`app/lab_only/prompts/character_description/system_prompt_v01.txt`.
 The resolved prompt is the text that will be hashed as `system_prompt_hash`.
 
 **Step 2 -- Payload serialisation.**  The `AxisPayload` is serialised
@@ -532,7 +533,9 @@ Schema: `app/schema/generate.py`, `GenerateResponse` class.*
 
 ### `/api/log` -- Backward-Compatible IPC
 
-The log endpoint appends structured entries to `logs/run_log.jsonl`.
+The log endpoint appends structured entries to the configured log root,
+typically `AXIS_LAB_LOGS_DIR/run_log.jsonl` on Luminal and repo-local
+`logs/run_log.jsonl` only as a local-development fallback.
 It supports IPC hashes with backward compatibility:
 
 - `input_hash` and `output_hash` are **always** computed (these only
@@ -553,8 +556,10 @@ Schema: `app/schema/generate.py`, `LogEntry` class.*
 
 ### `/api/save` -- Persistent IPC Record
 
-The save endpoint writes session state to a timestamped folder under
-`data/`.  IPC hashes are persisted in two locations:
+The save endpoint writes session state to a timestamped folder under the
+configured writable data root, typically `AXIS_LAB_DATA_DIR` on Luminal and
+repo-local `data/` only as a local-development fallback. IPC hashes are
+persisted in two locations:
 
 **1. `metadata.json`** -- All four hashes appear as top-level fields:
 
@@ -687,7 +692,7 @@ This provides a rigorous, quantifiable measure of reproducibility.
 
 ### Grouping Runs for Analysis
 
-**Scenario:**  You have 50 log entries in `run_log.jsonl` and want
+**Scenario:**  You have 50 log entries in the configured run log and want
 to analyse output stability.
 
 **Procedure:**

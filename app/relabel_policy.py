@@ -3,17 +3,17 @@ app/relabel_policy.py
 -----------------------------------------------------------------------------
 Server-side policy table and score-to-label mapping for the Axis Descriptor Lab.
 
-This module owns the lab's authoritative score-to-label mapping and the
-canonical axis ordering used by the standalone UI.  The definitions here are
-kept intentionally aligned with the current Pipe-Works mud-server policy files:
+This module owns the lab's score-to-label mapping and the canonical axis
+ordering used by the standalone UI. The definitions here are intentionally
+aligned with the current Pipe-Works mud-server policy files:
 
 - ``pipeworks_mud_server/data/worlds/pipeworks_web/policies/axes.yaml``
 - ``pipeworks_mud_server/data/worlds/pipeworks_web/policies/thresholds.yaml``
 
-The lab remains a standalone tool, so it does not import those files directly.
-Instead, this module mirrors their current ordering and threshold labels so the
-lab's "auto-label" behaviour matches the mud server's policy semantics as
-closely as possible.
+The mud server remains the runtime authority. Axis Lab keeps a checked-in
+lab-side copy of the current rules so the UI can perform deterministic local
+inspection and relabelling without keeping the older mirror-heavy file model
+alive.
 
 Exports
 -------
@@ -40,7 +40,7 @@ Design notes
 The policy table lives in its own module (rather than inline in a route
 handler) so that:
 
-1. Unit tests can validate the mirrored mud-server policy in isolation
+1. Unit tests can validate the current mud-server-aligned policy in isolation
    without hitting the HTTP layer.
 2. The table can be imported by other modules (e.g. future CLI tools)
    without pulling in all of FastAPI.
@@ -104,7 +104,7 @@ AXIS_LABEL_ORDER: dict[str, list[str]] = {
 #
 # Structure: axis_name -> ordered list of inclusive (min_score, max_score, label)
 #
-# These ranges mirror the mud-server ``thresholds.yaml`` values exactly.  The
+# These ranges track the mud-server ``thresholds.yaml`` values exactly. The
 # server currently resolves labels with inclusive ``min``/``max`` checks, so
 # the lab uses the same contract here rather than the previous simplified
 # ``score < upper_bound`` approximation.
@@ -200,7 +200,7 @@ def resolve_axis_label(axis_name: str, score: float, fallback_label: str) -> str
 
     The lookup uses inclusive ``min <= score <= max`` range checks to mirror
     the mud server's axis-value resolution logic.  If the axis is unknown, or
-    if the score falls outside every mirrored range, ``fallback_label`` is
+    if the score falls outside every configured range, ``fallback_label`` is
     returned unchanged.
 
     Returning the existing label for unmatched scores is intentional: the lab's
@@ -214,13 +214,13 @@ def resolve_axis_label(axis_name: str, score: float, fallback_label: str) -> str
     score : float
         Normalised axis score in ``[0.0, 1.0]``.
     fallback_label : str
-        Existing label to preserve when no mirrored range matches.
+        Existing label to preserve when no configured range matches.
 
     Returns
     -------
     str
         The resolved canonical label, or ``fallback_label`` when the axis or
-        score is not covered by the mirrored policy.
+        score is not covered by the configured policy.
     """
     for min_score, max_score, label in RELABEL_POLICY.get(axis_name, []):
         if min_score <= score <= max_score:
@@ -233,8 +233,8 @@ def apply_relabel_policy(payload: AxisPayload) -> AxisPayload:
     Recompute axis labels from the policy table and return an updated payload.
 
     For each axis in *payload*, if the axis name appears in
-    :data:`RELABEL_POLICY`, the label is rewritten to the matching mirrored
-    mud-server threshold range.  Unknown axes (those not in the policy table)
+    :data:`RELABEL_POLICY`, the label is rewritten to the matching mud-server
+    threshold range. Unknown axes (those not in the policy table)
     are passed through with their existing labels intact.
 
     Scores are **never** modified — only labels change.  All non-axis fields

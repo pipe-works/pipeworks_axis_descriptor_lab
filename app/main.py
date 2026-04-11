@@ -34,12 +34,12 @@ GET  /api/prompts              → list of available prompt names (optionally by
 GET  /api/prompts/{name}       → returns a single prompt's text content
 GET  /api/models               → returns locally available Ollama models
 POST /api/generate             → send axis payload to Ollama, return description
-POST /api/log                  → persist a run log entry to logs/run_log.jsonl
+POST /api/log                  → persist a run log entry under the configured log root
 POST /api/relabel              → (optional) recompute labels from policy rules
 POST /api/analyze-delta        → content-word delta between two texts
 POST /api/transformation-map   → clause-level replacement pairs
 GET  /api/system-prompt        → return the default system prompt as plain text
-POST /api/save                 → save session state to a timestamped data/ subfolder
+POST /api/save                 → save session state under the configured writable save root
 GET  /api/save/{name}/export   → download a save package as a zip
 POST /api/import               → import a save package from a zip upload
 POST /api/import_chat          → import a chat save package from a zip upload
@@ -62,8 +62,8 @@ Architecture notes
   async event loop is never blocked.
 - Static files are served by Starlette's StaticFiles middleware.
 - Jinja2Templates renders index.html (single page — the JS takes over).
-- A simple JSONL log file under ``logs/`` provides the Pipe-Works audit
-  trail without any database dependency.
+- A simple JSONL log file under the configured writable log root provides the
+  Pipe-Works audit trail without any database dependency.
 """
 
 from __future__ import annotations
@@ -468,10 +468,10 @@ def log_run(
     system_prompt: str | None = None,
 ) -> LogEntry:
     """
-    Append a structured log entry to logs/run_log.jsonl.
+    Append a structured log entry to the configured run log file.
 
     Each line in the JSONL file is one complete LogEntry serialised as compact
-    JSON.  The file can be opened in any JSONL-aware tool (jq, pandas, etc.)
+    JSON. The file can be opened in any JSONL-aware tool (jq, pandas, etc.)
     for drift analysis.
 
     When ``system_prompt`` is provided, the entry includes IPC hashes

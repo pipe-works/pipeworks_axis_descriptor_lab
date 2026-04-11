@@ -7,16 +7,16 @@
 The Axis Descriptor Lab includes a server-side relabelling endpoint,
 `POST /api/relabel`, used by the **Auto (policy)** toggle in the UI.
 
-That endpoint now mirrors the current axis policy shipped in
-`pipeworks_mud_server` for the bundled worlds:
+That endpoint tracks the current axis policy shipped in
+`pipeworks_mud_server` for the bundled world:
 
 - `data/worlds/pipeworks_web/policies/axes.yaml`
 - `data/worlds/pipeworks_web/policies/thresholds.yaml`
 
-The lab still keeps a local copy of those definitions in
-`app/relabel_policy.py` so it can run as a standalone research tool, but the
-intent is direct alignment rather than an approximate Pipe-Works-flavoured
-substitute.
+The mud server remains the runtime authority. Axis Lab keeps a checked-in
+lab-side copy of the current ordering and thresholds in
+`app/relabel_policy.py` so the UI can inspect and relabel deterministically
+without expanding the older local-mirror model into a second source of truth.
 
 ## Mechanism
 
@@ -28,7 +28,7 @@ For each known axis:
 1. Ranges are checked in declared order.
 2. A label matches when `min_score <= score <= max_score`.
 3. Unknown axes are left unchanged.
-4. If a score falls outside every mirrored range, the existing label is
+4. If a score falls outside every configured range, the existing label is
    preserved because the lab schema requires a non-empty string label.
 
 ## Canonical Axis Order
@@ -177,7 +177,7 @@ canonical order above.
 | dependency     | 4      | `axes.yaml`  |
 | risk_exposure  | 4      | `axes.yaml`  |
 
-**Total:** 11 axes, 52 mirrored labels.
+**Total:** 11 axes, 52 configured labels.
 
 ## Implementation Details
 
