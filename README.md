@@ -86,6 +86,7 @@ Current first-pass service identity:
 - hostname: `https://descriptors.pipeworks.luminal.local/`
 - backend bind: `127.0.0.1:8050`
 - systemd unit: `pipeworks-axis-descriptor-lab.service`
+- root route supports both browser `GET /` and host-probe `HEAD /`
 - env file: `/etc/pipeworks/axis-descriptor-lab/axis-descriptor-lab.env`
 - checked-in deploy templates:
   - `deploy/systemd/pipeworks-axis-descriptor-lab.service`
