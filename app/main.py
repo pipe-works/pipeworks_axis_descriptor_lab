@@ -27,6 +27,7 @@ Run with:
 Endpoints
 ---------
 GET  /                         → serves index.html
+HEAD /                         → returns the SPA shell headers without a body
 GET  /pipeline-build           → serves index.html with Pipeline Build preselected
 GET  /api/examples             → list of available example names
 GET  /api/examples/{name}      → returns a single example JSON payload
@@ -252,7 +253,12 @@ def _render_index(request: Request, *, initial_page: str = "char") -> HTMLRespon
     )
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+@app.api_route(
+    "/",
+    methods=["GET", "HEAD"],
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
 def index(request: Request) -> HTMLResponse:
     """
     Serve the single-page application shell.
