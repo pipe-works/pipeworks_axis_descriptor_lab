@@ -81,6 +81,17 @@ Important implications:
 - the presence of a FastAPI server does not by itself define the final service
   topology
 
+Current first-pass service identity:
+
+- hostname: `https://descriptors.pipeworks.luminal.local/`
+- backend bind: `127.0.0.1:8050`
+- systemd unit: `pipeworks-axis-descriptor-lab.service`
+- env file: `/etc/pipeworks/axis-descriptor-lab/axis-descriptor-lab.env`
+- checked-in deploy templates:
+  - `deploy/systemd/pipeworks-axis-descriptor-lab.service`
+  - `deploy/nginx/descriptors.pipeworks.luminal.local`
+  - `deploy/env/axis-descriptor-lab.env.example`
+
 ## Development
 
 ### Requirements

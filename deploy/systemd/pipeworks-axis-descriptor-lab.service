@@ -1,0 +1,22 @@
+[Unit]
+Description=PipeWorks Axis Descriptor Lab
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pipeworks
+Group=pipeworks
+WorkingDirectory=/srv/work/pipeworks/repos/pipeworks_axis_descriptor_lab
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/pipeworks/axis-descriptor-lab/axis-descriptor-lab.env
+ExecStart=/srv/work/pipeworks/venvs/pw-axis-descriptor-lab/bin/uvicorn app.main:app --host ${APP_HOST} --port ${APP_PORT}
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,24 @@
+server {
+    listen 80;
+    server_name descriptors.pipeworks.luminal.local;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name descriptors.pipeworks.luminal.local;
+
+    ssl_certificate     /etc/nginx/certs/descriptors.pipeworks.luminal.local.pem;
+    ssl_certificate_key /etc/nginx/certs/descriptors.pipeworks.luminal.local-key.pem;
+
+    access_log /var/log/nginx/descriptors.pipeworks.luminal.local.access.log;
+    error_log  /var/log/nginx/descriptors.pipeworks.luminal.local.error.log;
+
+    include /etc/nginx/snippets/security-headers.conf;
+    include /etc/nginx/snippets/proxy-common.conf;
+    include /etc/nginx/snippets/proxy-timeouts.conf;
+
+    location / {
+        proxy_pass http://127.0.0.1:8050;
+    }
+}
