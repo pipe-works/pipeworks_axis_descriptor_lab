@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.4](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.11.3...axis-descriptor-lab-v0.11.4) (2026-04-11)
+
+
+### Bug Fixes
+
+* allow head requests on axis lab root ([73ad78e](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/73ad78ec2bedfae3eda2885cc084d9d551bc3c79))
+* allow head requests on axis lab root ([9870406](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/98704067866ced38ae80935a47dcb883da0a0e97))
+* restore ci lint and test bootstrap ([51aaca7](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/51aaca79d932c7ba78723487cf645d8ffe2602e0))
+* track axis lab env template ([d0b105a](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/d0b105aed60bc81017eed1276b2088f315ce633e))
+
+
+### Documentation
+
+* note head support in axis lab readme ([4bc68db](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/4bc68db364b95ab5d5882157a7d29d236ff74f18))
+* note head support in axis lab readme ([9a67b11](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/commit/9a67b11942b7f9a6b00c6bba438699cebf800f5f))
+
 ## [0.11.3](https://github.com/pipe-works/pipeworks_axis_descriptor_lab/compare/axis-descriptor-lab-v0.11.2...axis-descriptor-lab-v0.11.3) (2026-03-14)
 
 
