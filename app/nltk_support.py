@@ -16,9 +16,14 @@ This module keeps that concern explicit:
 from __future__ import annotations
 
 from functools import lru_cache
+import os
+from pathlib import Path
 
 import nltk
 from nltk.corpus import stopwords
+
+_HOST_NLTK_DATA_DIR = Path("/srv/work/pipeworks/runtime/axis-descriptor-lab/nltk_data")
+_LOCAL_NLTK_DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "nltk_data"
 
 _BASE_REQUIRED_NLTK_DATA: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("punkt_tab", ("tokenizers/punkt_tab", "tokenizers/punkt_tab.zip")),
@@ -41,6 +46,33 @@ class NltkResourceError(RuntimeError):
     """Raised when required NLTK data packages are unavailable."""
 
 
+def _configured_nltk_data_dir() -> Path:
+    """Return the explicit NLTK data directory for this environment.
+
+    The Luminal host model should never write NLTK resources into a user home
+    directory. Prefer an explicit `NLTK_DATA` override when present, otherwise
+    use the host-managed runtime tree when available, and only then fall back
+    to a repo-local development path.
+    """
+    configured = os.getenv("NLTK_DATA")
+    if configured:
+        first_entry = configured.split(os.pathsep)[0].strip()
+        if first_entry:
+            return Path(first_entry).expanduser()
+
+    if _HOST_NLTK_DATA_DIR.parent.exists():
+        return _HOST_NLTK_DATA_DIR
+
+    return _LOCAL_NLTK_DATA_DIR
+
+
+def _ensure_search_path(path: Path) -> None:
+    """Make sure NLTK searches the configured directory first."""
+    resolved = str(path)
+    if resolved not in nltk.data.path:
+        nltk.data.path.insert(0, resolved)
+
+
 def _required_packages(*, require_pos_tagger: bool) -> tuple[tuple[str, str], ...]:
     """Return the required NLTK package specs for one analysis context."""
     if require_pos_tagger:
@@ -50,6 +82,7 @@ def _required_packages(*, require_pos_tagger: bool) -> tuple[tuple[str, str], ..
 
 def _missing_packages(*, require_pos_tagger: bool) -> list[str]:
     """Return the names of missing required NLTK data packages."""
+    _ensure_search_path(_configured_nltk_data_dir())
     missing: list[str] = []
     for pkg_name, find_paths in _required_packages(require_pos_tagger=require_pos_tagger):
         for find_path in find_paths:
@@ -84,8 +117,12 @@ def ensure_nltk_data(*, require_pos_tagger: bool = False) -> None:
 
 def bootstrap_nltk_data(*, require_pos_tagger: bool = True, quiet: bool = False) -> None:
     """Download the required NLTK data packages explicitly for one environment."""
+    download_dir = _configured_nltk_data_dir()
+    download_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_search_path(download_dir)
+
     for pkg_name, _ in _required_packages(require_pos_tagger=require_pos_tagger):
-        nltk.download(pkg_name, quiet=quiet)
+        nltk.download(pkg_name, download_dir=str(download_dir), quiet=quiet)
 
     missing = _missing_packages(require_pos_tagger=require_pos_tagger)
     if missing:
