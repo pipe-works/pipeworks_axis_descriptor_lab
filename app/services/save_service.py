@@ -27,6 +27,7 @@ from app.save_formatting import (
     build_system_prompt_md,
     save_folder_name,
 )
+from app.nltk_support import NltkResourceError
 from app.save_package import build_manifest
 from app.schema import SaveRequest, SaveResponse
 from app.signal_isolation import compute_delta
@@ -94,7 +95,10 @@ def save_run(req: SaveRequest, data_dir: Path) -> SaveResponse:
             files_written.append("baseline.md")
 
         if req.output is not None and req.baseline is not None:
-            removed, added = compute_delta(req.baseline, req.output)
+            try:
+                removed, added = compute_delta(req.baseline, req.output)
+            except NltkResourceError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
             delta_data = {
                 "removed": removed,
                 "added": added,

@@ -583,7 +583,7 @@ class TestClassifyRowIntegrationPaths:
 
 
 class TestNltkFallback:
-    """Cover the NLTK download-failure and pos_tag exception paths."""
+    """Cover NLTK resource and pos_tag failure paths."""
 
     def test_pos_tag_exception_returns_none(self) -> None:
         """If nltk.pos_tag raises, _check_modality_shift should return None."""
@@ -593,21 +593,25 @@ class TestNltkFallback:
             result = _check_modality_shift(["old", "dark"], ["new", "bright"], IndicatorConfig())
             assert result is None
 
-    def test_nltk_download_failure_logged(self) -> None:
-        """If NLTK download fails, the warning path should execute without raising."""
+    def test_missing_pos_tagger_resource_raises_clear_error(self) -> None:
+        """Missing required NLTK data should raise a clear operator-facing error."""
         import unittest.mock
 
-        from app.micro_indicators import _ensure_pos_tagger_data
+        from app.nltk_support import NltkResourceError
+        from app.micro_indicators import classify_row
 
         with (
-            unittest.mock.patch("app.micro_indicators.nltk.data.find", side_effect=LookupError),
             unittest.mock.patch(
-                "app.micro_indicators.nltk.download", side_effect=OSError("network error")
+                "app.micro_indicators.ensure_nltk_data",
+                side_effect=NltkResourceError("missing nltk data"),
             ),
-            unittest.mock.patch("app.micro_indicators.logger") as mock_logger,
         ):
-            _ensure_pos_tagger_data()
-            assert mock_logger.warning.called
+            try:
+                classify_row("The goblin stands.", "The goblin waits.")
+            except NltkResourceError as exc:
+                assert "missing nltk data" in str(exc)
+            else:  # pragma: no cover - explicit failure branch
+                raise AssertionError("Expected NltkResourceError")
 
 
 class TestAllIndicators:

@@ -1,163 +1,148 @@
 # AGENTS.md
 
-## Foundation Must-Dos (Org-Wide)
+## Foundation Must-Dos
 
 Read and apply these before repo-specific instructions:
 
-- Local workspace path: `../.github/.github/docs/AGENT_FOUNDATION.md`
-- Local workspace path: `../.github/.github/docs/TEST_TAGGING_AND_GITHUB_CHECKLIST.md`
-- Canonical URL: `https://github.com/pipe-works/.github/blob/main/.github/docs/AGENT_FOUNDATION.md`
-- Canonical URL: `https://github.com/pipe-works/.github/blob/main/.github/docs/TEST_TAGGING_AND_GITHUB_CHECKLIST.md`
+- `../.github/.github/docs/AGENT_FOUNDATION.md`
+- `../.github/.github/docs/TEST_TAGGING_AND_GITHUB_CHECKLIST.md`
 
-Mandatory requirements:
-
-1. Run the GitHub preflight checklist before any `gh` interaction, CI edits, or
-   test-tag changes.
-2. Preserve required checks (`All Checks Passed`, `Secret Scan (Gitleaks)`).
-3. Do not weaken test-tag semantics to reduce runtime.
-4. Keep CI optimization changes evidence-based (run IDs, timings, check states).
+If those foundations conflict with anything here, follow the org-wide
+foundation docs first.
 
 ## Purpose
 
-This repository is the **Axis Descriptor Lab**, a FastAPI + vanilla JavaScript web tool for testing how small LLMs produce **non-authoritative** descriptive text from deterministic axis payloads in the Pipe-Works ecosystem.
+This repository is the **Axis Descriptor Lab**: a FastAPI + browser-native JS
+tool for inspecting and testing non-authoritative LLM output around
+deterministic PipeWorks inputs.
 
-The core rule of the system is:
+The governing rule is simple:
 
-- The deterministic payload, policy, hashes, and server-side rules are authoritative.
-- The LLM is ornamental and must never become the source of truth.
+- deterministic payloads, hashes, server-side rules, and mud-server-owned API
+  state are authoritative
+- LLM output is ornamental and must never become the source of truth
 
-Agents working in this repository must preserve that distinction in code, tests, docs, and review decisions.
+## Current Luminal Posture
 
-## Repository Shape
+This repo now lives in the real PipeWorks workspace on `luminal.local`:
 
-- `app/main.py`: thin FastAPI routing layer and application bootstrap.
-- `app/schema.py`: Pydantic v2 request/response models with OpenAPI-facing field descriptions.
-- `app/chat_renderer.py`: synchronous Ollama HTTP client.
-- `app/signal_isolation.py`, `app/transformation_map.py`, `app/micro_indicators.py`: deterministic text-analysis layers.
-- `app/relabel_policy.py`: score-to-label policy mapping.
-- `app/save_formatting.py`, `app/save_package.py`: save/export/import helpers.
-- `app/file_loaders.py`: prompt/example loading helpers.
-- `app/static/`: browser-native ES modules and CSS. No bundler.
-- `app/templates/index.html`: single-page shell rendered by Jinja2.
-- `tests/`: pytest suite covering routes, domain modules, persistence, and frontend-adjacent backend behavior.
-- `docs/`: Sphinx documentation and narrative guides.
+- workspace root: `/srv/work/pipeworks`
+- repo path: `/srv/work/pipeworks/repos/pipeworks_axis_descriptor_lab`
+
+Its Luminal role is under active Management of Change review in:
+
+- `/home/aapark/dotfiles/docs/moc/luminal_pipeworks_axis_descriptor_lab_host_preparation.md`
+
+Treat that MOC as the current source for host-classification direction.
+
+At this stage:
+
+- the repo is already more than clone-only
+- the repo is expected to remain venv-backed for active development work
+- the repo is also being considered as a deliberate host-managed browser
+  surface on Luminal
+- legacy workstation-era mirror-file behavior is not a compatibility goal
+
+## Authority Boundary
+
+When deciding where truth lives, use this order:
+
+1. `pipeworks_mud_server` APIs and mud-server-owned canonical state
+2. deterministic local validation and formatting logic that exists only to
+   inspect or package that canonical state
+3. local lab-only experimental assets that are explicitly marked as such
+4. never treat LLM output as authoritative
+
+Practical consequences:
+
+- do not expand local mirrored policy or prompt copies just because they are
+  convenient
+- do not preserve fallback file-resolution layers unless they still serve a
+  deliberate supported workflow
+- prefer removing stale local duplication over normalizing it
+- if a local asset remains, document why it exists and whether it is canonical,
+  lab-only, or transitional
 
 ## Working Rules
 
-- Read the surrounding module, tests, and docs before editing. Match local patterns instead of introducing a new style.
+- Read the surrounding module, tests, and docs before editing.
 - Keep `app/main.py` thin. Put business logic in dedicated modules.
-- Prefer deterministic logic and explicit validation over heuristics hidden in the frontend.
-- Preserve the current architecture: FastAPI backend, vanilla JS frontend, no build step, no database.
-- Do not quietly weaken validation, provenance hashing, or reproducibility behavior.
-- Do not replace server-owned policy logic with client-side shortcuts.
+- Preserve the current architecture:
+  FastAPI backend, browser-native ES modules, no bundler, no database.
+- Prefer explicit validation and deterministic transformations over hidden
+  heuristics.
+- Do not move authoritative logic from Python into frontend code.
+- Do not quietly weaken provenance hashing, save/import integrity, or policy
+  validation behavior.
+- When touching mud-server integration, keep the distinction clear between
+  lab inspection behavior and canonical server behavior.
+
+## Host And Path Expectations
+
+The older repo-local development story is not the full Luminal story anymore.
+
+Be cautious with changes that assume:
+
+- repo-local `data/` and `logs/` are the right steady-state location for
+  host-managed mutable state
+- local mirrored files should remain the default source for policy or prompt
+  truth
+- a Uvicorn entrypoint automatically means the repo should self-define its
+  service topology
+
+If work affects venv layout, runtime directories, nginx, `systemd`, host env
+files, or hostname choices, align it with the Luminal MOC and host docs rather
+than inventing a repo-local pattern.
 
 ## Required Commands
 
-- Install runtime deps: `pip install -e .`
-- Install dev deps: `pip install -e ".[dev]"`
-- Run server: `uvicorn app.main:app --reload --host 127.0.0.1 --port 8242`
-- Run tests: `pytest`
-- Run coverage: `pytest -v --cov --cov-report=term`
-- Lint: `ruff check app tests`
-- Format: `black app tests`
-- Build docs: `make -C docs html`
+- install runtime deps: `pip install -e .`
+- install dev deps: `pip install -e ".[dev]"`
+- run server: `uvicorn app.main:app --reload --host 127.0.0.1 --port 8242`
+- run tests: `pytest`
+- run coverage: `pytest -v --cov --cov-report=term`
+- lint: `ruff check app tests`
+- format: `black app tests`
+- build docs: `make -C docs html`
 
-Run the smallest relevant test subset during iteration, then run the broader affected suite before finishing.
+Run the smallest relevant test subset while iterating, then run the broader
+affected suite before finishing.
 
-## CI Fast Lane
+## Testing And Documentation
 
-- CI uses the shared pipe-works reusable workflow with stable required checks (`All Checks Passed`, `Secret Scan (Gitleaks)`).
-- Content-only pull requests can take the fast path: `Change Classification` + `Content Validation` instead of the full Python matrix.
-- Current content-path scope in this repo: `app/worlds/**`, `app/lab_only/**`, `docs/**`, and `*.md`.
+Behavior changes need tests.
 
-## Documentation Standard
+- route changes should verify status codes, payloads, and failure paths
+- deterministic logic changes should cover both happy paths and edge cases
+- mud-server proxy or canonical-source changes need focused regression coverage
+- if behavior changes without tests, explain the gap explicitly
 
-Detailed documentation is mandatory in this repository.
+Documentation should stay honest about the current host posture.
 
-- Every Python module must have a top-level module docstring explaining purpose, boundaries, and important design decisions.
-- Every public Python class, function, method, and fixture must have a detailed docstring.
-- Pydantic fields should keep meaningful `description=` metadata so FastAPI docs stay useful.
-- Every JavaScript module should begin with a detailed header comment describing ownership, data flow, and major responsibilities.
-- Exported JavaScript functions should use JSDoc-style comments when the behavior is not trivially obvious.
-- Add inline comments for non-obvious logic, invariants, protocol details, and edge-case handling.
-- Do not add noise comments that restate syntax. Comments must explain intent, constraints, or reasoning.
+- do not describe local mirrored assets as canonical when they are not
+- do not document old workstation-era compatibility as if it were still a
+  target requirement
+- update docs when public behavior, supported workflows, or host expectations
+  change
 
-## Testing Standard
+## Release Tags
 
-Tests are mandatory for behavior changes.
+This repo uses release-please and conventional commits.
 
-- Every bug fix needs a regression test.
-- Every new endpoint, branch, validation rule, or persistence behavior needs direct test coverage.
-- For Python backend changes, prefer pytest coverage close to the edited module.
-- For route changes, verify HTTP status, response body, and error handling paths.
-- For deterministic logic, test both happy paths and edge cases.
-- When changing hashes, policy mapping, prompt loading, save/import behavior, or mud-server proxy behavior, add or update focused tests.
-- If a change is intentionally not tested, explain the gap clearly in the final handoff.
+Use:
 
-## Python Conventions
+- `feat` for real user-facing capability
+- `fix` for bug fixes
+- `refactor` for structural changes without new behavior
+- `docs`, `style`, `test`, `build`, `ci`, `chore` for their normal narrow use
 
-- Target Python `3.12+`.
-- Keep line length at `100`.
-- Use type hints on public APIs and non-trivial internal helpers.
-- Keep models and pure helpers small and explicit.
-- Prefer pure functions for deterministic transformations where practical.
-- Raise explicit errors instead of silently correcting invalid inputs unless the surrounding module already defines a softer contract.
-- Keep docstrings, comments, and naming aligned with the repository's formal style.
+Do not use `feat` for routine doc cleanup, styling adjustments, or internal
+reorganization.
 
-## Frontend Conventions
-
-- Use browser-native ES modules only. Do not introduce a bundler or framework.
-- Keep responsibilities split across the existing `mod-*.js` files instead of growing one large script.
-- Preserve the current design system layering:
-  - `pipe-works-fonts.css`
-  - `pipe-works-base.css`
-  - `styles.css`
-- Use existing CSS tokens and theme-aware color variables. Avoid hardcoded colors when a project token exists.
-- Keep the frontend as an orchestration/UI layer. Do not move authoritative logic from Python into JavaScript.
-
-## GitHub And Release Tags
-
-This repository uses **release-please** and conventional commit tags. Use the correct tag because it affects versioning and changelog output.
-
-Allowed tags in practice:
-
-- `feat`: new user-facing capability. In pre-1.0, this causes a minor bump.
-- `fix`: bug fix.
-- `perf`: performance improvement.
-- `revert`: explicit revert.
-- `docs`: documentation-only change.
-- `style`: styling or formatting-only change.
-- `chore`: maintenance work.
-- `refactor`: internal restructuring without a user-facing feature.
-- `test`: test-only changes.
-- `build`: packaging/build changes.
-- `ci`: CI workflow changes.
-
-Tag selection rules:
-
-- Do **not** use `feat` for layout tweaks, CSS cleanup, comment-only work, test-only work, or internal refactors.
-- Prefer `refactor` for structural changes that do not add behavior.
-- Prefer `style` for presentation-only changes.
-- Prefer `docs` for README, Sphinx, or comment/docstring-only updates.
-- Split unrelated work so a real `feat` does not hide routine fixes or refactors.
-
-## Change Checklist
-
-Before finishing work, verify the following:
-
-- Architecture remains consistent with the thin-route / domain-module split.
-- New or changed code includes detailed comments and docstrings matching local style.
-- Relevant tests were added or updated.
-- `pytest` was run for affected coverage, or any gap is explicitly reported.
-- `ruff` and `black` concerns were addressed for changed Python files.
-- Documentation was updated when public behavior, endpoints, prompts, or workflows changed.
-
-## Handoff Expectations
+## Handoff
 
 Final handoff should state:
 
-- What changed.
-- Which tests were run.
-- Any remaining risks, follow-ups, or untested areas.
-
-If a task touches behavior without adding tests or documentation, treat the work as incomplete unless the user explicitly directs otherwise.
+- what changed
+- which tests were run
+- any remaining risks, open host-classification questions, or untested areas

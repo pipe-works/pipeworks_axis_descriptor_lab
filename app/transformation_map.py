@@ -38,9 +38,8 @@ Noise reduction
 NLTK data requirements
 ----------------------
 Reuses the same NLTK data packages as ``signal_isolation.py``:
-``punkt_tab``, ``stopwords``.  These are ensured at import time by
-``signal_isolation._ensure_nltk_data()`` which runs before this module
-is typically imported.
+``punkt_tab``, ``stopwords``. These resources are validated explicitly at
+call time rather than being downloaded during module import.
 """
 
 from __future__ import annotations
@@ -48,17 +47,9 @@ from __future__ import annotations
 import difflib
 import re
 
-from nltk.corpus import stopwords
 from nltk.tokenize import sent_tokenize, word_tokenize
 
-# Reuse the NLTK data bootstrap from signal_isolation to ensure punkt_tab
-# and stopwords are available.  Importing signal_isolation triggers the
-# download check at module load time.
-import app.signal_isolation  # noqa: F401 — side-effect import
-
-# Frozen set of English stopwords for O(1) membership testing.
-_ENGLISH_STOPWORDS: frozenset[str] = frozenset(stopwords.words("english"))
-
+from app.nltk_support import ensure_nltk_data, english_stopwords
 
 # -----------------------------------------------------------------------------
 # Private helpers
@@ -76,7 +67,7 @@ def _is_single_stopword(text: str) -> bool:
     # Must be a single token with no internal spaces after stripping
     if " " in stripped:
         return False
-    return stripped in _ENGLISH_STOPWORDS
+    return stripped in english_stopwords()
 
 
 def _extract_token_changes(
@@ -105,6 +96,7 @@ def _extract_token_changes(
     text_a = " ".join(sentences_a)
     text_b = " ".join(sentences_b)
 
+    ensure_nltk_data()
     tokens_a = word_tokenize(text_a)
     tokens_b = word_tokenize(text_b)
 
@@ -203,6 +195,7 @@ def compute_transformation_map(
     if not text_a or not text_b:
         return []
 
+    ensure_nltk_data()
     # Step 2: sentence split
     sents_a = sent_tokenize(text_a)
     sents_b = sent_tokenize(text_b)

@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from app.chat_renderer import OLLAMA_HOST
+from app.nltk_support import NltkResourceError
 
 # ── API Routes ───────────────────────────────────────────────────────────────
 
@@ -1144,6 +1145,19 @@ class TestAnalyzeDeltaEndpoint:
         r2 = client.post("/api/analyze-delta", json=body).json()
         assert r1 == r2
 
+    def test_missing_nltk_resources_returns_503(self, client: TestClient) -> None:
+        """Missing NLTK data should return a clear service-unavailable response."""
+        with patch("app.main.compute_delta", side_effect=NltkResourceError("missing nltk data")):
+            resp = client.post(
+                "/api/analyze-delta",
+                json={
+                    "baseline_text": "The dark figure stands near the threshold.",
+                    "current_text": "A bright goblin lurks beyond the gate.",
+                },
+            )
+        assert resp.status_code == 503
+        assert "missing nltk data" in resp.json()["detail"]
+
 
 class TestTransformationMapEndpoint:
     """Tests for the POST /api/transformation-map endpoint."""
@@ -1255,6 +1269,44 @@ class TestTransformationMapEndpoint:
         )
         assert resp.status_code == 200
         assert resp.json()["rows"] == []
+
+    def test_missing_nltk_resources_in_alignment_returns_503(self, client: TestClient) -> None:
+        """Transformation-map alignment should fail clearly when NLTK data is missing."""
+        with patch(
+            "app.main.compute_transformation_map",
+            side_effect=NltkResourceError("missing nltk data"),
+        ):
+            resp = client.post(
+                "/api/transformation-map",
+                json={
+                    "baseline_text": "The old goblin stands near the gate.",
+                    "current_text": "The young goblin waits by the door.",
+                },
+            )
+        assert resp.status_code == 503
+        assert "missing nltk data" in resp.json()["detail"]
+
+    def test_missing_nltk_resources_in_indicator_phase_returns_503(
+        self, client: TestClient
+    ) -> None:
+        """Indicator classification should fail clearly when NLTK data is missing."""
+        with patch(
+            "app.main.compute_transformation_map",
+            return_value=[{"removed": "old", "added": "young"}],
+        ):
+            with patch(
+                "app.main.classify_rows",
+                side_effect=NltkResourceError("missing nltk data"),
+            ):
+                resp = client.post(
+                    "/api/transformation-map",
+                    json={
+                        "baseline_text": "The old goblin stands near the gate.",
+                        "current_text": "The young goblin waits by the door.",
+                    },
+                )
+        assert resp.status_code == 503
+        assert "missing nltk data" in resp.json()["detail"]
 
 
 class TestSaveManifest:

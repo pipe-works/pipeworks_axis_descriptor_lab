@@ -1,17 +1,21 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "axis-descriptor-lab"
 version = "0.11.3"
 description = "Tiny web tool for testing how small LLMs produce non-authoritative descriptive text from a deterministic axis payload (Pipe-Works project)."
+readme = "README.md"
 requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+authors = [{name = "aapark"}]
 dependencies = [
     # IPC normalisation and hash utilities (authoritative shared library)
     "pipeworks-ipc @ git+https://github.com/pipe-works/pipeworks_ipc.git@pipeworks-ipc-v0.1.3",
-    # Web framework – async-capable, auto-generates OpenAPI docs
-    "fastapi>=0.111.0",
+    # Web framework – pin to the current PipeWorks host baseline to avoid
+    # unexpected Starlette/TestClient churn during active development.
+    "fastapi==0.125.0",
     # ASGI server to run FastAPI
     "uvicorn[standard]>=0.30.0",
     # Jinja2 for HTML template rendering
@@ -26,31 +30,61 @@ dependencies = [
     "python-multipart>=0.0.7",
 ]
 
+[project.urls]
+Homepage = "https://github.com/pipe-works/pipeworks_axis_descriptor_lab"
+Repository = "https://github.com/pipe-works/pipeworks_axis_descriptor_lab.git"
+Issues = "https://github.com/pipe-works/pipeworks_axis_descriptor_lab/issues"
+Documentation = "https://pipeworks-axis-descriptor-lab.readthedocs.io/en/latest/"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",     # test runner
     "pytest-cov>=6.0.0", # coverage plugin
-    "ruff>=0.4.0",       # linter + formatter
-    "black>=26.1.0",     # code formatter
+    "ruff>=0.14.0",      # linter + formatter
+    "black==26.1.0",     # pinned org-wide to prevent formatting drift
     "mypy>=1.19.0",      # type checker
     "bandit[toml]>=1.7.10",  # security linter
     "pre-commit>=4.0.0", # git hook framework
+    "codespell>=2.3.0",  # spelling checks
+    "build>=1.2.2",      # package build validation
+    "setuptools>=69",    # keep local build backend aligned
+    "wheel>=0.45",       # wheel build support
 ]
 docs = [
-    "sphinx>=7.0.0",
+    "sphinx>=8.0,<9.0",
     "furo>=2024.1.29",
-    "myst-parser>=2.0.0",
+    "myst-parser>=4.0",
 ]
+
+[tool.setuptools]
+include-package-data = true
 
 # Tell setuptools where the package lives
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+exclude = ["tests*", "docs*", "*__pycache__*"]
+
+[tool.setuptools.package-data]
+app = [
+    "templates/*.html",
+    "static/*.css",
+    "static/*.js",
+    "static/fonts/*.woff2",
+    "worlds/**/*",
+    "lab_only/**/*",
+    "data/*.json",
+    "artifacts/**/*",
+]
 
 # Ruff: fast linter – keep lines at 100 chars, target Python 3.12
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]
 
 # Black: code formatter – match ruff line length
 [tool.black]
@@ -62,22 +96,45 @@ target-version = ["py312"]
 python_version = "3.12"
 ignore_missing_imports = true
 check_untyped_defs = true
+warn_unused_configs = true
+warn_unused_ignores = true
 
 # Pytest
 [tool.pytest.ini_options]
+minversion = "8.0"
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
+addopts = [
+    "-ra",
+    "--strict-markers",
+]
+markers = [
+    "unit: isolated deterministic tests",
+    "integration: integration boundary tests",
+    "slow: materially slower tests",
+    "requires_model: tests requiring heavy model assets",
+]
 
 # Coverage
 [tool.coverage.run]
 source = ["app"]
-omit = ["app/static/*", "app/templates/*"]
+omit = [
+    "app/static/*",
+    "app/templates/*",
+]
 
 [tool.coverage.report]
 show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
 
 # Bandit: security linter
 [tool.bandit]
-exclude_dirs = ["tests"]
-skips = []
+exclude_dirs = ["tests", "docs", "_working"]
+skips = ["B101"]
