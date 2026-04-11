@@ -6,8 +6,7 @@ and adapted to the new public-function signatures and module-level patch targets
 
 Test strategy
 -------------
-1. Happy-path loading from the real ``app/examples/`` dir and grouped
-   ``app/prompts/`` tree.
+1. Happy-path loading from the supported lab/world local asset roots.
 2. Error cases (missing files, invalid JSON) using ``tmp_path`` + ``patch``.
 3. Listing functions return sorted names from the real directories.
 """
@@ -93,9 +92,10 @@ class TestLoadExample:
 
     def test_invalid_json_raises_500(self, tmp_path: Path) -> None:
         """An example file with invalid JSON must raise HTTPException(500)."""
-        bad_file = tmp_path / "bad.json"
+        bad_file = tmp_path / "axis" / "examples" / "bad.json"
+        bad_file.parent.mkdir(parents=True, exist_ok=True)
         bad_file.write_text("not json {{{", encoding="utf-8")
-        with patch("app.file_loaders.EXAMPLES_DIR", tmp_path):
+        with patch("app.file_loaders.LAB_ONLY_ASSET_ROOT", tmp_path):
             with pytest.raises(HTTPException) as exc_info:
                 load_example("bad")
             assert exc_info.value.status_code == 500
@@ -111,26 +111,20 @@ class TestLoadExample:
         assert exc_info.value.status_code == 500
         assert "ambiguous axis payload" in str(exc_info.value.detail)
 
-    def test_prefers_lab_only_example_over_legacy(self, tmp_path: Path) -> None:
-        """Lab-only examples must win over legacy examples on same stem."""
+    def test_prefers_lab_only_example_when_world_example_absent(self, tmp_path: Path) -> None:
+        """Lab-only examples must remain available when no world example exists."""
         world_root = tmp_path / "worlds"
         lab_root = tmp_path / "lab_only"
-        legacy_root = tmp_path / "legacy_examples"
-        (lab_root / "examples").mkdir(parents=True)
-        legacy_root.mkdir(parents=True)
-        (lab_root / "examples" / "proud_operator.json").write_text(
+        (lab_root / "axis" / "examples").mkdir(parents=True)
+        (lab_root / "axis" / "examples" / "proud_operator.json").write_text(
             '{"axes":{"demeanor":{"label":"lab","score":0.9}},"policy_hash":"x","seed":1,"world_id":"pipeworks_web"}',
-            encoding="utf-8",
-        )
-        (legacy_root / "proud_operator.json").write_text(
-            '{"axes":{"demeanor":{"label":"legacy","score":0.1}},"policy_hash":"y","seed":2,"world_id":"pipeworks_web"}',
             encoding="utf-8",
         )
 
         with (
             patch("app.file_loaders.WORLD_ASSET_ROOT", world_root),
             patch("app.file_loaders.LAB_ONLY_ASSET_ROOT", lab_root),
-            patch("app.file_loaders.EXAMPLES_DIR", legacy_root),
+            patch("app.file_loaders.EXAMPLES_DIR", lab_root / "axis" / "examples"),
         ):
             data = load_example("proud_operator")
         assert data["axes"]["demeanor"]["label"] == "lab"
@@ -156,11 +150,11 @@ class TestLoadPrompt:
 
     def test_returns_stripped_text(self, tmp_path: Path) -> None:
         """Loaded prompt text must be stripped of leading/trailing whitespace."""
-        prompt_dir = tmp_path / "character_description"
-        prompt_dir.mkdir()
+        prompt_dir = tmp_path / "prompts" / "character_description"
+        prompt_dir.mkdir(parents=True)
         prompt_file = prompt_dir / "padded.txt"
         prompt_file.write_text("  \n  Hello world  \n  ", encoding="utf-8")
-        with patch("app.file_loaders.PROMPTS_DIR", tmp_path):
+        with patch("app.file_loaders.LAB_ONLY_ASSET_ROOT", tmp_path):
             text = load_prompt("padded")
         assert text == "Hello world"
 
@@ -173,11 +167,10 @@ class TestLoadPrompt:
             load_prompt("pipeworks_web_ic_prompt", purpose="character_description")
         assert exc_info.value.status_code == 404
 
-    def test_prefers_world_prompt_over_legacy_on_stem_collision(self, tmp_path: Path) -> None:
-        """World-scoped prompt paths must win over legacy paths for same stem."""
+    def test_prefers_world_prompt_over_lab_prompt_on_stem_collision(self, tmp_path: Path) -> None:
+        """World-scoped prompt paths must win over lab-only paths for same stem."""
         world_root = tmp_path / "worlds"
         lab_root = tmp_path / "lab_only"
-        legacy_root = tmp_path / "legacy_prompts"
         (
             world_root
             / "pipeworks_web"
@@ -196,17 +189,16 @@ class TestLoadPrompt:
             / "ic"
             / "pipeworks_web_ic_prompt.txt"
         ).write_text("world prompt", encoding="utf-8")
-        (legacy_root / "chat_translation").mkdir(parents=True)
-        (legacy_root / "character_description").mkdir(parents=True)
-        (legacy_root / "chat_translation" / "pipeworks_web_ic_prompt.txt").write_text(
-            "legacy prompt",
+        (lab_root / "prompts" / "chat_translation").mkdir(parents=True, exist_ok=True)
+        (lab_root / "prompts" / "chat_translation" / "pipeworks_web_ic_prompt.txt").write_text(
+            "lab prompt",
             encoding="utf-8",
         )
 
         with (
             patch("app.file_loaders.WORLD_ASSET_ROOT", world_root),
             patch("app.file_loaders.LAB_ONLY_ASSET_ROOT", lab_root),
-            patch("app.file_loaders.PROMPTS_DIR", legacy_root),
+            patch("app.file_loaders.PROMPTS_DIR", lab_root / "prompts"),
         ):
             text = load_prompt("pipeworks_web_ic_prompt", purpose="chat_translation")
         assert text == "world prompt"

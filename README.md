@@ -61,8 +61,8 @@ Practical consequences:
 - do not preserve legacy local mirrors just because they are convenient
 - do not expand fallback file-resolution behavior without a clear supported use
   case
-- if a local asset remains, document whether it is canonical, lab-only, or
-  transitional
+- if a local asset remains, document whether it is world-scoped or lab-only
+- transitional mirror-era fallback paths are not part of the supported model
 
 ## Luminal Notes
 
@@ -71,8 +71,11 @@ a workstation-local application.
 
 Important implications:
 
-- repo-local `data/` and `logs/` should not automatically be treated as the
-  right steady-state location for host-managed mutable state
+- the supported host-managed posture is to write mutable state under
+  `/srv/work/pipeworks/runtime/axis-descriptor-lab` and
+  `/srv/work/pipeworks/logs/axis-descriptor-lab`
+- repo-local `data/` and `logs/` are now fallback locations for local
+  development when the host-managed paths are not available or not writable
 - hostname, nginx, `systemd`, and runtime-path decisions should align with the
   active Luminal MOC and host docs
 - the presence of a FastAPI server does not by itself define the final service
@@ -135,6 +138,8 @@ Configured through `.env`:
 | `MUD_SERVER_URL` | _(unset)_ | Canonical mud-server URL for configured server mode |
 | `MUD_SERVER_DEV_URL` | `http://localhost:8000` | Development mud-server URL for runtime-selectable dev mode |
 | `MUD_SERVER_TIMEOUT` | `120` | Timeout in seconds for mud-server proxy calls |
+| `AXIS_LAB_DATA_DIR` | `/srv/work/pipeworks/runtime/axis-descriptor-lab` when writable, else repo-local `data/` | Writable save/export root |
+| `AXIS_LAB_LOGS_DIR` | `/srv/work/pipeworks/logs/axis-descriptor-lab` when writable, else repo-local `logs/` | Writable log root |
 
 Analysis features also require NLTK data resources. Bootstrap them explicitly
 inside the active venv with:
@@ -154,8 +159,9 @@ python tools/bootstrap_nltk.py
 - `app/services/`
   Save and chat orchestration helpers.
 - `app/file_loaders.py` and `app/path_resolver.py`
-  Local asset resolution logic. Be cautious when changing these because legacy
-  fallback behavior is under active review.
+  Local asset resolution logic. Supported local reads now mean only
+  world-scoped and explicitly lab-only assets; mirror-era fallback paths are
+  being removed rather than preserved.
 - `app/static/`
   Browser-native ES modules and CSS. No bundler.
 - `docs/`

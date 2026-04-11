@@ -4,8 +4,7 @@ app/file_loaders.py
 File-loading utilities for the Axis Descriptor Lab.
 
 This module reads example JSON files and prompt text files via the shared
-path resolver, which supports world-scoped and lab-only roots while preserving
-legacy fallback during migration.
+path resolver, which supports only world-scoped and explicitly lab-only roots.
 
 Current prompt groups
 ---------------------
@@ -18,7 +17,6 @@ Path precedence is deterministic:
 
 1. world-scoped roots
 2. lab-only roots
-3. legacy roots
 
 Exports
 -------
@@ -58,8 +56,6 @@ from fastapi import HTTPException
 from app.config import (
     DEFAULT_WORLD_ID,
     LAB_ONLY_ROOT,
-    LEGACY_EXAMPLES_DIR,
-    LEGACY_PROMPTS_DIR,
     WORLD_ROOT,
 )
 from app.path_resolver import (
@@ -71,10 +67,8 @@ from app.path_resolver import (
 # Resolve directories relative to this file so paths work regardless of
 # the current working directory at import time.
 _HERE = Path(__file__).parent
-# TODO(refactor-cleanup): remove after world-layout migration complete
-PROMPTS_DIR = LEGACY_PROMPTS_DIR
-# TODO(refactor-cleanup): remove after world-layout migration complete
-EXAMPLES_DIR = LEGACY_EXAMPLES_DIR
+PROMPTS_DIR = LAB_ONLY_ROOT / "prompts"
+EXAMPLES_DIR = LAB_ONLY_ROOT / "axis" / "examples"
 WORLD_ASSET_ROOT = WORLD_ROOT
 LAB_ONLY_ASSET_ROOT = LAB_ONLY_ROOT
 DEFAULT_ASSET_WORLD_ID = DEFAULT_WORLD_ID
@@ -123,7 +117,6 @@ def _iter_prompt_files(purpose: PromptPurpose | None = None) -> list[Path]:
                 world_id=DEFAULT_ASSET_WORLD_ID,
                 world_root=WORLD_ASSET_ROOT,
                 lab_only_root=LAB_ONLY_ASSET_ROOT,
-                legacy_prompts_root=PROMPTS_DIR,
             )
         except PathResolutionError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -139,7 +132,6 @@ def _iter_prompt_files(purpose: PromptPurpose | None = None) -> list[Path]:
                 world_id=DEFAULT_ASSET_WORLD_ID,
                 world_root=WORLD_ASSET_ROOT,
                 lab_only_root=LAB_ONLY_ASSET_ROOT,
-                legacy_prompts_root=PROMPTS_DIR,
             )
         except PathResolutionError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -193,7 +185,7 @@ def load_default_prompt() -> str:
     Read the default system prompt from disk.
 
     Returns the text of the default Character Description prompt,
-    ``app/prompts/character_description/system_prompt_v01.txt``, stripped of
+    ``app/lab_only/prompts/character_description/system_prompt_v01.txt``, stripped of
     leading and trailing whitespace.
 
     Returns
@@ -215,7 +207,8 @@ def load_default_prompt() -> str:
             raise HTTPException(
                 status_code=500,
                 detail=(
-                    "Default system prompt not found under " "app/prompts/character_description/"
+                    "Default system prompt not found under "
+                    "app/lab_only/prompts/character_description/"
                 ),
             ) from exc
         raise
@@ -226,7 +219,7 @@ def load_chat_default_prompt() -> str:
     Read the default Chat Translation prompt from disk.
 
     Returns the text of the default standalone chat prompt,
-    ``app/prompts/chat_translation/pipeworks_web_ic_prompt.txt``, stripped
+    the supported chat translation prompt roots, stripped
     of leading and trailing whitespace.
 
     Returns
@@ -251,7 +244,7 @@ def load_chat_default_prompt() -> str:
                 status_code=500,
                 detail=(
                     "Default chat translation prompt not found under "
-                    "app/prompts/chat_translation/"
+                    "supported chat translation prompt roots."
                 ),
             ) from exc
         raise
@@ -264,7 +257,7 @@ def load_chat_default_prompt() -> str:
 
 def load_example(name: str) -> dict:
     """
-    Load and parse a named example JSON file from ``app/examples/``.
+    Load and parse a named example JSON file from the supported local roots.
 
     Parameters
     ----------
@@ -286,7 +279,6 @@ def load_example(name: str) -> dict:
             world_id=DEFAULT_ASSET_WORLD_ID,
             world_root=WORLD_ASSET_ROOT,
             lab_only_root=LAB_ONLY_ASSET_ROOT,
-            legacy_examples_root=EXAMPLES_DIR,
         ).get(name)
     except PathResolutionError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -304,7 +296,7 @@ def list_example_names() -> list[str]:
     """
     Return a sorted list of example names (without ``.json`` extension).
 
-    Scans ``app/examples/`` for all ``.json`` files and returns their
+    Scans the supported local roots for all ``.json`` files and returns their
     stems in alphabetical order.  Used by the ``GET /api/examples`` route
     to populate the frontend dropdown.
 
@@ -317,7 +309,6 @@ def list_example_names() -> list[str]:
             world_id=DEFAULT_ASSET_WORLD_ID,
             world_root=WORLD_ASSET_ROOT,
             lab_only_root=LAB_ONLY_ASSET_ROOT,
-            legacy_examples_root=EXAMPLES_DIR,
         )
     except PathResolutionError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -331,7 +322,7 @@ def list_example_names() -> list[str]:
 
 def load_prompt(name: str, purpose: PromptPurpose | None = None) -> str:
     """
-    Load a named prompt text file from the grouped ``app/prompts/`` tree.
+    Load a named prompt text file from the supported prompt roots.
 
     Unlike :func:`load_example` which parses structured JSON, this simply
     reads the file as plain UTF-8 text and returns it stripped of
@@ -364,7 +355,7 @@ def list_prompt_names(purpose: PromptPurpose | None = None) -> list[str]:
     """
     Return a sorted list of prompt names (without ``.txt`` extension).
 
-    Scans the grouped ``app/prompts/`` tree and returns prompt stems in
+    Scans the supported prompt roots and returns prompt stems in
     alphabetical order. Used by ``GET /api/prompts`` to populate prompt
     dropdowns. The optional ``purpose`` filter lets each page request only
     the prompt family it actually uses.

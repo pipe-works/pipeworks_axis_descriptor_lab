@@ -44,7 +44,7 @@ def get_system_prompt() -> str:
 @router.post(
     "/api/save",
     response_model=SaveResponse,
-    summary="Save current session state to a timestamped subfolder under data/",
+    summary="Save current session state under the configured writable save root",
 )
 def save_run(req: SaveRequest) -> SaveResponse:
     """Persist a character-description session under the configured save root."""
